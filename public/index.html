@@ -80,6 +80,7 @@
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;background:#faf5eb}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tr:hover td{background:#fdfaf3}
+  th.bs{cursor:pointer;user-select:none;white-space:nowrap}th.bs:hover{color:var(--copper)}
   .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
   .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
   .pill.prod{background:#eef2e6;color:#557033}.pill.stor{background:#e7eef4;color:#2f6f8f}.pill.proc{background:#f5ece2;color:#a8582b}
@@ -342,8 +343,8 @@
         <div><label class="fld">Spirit</label><select id="barrelSpirit"><option value="">All</option></select></div>
         <button class="btn ghost sm" id="exportBarrelsCsv">Export CSV</button>
       </div>
-      <div class="tablewrap"><table><thead><tr>
-        <th>Barrel #</th><th>Spirit</th><th>Fill Date</th><th class="num">Age</th><th class="num">Proof</th><th class="num">PG</th><th>Warehouse / Loc</th><th>Origin</th><th>Status</th><th class="noprint"></th>
+      <div class="tablewrap"><table><thead><tr id="barrelHead">
+        <th class="bs" data-bsort="barrelNo">Barrel #</th><th class="bs" data-bsort="spirit">Spirit</th><th class="bs" data-bsort="fillDate">Fill Date</th><th class="bs num" data-bsort="age">Age</th><th class="bs num" data-bsort="entryProof">Proof</th><th class="bs num" data-bsort="pg">PG</th><th class="bs" data-bsort="warehouse">Warehouse / Loc</th><th class="bs" data-bsort="origin">Origin</th><th class="bs" data-bsort="status">Status</th><th class="noprint"></th>
       </tr></thead><tbody id="barrelBody"></tbody></table></div>
       <div id="barrelEmpty"></div>
     </div>
@@ -944,6 +945,11 @@ function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return;
 function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save(); refreshAll(); flash('Barrel transferred out (TIB).'); }
 function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save(); refreshAll(); }
 function barrelStatusPill(s){ const m={'Aging':'aging','Dumped':'dumped','Transferred out (TIB)':'tibout','Loss':'loss'}; return `<span class="pill ${m[s]||'aging'}">${s}</span>`; }
+const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.fillDate||b.distillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
+let barrelSort={key:'fillDate',dir:-1};
+function sortBarrels(list){ const f=SORTVAL[barrelSort.key]||SORTVAL.fillDate; return list.slice().sort((a,b)=>{const va=f(a),vb=f(b); let c=(typeof va==='number'&&typeof vb==='number')?va-vb:String(va).localeCompare(String(vb)); return c*barrelSort.dir;}); }
+function setBarrelSort(key){ if(barrelSort.key===key)barrelSort.dir*=-1; else{barrelSort.key=key; barrelSort.dir=(key==='fillDate'||key==='age'||key==='pg'||key==='entryProof')?-1:1;} renderBarrels(); }
+function updateBarrelHeadArrows(){ document.querySelectorAll('#barrelHead th.bs').forEach(th=>{ const k=th.dataset.bsort; if(!th.dataset.label)th.dataset.label=th.textContent.replace(/[\s▲▼]+$/,''); th.textContent=th.dataset.label+(barrelSort.key===k?(barrelSort.dir>0?' ▲':' ▼'):''); }); }
 function renderBarrels(){
   const bs=state.barrels||[];
   const spirits=[...new Set(bs.map(b=>b.spirit).filter(Boolean))].sort(); const cur=$('#barrelSpirit').value;
@@ -960,8 +966,8 @@ function renderBarrels(){
     kpi('ky','Received in Bond',tibIn.toLocaleString(),'aging TIB barrels'),
   ].join('');
   const q=($('#barrelSearch').value||'').toLowerCase(), sf=$('#barrelStatus').value, spf=$('#barrelSpirit').value;
-  let rows=[...bs].sort((a,b)=>(b.fillDate||'').localeCompare(a.fillDate||''));
-  rows=rows.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
+  let rows=bs.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
+  rows=sortBarrels(rows); updateBarrelHeadArrows();
   $('#barrelBody').innerHTML=rows.map(b=>{
     const origin=b.origin==='Received in bond (TIB)'?`<span class="pill tibin">TIB in</span>`:'—';
     const acts=b.status==='Aging'
@@ -1217,6 +1223,7 @@ function wireOnce(){
   $('#cancelBarrel').onclick=cancelBarrelEdit;
   $('#barrelSearch').oninput=renderBarrels;$('#barrelStatus').onchange=renderBarrels;$('#barrelSpirit').onchange=renderBarrels;$('#exportBarrelsCsv').onclick=exportBarrelsCsv;
   $('#tibAddLine').onclick=tibAddLine; $('#tibReceive').onclick=tibReceive; $('#tibBulkImport').onclick=tibBulkImport;
+  document.querySelectorAll('#barrelHead th.bs').forEach(th=>th.onclick=()=>setBarrelSort(th.dataset.bsort));
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
