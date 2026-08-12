@@ -504,6 +504,21 @@
     </div>
 
     <div class="card">
+      <h3>QuickBooks Online — Louisville</h3>
+      <p class="hint">Connect your Louisville QuickBooks company so orders post as invoices. Uses the production Intuit keys stored in your Netlify environment variables.</p>
+      <div class="row-actions"><span id="qbStatus" class="hint" style="margin:0">Checking connection…</span></div>
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn ky" id="qbConnect">Connect QuickBooks</button>
+        <button class="btn gray" id="qbDisconnect" style="display:none">Disconnect</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Support</h3>
+      <p class="hint">Questions or an issue with the app or a QuickBooks sync? Contact <a href="mailto:michael.hinds@gmail.com" style="color:var(--copper);font-weight:600">michael.hinds@gmail.com</a>. QuickBooks errors show an Intuit reference id (intuit_tid) to speed up troubleshooting.</p>
+    </div>
+
+    <div class="card">
       <h3>Backup &amp; Data</h3>
       <p class="hint">Your data lives in your synced workspace. A JSON backup is still worth keeping — it's a portable snapshot you fully control.</p>
       <div class="row-actions">
@@ -867,7 +882,7 @@ function loadSample(){
 }
 
 /* ================= UI plumbing ================= */
-function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();}
+function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
 function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();dataStatus();syncUI();}
@@ -1119,7 +1134,7 @@ function renderOrders(){
   $('#o_customer').innerHTML=`<option value="">— choose customer —</option>`+cs.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${c.name}</option>`).join('');
   renderOrderLines();
   const rows=[...state.orders].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||0)-(a.num||0));
-  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">invoiced</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint"><button class="del" onclick="deleteOrder('${o.id}')">Reverse</button></td></tr>`).join('');
+  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint">${o.qbSynced?'':`<button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button> · `}<button class="del" onclick="deleteOrder('${o.id}')">Reverse</button></td></tr>`).join('');
   $('#orderEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">📦</div>No orders yet. Add a customer and some finished goods, then create one above.</div>`;
 }
 
@@ -1129,6 +1144,35 @@ function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
 function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save(); renderBottling(); }
+
+/* ---- QuickBooks (front-end) ---- */
+async function qbRefresh(){
+  const el=$('#qbStatus'); if(!el) return;
+  if(location.protocol==='file:'){ el.textContent='QuickBooks connects only on the hosted site.'; if($('#qbConnect'))$('#qbConnect').style.display='none'; return; }
+  try{
+    const r=await fetch('/api/qb/status',{cache:'no-store'}); const d=await r.json();
+    if(!d.configured){ el.innerHTML='⚠️ Not configured — add QB_CLIENT_ID, QB_CLIENT_SECRET, QB_ENVIRONMENT in Netlify env vars.'; $('#qbConnect').style.display='none'; $('#qbDisconnect').style.display='none'; return; }
+    $('#qbConnect').style.display='inline-block';
+    if(d.connected){ el.innerHTML=`✅ Connected to <b>${d.company||'QuickBooks'}</b> <span style="color:var(--muted)">(${d.environment})</span>.`; $('#qbConnect').textContent='Reconnect'; $('#qbDisconnect').style.display='inline-block'; }
+    else { el.innerHTML='Not connected yet.'+(d.error?` <span style="color:var(--red)">(${d.error})</span>`:''); $('#qbConnect').textContent='Connect QuickBooks'; $('#qbDisconnect').style.display='none'; }
+  }catch(e){ el.textContent='Could not check QuickBooks status.'; }
+}
+function qbConnect(){ location.href='/api/qb/connect?ws='+encodeURIComponent(WS); }
+async function qbDisconnect(){ if(!confirm('Disconnect QuickBooks?'))return; try{ await fetch('/api/qb/disconnect?app=1'); }catch(e){} flash('QuickBooks disconnected.'); qbRefresh(); }
+async function sendOrderToQB(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  if(location.protocol==='file:'){ alert('QuickBooks works only on the hosted site.'); return; }
+  const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
+  const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku,qty:l.cases,unitPrice:l.price}));
+  flash('Sending order #'+o.num+' to QuickBooks…');
+  try{
+    const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:cust.email,phone:cust.phone},lines,docNumber:o.num,txnDate:o.date,privateNote:'TTB Tracker order #'+o.num})});
+    const d=await r.json();
+    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(); renderOrders(); flash('Invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
+    else if(d.error==='not_connected'){ alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
+    else { alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
+  }catch(e){ alert('Could not reach QuickBooks: '+e.message); }
+}
 
 /* ================= Boot ================= */
 function wireOnce(){
@@ -1148,6 +1192,7 @@ function wireOnce(){
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
+  $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
 }
 let wired=false;
@@ -1158,7 +1203,7 @@ async function boot(rejoin){
   setSync('connecting');
   await cloudLoad();
   if(!wired){ wireOnce(); wired=true; }
-  loadSettingsForm(); refreshAll();
+  loadSettingsForm(); refreshAll(); qbRefresh();
   // show sync banner if brand-new empty workspace
   $('#syncBanner').style.display = (cloudAvailable && state.entries.length===0)?'flex':'none';
 }
