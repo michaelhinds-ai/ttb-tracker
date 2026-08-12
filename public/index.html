@@ -280,6 +280,11 @@
         <button class="btn ky" id="tibReceive">Receive into inventory</button>
         <span class="hint" id="tibSummary" style="margin:0"></span>
       </div>
+      <details class="sched" style="margin-top:16px"><summary style="color:var(--ky)">Bulk paste — import many lots at once</summary>
+        <p class="hint" style="margin-top:10px">Fill in <b>Received from / permit / date</b> above, then paste one lot per line as <b>Class, Fill Date, Proof Gallons, # Barrels, Lot Code</b> (commas or tabs; leave proof out — PG is what's gauged). Then click Import.</p>
+        <textarea id="tibBulk" rows="6" placeholder="Bourbon, 09/12/2014, 757.10, 12, 14I12&#10;Rye, 12/17/2015, 190.80, 3, 15L17"></textarea>
+        <div class="row-actions" style="margin-top:10px"><button class="btn ky sm" id="tibBulkImport">Import pasted barrels</button><span class="hint" id="tibBulkMsg" style="margin:0"></span></div>
+      </details>
     </div>
 
     <div class="card">
@@ -1007,6 +1012,30 @@ function tibReceive(){
   save(); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
   flash('Received '+nb+' barrels in bond.');
 }
+function normDate(s){ s=(s||'').trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s; const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(m){let y=m[3];if(y.length===2)y='20'+y;return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;} return s; }
+function tibBulkImport(){
+  const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value||new Date().toISOString().slice(0,10);
+  const txt=($('#tibBulk').value||'').trim(); if(!txt){ alert('Paste some rows first.'); return; }
+  const lines=txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const recs=[]; let bbl=0,pg=0,skipped=0;
+  for(const line of lines){
+    const parts=line.split(/\t|,/).map(s=>s.trim());
+    if(parts.length<4){ skipped++; continue; }
+    const cls=parts[0]; const fill=normDate(parts[1]);
+    const lotPG=parseFloat((parts[2]||'').replace(/[^0-9.]/g,''));
+    const qty=parseInt((parts[3]||'').replace(/[^0-9]/g,''),10);
+    const lot=parts[4]||'';
+    if(!(lotPG>0)||!(qty>0)){ skipped++; continue; }
+    const type=/agave|tequila/i.test(cls)?'Agave':/rum/i.test(cls)?'Rum':/brandy/i.test(cls)?'Brandy':'Whiskey';
+    recs.push({id:uid(),barrelNo:'',spirit:cls,spiritType:type,fillDate:fill,distillDate:fill,entryProof:0,pgTotal:round2(lotPG),qty:qty,size:'53 gal (standard)',char:'',cooperage:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:lot?('Lot '+lot):'',status:'Aging'});
+    bbl+=qty; pg+=lotPG;
+  }
+  if(!recs.length){ alert('No valid rows found. Expected each line: Class, Fill Date, Proof Gallons, # Barrels, Lot Code.'); return; }
+  if(!confirm(`Import ${recs.length} lots — ${bbl} barrels, ${numf(round1(pg))} PG — received in bond${from?(' from '+from):''}?`)) return;
+  state.barrels.push(...recs); save(); refreshAll(); $('#tibBulk').value='';
+  $('#tibBulkMsg').textContent=`Imported ${bbl} barrels (${recs.length} lots)`+(skipped?`, ${skipped} skipped`:'');
+  flash(`Imported ${bbl} barrels in bond.`);
+}
 
 /* ---- Bottling / dump ---- */
 function initBottling(){ if(!$('#bo_date').value)$('#bo_date').value=new Date().toISOString().slice(0,10); ['bo_proof','bo_bottles'].forEach(id=>$('#'+id).addEventListener('input',updateBottleCalc)); $('#bo_select').onchange=onBottleSelect; $('#bo_qty').addEventListener('input',updateBottleCalc); }
@@ -1187,7 +1216,7 @@ function wireOnce(){
   $('#saveBarrel').onclick=()=>saveBarrelForm(false);$('#saveBarrelAnother').onclick=()=>saveBarrelForm(true);
   $('#cancelBarrel').onclick=cancelBarrelEdit;
   $('#barrelSearch').oninput=renderBarrels;$('#barrelStatus').onchange=renderBarrels;$('#barrelSpirit').onchange=renderBarrels;$('#exportBarrelsCsv').onclick=exportBarrelsCsv;
-  $('#tibAddLine').onclick=tibAddLine; $('#tibReceive').onclick=tibReceive;
+  $('#tibAddLine').onclick=tibAddLine; $('#tibReceive').onclick=tibReceive; $('#tibBulkImport').onclick=tibBulkImport;
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
