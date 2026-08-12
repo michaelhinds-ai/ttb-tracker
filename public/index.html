@@ -133,6 +133,7 @@
   <button data-view="reports">Federal Reports</button>
   <button data-view="kentucky">Kentucky</button>
   <button data-view="barrels">Barrels</button>
+  <button data-view="bottling">Bottling</button>
   <button data-view="data">Setup &amp; Sync</button>
 </div></nav>
 
@@ -259,6 +260,25 @@
     <h2 class="section">Barrel Inventory</h2>
     <div class="kpis" id="barrelKpis"></div>
 
+    <div class="card" style="border-color:var(--ky)">
+      <h3>Receive Barrels — Transfer in Bond (TIB)</h3>
+      <p class="hint">Record barrels received in bond from another DSP without tax determination. Add a line for each lot — you can receive several lots on one transfer.</p>
+      <div class="grid g3">
+        <div><label class="fld">Received from — DSP name</label><input type="text" id="tib_from" placeholder="Shipping distillery"></div>
+        <div><label class="fld">Source DSP permit</label><input type="text" id="tib_permit" placeholder="DSP-XX-XXXXX"></div>
+        <div><label class="fld">Received date</label><input type="date" id="tib_date"></div>
+      </div>
+      <div class="tablewrap" style="margin-top:14px">
+        <table><thead><tr><th>Spirit Type</th><th>Class</th><th>Distillation Date</th><th class="num">Proof</th><th class="num">Proof Gallons</th><th class="num"># Barrels</th><th class="noprint"></th></tr></thead>
+        <tbody id="tibLines"></tbody></table>
+      </div>
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn ghost sm" id="tibAddLine">+ Add line</button>
+        <button class="btn ky" id="tibReceive">Receive into inventory</button>
+        <span class="hint" id="tibSummary" style="margin:0"></span>
+      </div>
+    </div>
+
     <div class="card">
       <h3 id="barrelFormTitle">Add a Barrel</h3>
       <p class="hint">Track each barrel with its key data. Proof gallons compute from fill gallons × entry proof. Mark barrels received in bond (TIB) from another DSP, and record dumps or transfers out.</p>
@@ -294,9 +314,10 @@
           <div><label class="fld">Received date</label><input type="date" id="b_tibDate"></div>
         </div>
       </div>
-      <div class="grid g3" style="margin-top:14px">
+      <div class="grid g4" style="margin-top:14px">
         <div><label class="fld">Distillation Date</label><input type="date" id="b_distill"></div>
         <div><label class="fld">Mashbill / Recipe</label><input type="text" id="b_mash" placeholder="e.g. 75% corn / 21% rye / 4% malt"></div>
+        <div><label class="fld"># of Barrels (this record)</label><input type="number" id="b_qty" step="1" min="1" value="1" inputmode="numeric"></div>
         <div><label class="fld">Notes</label><input type="text" id="b_notes" placeholder="Batch, gauge notes, etc."></div>
       </div>
       <div class="row-actions" style="margin-top:14px">
@@ -324,6 +345,37 @@
       <div class="card"><h3>Aging Barrels by Fill Year</h3><div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Fill Year</th><th class="num">Barrels</th><th class="num">Proof Gallons</th></tr></thead><tbody id="barrelByYear"></tbody></table></div></div>
     </div>
     <div class="disclaimer">This barrel register is a management and inventory tool. The proof gallons shown are fill (entry) figures; barrel aging losses ("angels' share") are not deducted automatically — record those as storage losses in your ledger, or dump at your gauged proof/gallons. Barrels received or transferred in bond (TIB) are non-taxable movements between DSPs; make sure they're also reflected in your federal Storage report as deposits/removals.</div>
+  </section>
+
+  <!-- BOTTLING -->
+  <section class="view" id="view-bottling">
+    <h2 class="section">Bottling / Dump</h2>
+    <div class="card">
+      <h3>Bottle a Barrel / Lot</h3>
+      <p class="hint">Pick what you're dumping from inventory. Enter the bottling proof and how many 750 ml bottles you filled — wine gallons and proof gallons are computed. Bottling removes those barrels from your aging inventory.</p>
+      <div class="grid g2">
+        <div><label class="fld">Select from inventory</label><select id="bo_select"></select></div>
+        <div><label class="fld"># of barrels to dump</label><input type="number" id="bo_qty" step="1" min="1" value="1" inputmode="numeric"></div>
+      </div>
+      <div class="grid g4" style="margin-top:14px">
+        <div><label class="fld">Spirit / Class</label><input type="text" id="bo_class" readonly></div>
+        <div><label class="fld">Distillation Date</label><input type="date" id="bo_distill"></div>
+        <div><label class="fld">Bottling Proof</label><input type="number" id="bo_proof" step="0.1" min="0" max="200" inputmode="decimal"></div>
+        <div><label class="fld"># of 750 ml Bottles</label><input type="number" id="bo_bottles" step="1" min="0" inputmode="numeric"></div>
+      </div>
+      <div class="grid g3" style="margin-top:14px">
+        <div><label class="fld">Wine Gallons (computed)</label><div class="readout" id="bo_wg">0.00 WG</div></div>
+        <div><label class="fld">Proof Gallons (computed)</label><div class="readout" id="bo_pg">0.0 PG</div></div>
+        <div><label class="fld">Bottling Date</label><input type="date" id="bo_date"></div>
+      </div>
+      <div class="note">Removing barrels here decrements your barrel inventory. To also record the tax-determined removal on your federal/Kentucky returns, add a matching entry on the <b>Add Entry</b> tab.</div>
+      <div class="row-actions" style="margin-top:6px"><button class="btn" id="bo_do" style="background:#7a5a2b">Bottle &amp; remove from inventory</button></div>
+    </div>
+    <div class="card">
+      <h3>Bottling History</h3>
+      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
+      <div id="bottlingEmpty"></div>
+    </div>
   </section>
 
   <!-- SETUP & SYNC -->
@@ -424,7 +476,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05},entries:[],ky:{monthly:{},barrel:{}},barrels:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -434,7 +486,7 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; return s; }
 
 function setSync(status){
   const dot=document.getElementById('syncDot'), txt=document.getElementById('syncTxt');
@@ -509,10 +561,11 @@ function renderDashboard(){
   const bal=balances(); const onHand=round1(bal.Production+bal.Storage+bal.Processing);
   const kyYtd=kyYearTotal(yr);
   const aging=(state.barrels||[]).filter(b=>b.status==='Aging');
+  const agingCount=aging.reduce((s,b)=>s+barrelCount(b),0);
   const agingPG=round1(aging.reduce((s,b)=>s+barrelPG(b),0));
   $('#kpis').innerHTML=[
     kpi('copper','Bulk on Hand',numf(onHand)+' PG','across all accounts'),
-    kpi('barrel','Barrels Aging',aging.length.toLocaleString(),numf(agingPG)+' PG in barrels'),
+    kpi('barrel','Barrels Aging',agingCount.toLocaleString(),numf(agingPG)+' PG in barrels'),
     kpi('green','Federal Excise '+yr,money(ytdTax),numf(ytd)+' PG tax-determined'),
     kpi('ky','Kentucky Tax '+yr,money(kyYtd),'monthly returns, year-to-date'),
   ].join('');
@@ -735,10 +788,10 @@ function loadSample(){
 }
 
 /* ================= UI plumbing ================= */
-function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();}
+function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();dataStatus();syncUI();}
+function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();dataStatus();syncUI();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
@@ -747,21 +800,26 @@ function printKy(){const o=$('#view-kentucky');o.classList.add('printing');windo
 /* ================= Barrels ================= */
 const BARREL_SIZES=['53 gal (standard)','59 gal (hogshead)','30 gal','15 gal','10 gal','5 gal','Other'];
 const BARREL_CHARS=['—','#1','#2','#3','#4','Toasted','Other'];
+const SPIRIT_TYPES=['Whiskey','Agave','Neutral / GNS','Rum','Brandy','Other'];
+const SPIRIT_CLASSES=['Bourbon','Rye','Wheat','Malt','Corn','Tequila','GNS','Vodka','Rum','Brandy','Other'];
+const ML_PER_GAL=3785.411784;
+const bottlesToWG=(bottles,ml=750)=>round2((+bottles||0)*ml/ML_PER_GAL);
 let editingBarrelId=null;
-function barrelPG(b){ return round1((+b.fillWG||0)*(+b.entryProof||0)/100); }
+function barrelCount(b){ return Math.max(0,+b.qty||1); }
+function barrelPG(b){ if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') return round1(+b.pgTotal); return round1((+b.fillWG||0)*(+b.entryProof||0)/100*barrelCount(b)); }
 function barrelAge(b){ if(!b.fillDate) return 0; const f=new Date(b.fillDate+'T00:00:00'), n=new Date(); return Math.max(0,(n-f)/(365.25*24*3600*1000)); }
 function fmtAge(y){ return y<1?Math.round(y*12)+' mo':y.toFixed(1)+' yr'; }
 function initBarrelForm(){
   $('#b_size').innerHTML=BARREL_SIZES.map(s=>`<option>${s}</option>`).join('');
   $('#b_char').innerHTML=BARREL_CHARS.map(c=>`<option>${c}</option>`).join('');
   $('#b_origin').onchange=toggleTibIn;
-  ['b_wg','b_proof'].forEach(id=>$('#'+id).addEventListener('input',updateBarrelPG));
+  ['b_wg','b_proof','b_qty'].forEach(id=>$('#'+id).addEventListener('input',updateBarrelPG));
   if(!$('#b_fill').value)$('#b_fill').value=new Date().toISOString().slice(0,10);
   toggleTibIn();
 }
 function toggleTibIn(){ $('#tibInFields').style.display=$('#b_origin').value==='Received in bond (TIB)'?'block':'none'; }
-function updateBarrelPG(){ $('#b_pg').textContent=numf(round1((+$('#b_wg').value||0)*(+$('#b_proof').value||0)/100))+' PG'; }
-function readBarrel(){ return {barrelNo:$('#b_no').value.trim(),spirit:$('#b_spirit').value,fillDate:$('#b_fill').value,distillDate:$('#b_distill').value,mashbill:$('#b_mash').value.trim(),entryProof:+$('#b_proof').value||0,fillWG:+$('#b_wg').value||0,size:$('#b_size').value,char:$('#b_char').value,cooperage:$('#b_coop').value.trim(),warehouse:$('#b_wh').value.trim(),location:$('#b_loc').value.trim(),origin:$('#b_origin').value,notes:$('#b_notes').value.trim(),sourceDSP:$('#b_srcDsp').value.trim(),sourcePermit:$('#b_srcPermit').value.trim(),tibInDate:$('#b_tibDate').value}; }
+function updateBarrelPG(){ const q=Math.max(1,+$('#b_qty').value||1); $('#b_pg').textContent=numf(round1((+$('#b_wg').value||0)*(+$('#b_proof').value||0)/100*q))+' PG'+(q>1?` (${q} bbl)`:''); }
+function readBarrel(){ return {barrelNo:$('#b_no').value.trim(),spirit:$('#b_spirit').value,fillDate:$('#b_fill').value,distillDate:$('#b_distill').value,mashbill:$('#b_mash').value.trim(),qty:Math.max(1,+$('#b_qty').value||1),entryProof:+$('#b_proof').value||0,fillWG:+$('#b_wg').value||0,size:$('#b_size').value,char:$('#b_char').value,cooperage:$('#b_coop').value.trim(),warehouse:$('#b_wh').value.trim(),location:$('#b_loc').value.trim(),origin:$('#b_origin').value,notes:$('#b_notes').value.trim(),sourceDSP:$('#b_srcDsp').value.trim(),sourcePermit:$('#b_srcPermit').value.trim(),tibInDate:$('#b_tibDate').value}; }
 function validBarrel(d){ if(!d.fillDate){alert('Choose a fill date.');return false;} if(!(d.fillWG>0)){alert('Enter fill wine gallons greater than zero.');return false;} if(!(d.entryProof>0)){alert('Enter the entry proof.');return false;} return true; }
 function saveBarrelForm(again){
   const d=readBarrel(); if(!validBarrel(d))return;
@@ -774,7 +832,7 @@ function saveBarrelForm(again){
 function cancelBarrelEdit(silent){ editingBarrelId=null; $('#cancelBarrel').style.display='none'; $('#barrelFormTitle').textContent='Add a Barrel'; $('#saveBarrel').textContent='Save Barrel'; if(!silent){['b_no','b_wg','b_notes','b_loc','b_coop','b_srcDsp','b_srcPermit'].forEach(i=>$('#'+i).value='');updateBarrelPG();} }
 function editBarrel(id){
   const b=state.barrels.find(x=>x.id===id); if(!b)return; editingBarrelId=id; switchView('barrels');
-  $('#b_no').value=b.barrelNo||''; $('#b_spirit').value=b.spirit||'Bourbon'; $('#b_fill').value=b.fillDate||''; $('#b_distill').value=b.distillDate||''; $('#b_mash').value=b.mashbill||'';
+  $('#b_no').value=b.barrelNo||''; $('#b_spirit').value=b.spirit||'Bourbon'; $('#b_fill').value=b.fillDate||''; $('#b_distill').value=b.distillDate||''; $('#b_mash').value=b.mashbill||''; $('#b_qty').value=b.qty||1;
   $('#b_proof').value=b.entryProof||''; $('#b_wg').value=b.fillWG||''; $('#b_size').value=b.size||BARREL_SIZES[0];
   $('#b_char').value=b.char||'—'; $('#b_coop').value=b.cooperage||''; $('#b_wh').value=b.warehouse||'';
   $('#b_loc').value=b.location||''; $('#b_origin').value=b.origin||'Produced here'; $('#b_notes').value=b.notes||'';
@@ -792,14 +850,14 @@ function renderBarrels(){
   const spirits=[...new Set(bs.map(b=>b.spirit).filter(Boolean))].sort(); const cur=$('#barrelSpirit').value;
   $('#barrelSpirit').innerHTML=`<option value="">All</option>`+spirits.map(s=>`<option ${s===cur?'selected':''}>${s}</option>`).join('');
   const aging=bs.filter(b=>b.status==='Aging');
+  const agingCount=aging.reduce((s,b)=>s+barrelCount(b),0);
   const agingPG=round1(aging.reduce((s,b)=>s+barrelPG(b),0));
-  const agingWG=round2(aging.reduce((s,b)=>s+(+b.fillWG||0),0));
-  const tibIn=aging.filter(b=>b.origin==='Received in bond (TIB)').length;
-  const avgAge=aging.length?aging.reduce((s,b)=>s+barrelAge(b),0)/aging.length:0;
+  const tibIn=aging.filter(b=>b.origin==='Received in bond (TIB)').reduce((s,b)=>s+barrelCount(b),0);
+  const avgAge=aging.length?aging.reduce((s,b)=>s+barrelAge(b)*barrelCount(b),0)/Math.max(1,agingCount):0;
   $('#barrelKpis').innerHTML=[
-    kpi('barrel','Barrels Aging',aging.length.toLocaleString(),numf(agingWG,0)+' wine gal'),
+    kpi('barrel','Barrels Aging',agingCount.toLocaleString(),aging.length.toLocaleString()+' lots'),
     kpi('copper','Proof Gallons in Barrels',numf(agingPG),'entry (fill) basis'),
-    kpi('blue','Avg Age',fmtAge(avgAge),'across aging barrels'),
+    kpi('blue','Avg Age',fmtAge(avgAge),'weighted across barrels'),
     kpi('ky','Received in Bond',tibIn.toLocaleString(),'aging TIB barrels'),
   ].join('');
   const q=($('#barrelSearch').value||'').toLowerCase(), sf=$('#barrelStatus').value, spf=$('#barrelSpirit').value;
@@ -810,12 +868,13 @@ function renderBarrels(){
     const acts=b.status==='Aging'
       ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
       : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
-    return `<tr><td><b>${b.barrelNo||'—'}</b>${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.fillDate?fmtDate(b.fillDate):'—'}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${numf(b.entryProof||0,1)}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    const cnt=barrelCount(b);
+    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.fillDate?fmtDate(b.fillDate):(b.distillDate?'distilled '+fmtDate(b.distillDate):'—')}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${numf(b.entryProof||0,1)}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
-  const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n++;bySpirit[k].pg+=barrelPG(b);});
+  const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
   $('#barrelBySpirit').innerHTML=Object.keys(bySpirit).sort().map(k=>`<tr><td>${k}</td><td class="num">${bySpirit[k].n}</td><td class="num">${numf(round1(bySpirit[k].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
-  const byYear={}; aging.forEach(b=>{const y=(b.fillDate||'').slice(0,4)||'—';byYear[y]=byYear[y]||{n:0,pg:0};byYear[y].n++;byYear[y].pg+=barrelPG(b);});
+  const byYear={}; aging.forEach(b=>{const y=((b.fillDate||b.distillDate||'').slice(0,4))||'—';byYear[y]=byYear[y]||{n:0,pg:0};byYear[y].n+=barrelCount(b);byYear[y].pg+=barrelPG(b);});
   $('#barrelByYear').innerHTML=Object.keys(byYear).sort((a,b)=>b.localeCompare(a)).map(y=>`<tr><td>${y}</td><td class="num">${byYear[y].n}</td><td class="num">${numf(round1(byYear[y].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
 }
 function exportBarrelsCsv(){
@@ -823,6 +882,65 @@ function exportBarrelsCsv(){
   const rows=(state.barrels||[]).map(b=>[b.barrelNo,b.spirit,b.mashbill||'',b.distillDate||'',b.fillDate,b.entryProof,b.fillWG,barrelPG(b),b.size,b.char,b.cooperage,b.warehouse,b.location,b.origin,b.sourceDSP||'',b.sourcePermit||'',b.tibInDate||'',b.status,b.dumpDate||'',b.destDSP||'',b.tibOutDate||'',b.notes||''].map(csv).join(','));
   const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`barrels-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
 }
+
+/* ---- TIB In (multi-line receiving) ---- */
+let tibRows=[];
+function tibNewRow(){ return {type:'Whiskey',cls:'Bourbon',distill:'',proof:'',pg:'',qty:''}; }
+function initTib(){ if(!tibRows.length) tibRows=[tibNewRow()]; if(!$('#tib_date').value)$('#tib_date').value=new Date().toISOString().slice(0,10); renderTibLines(); }
+function renderTibLines(){
+  const body=$('#tibLines'); if(!body) return;
+  body.innerHTML=tibRows.map((r,i)=>`<tr>
+    <td><select data-i="${i}" data-k="type">${SPIRIT_TYPES.map(t=>`<option ${t===r.type?'selected':''}>${t}</option>`).join('')}</select></td>
+    <td><select data-i="${i}" data-k="cls">${SPIRIT_CLASSES.map(c=>`<option ${c===r.cls?'selected':''}>${c}</option>`).join('')}</select></td>
+    <td><input type="date" data-i="${i}" data-k="distill" value="${r.distill||''}"></td>
+    <td><input type="number" step="0.1" min="0" max="200" data-i="${i}" data-k="proof" value="${r.proof||''}" style="max-width:90px"></td>
+    <td><input type="number" step="0.1" min="0" data-i="${i}" data-k="pg" value="${r.pg||''}" style="max-width:110px"></td>
+    <td><input type="number" step="1" min="1" data-i="${i}" data-k="qty" value="${r.qty||''}" style="max-width:80px"></td>
+    <td class="noprint">${tibRows.length>1?`<button class="del" data-del="${i}">✕</button>`:''}</td></tr>`).join('');
+  body.querySelectorAll('select,input').forEach(el=>{el.onchange=el.oninput=e=>{tibRows[+e.target.dataset.i][e.target.dataset.k]=e.target.value;updateTibSummary();};});
+  body.querySelectorAll('[data-del]').forEach(el=>{el.onclick=e=>{tibRows.splice(+e.target.dataset.del,1);renderTibLines();};});
+  updateTibSummary();
+}
+function updateTibSummary(){ const nb=tibRows.reduce((s,r)=>s+(+r.qty||0),0); const pg=round1(tibRows.reduce((s,r)=>s+(+r.pg||0),0)); $('#tibSummary').textContent=nb?`${nb} barrels · ${numf(pg)} PG to receive`:''; }
+function tibAddLine(){ tibRows.push(tibNewRow()); renderTibLines(); }
+function tibReceive(){
+  const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value;
+  const valid=tibRows.filter(r=>(+r.qty>0)&&(+r.pg>0));
+  if(!valid.length){ alert('Add at least one line with proof gallons and a barrel count.'); return; }
+  if(!from && !confirm('No source DSP entered. Receive anyway?')) return;
+  valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:date,entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
+  const nb=valid.reduce((s,r)=>s+(+r.qty||0),0);
+  save(); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
+  flash('Received '+nb+' barrels in bond.');
+}
+
+/* ---- Bottling / dump ---- */
+function initBottling(){ if(!$('#bo_date').value)$('#bo_date').value=new Date().toISOString().slice(0,10); ['bo_proof','bo_bottles'].forEach(id=>$('#'+id).addEventListener('input',updateBottleCalc)); $('#bo_select').onchange=onBottleSelect; $('#bo_qty').addEventListener('input',updateBottleCalc); }
+function agingRecords(){ return (state.barrels||[]).filter(b=>b.status==='Aging'&&barrelCount(b)>0); }
+function bottleLabel(b){ const lbl=b.barrelNo||(barrelCount(b)>1?'Lot ×'+barrelCount(b):'Barrel'); const d=b.distillDate?(' · distilled '+b.distillDate):(b.fillDate?(' · filled '+b.fillDate):''); return `${lbl} — ${b.spirit||''}${d} · ${numf(b.entryProof||0,0)} pf`; }
+function renderBottleSelect(){ const recs=agingRecords(); const cur=$('#bo_select').value; $('#bo_select').innerHTML=`<option value="">— choose a barrel / lot —</option>`+recs.map(b=>`<option value="${b.id}" ${b.id===cur?'selected':''}>${bottleLabel(b)}</option>`).join(''); onBottleSelect(); }
+function onBottleSelect(){ const b=state.barrels.find(x=>x.id===$('#bo_select').value); if(b){ $('#bo_class').value=(b.spiritType?b.spiritType+' / ':'')+(b.spirit||''); $('#bo_distill').value=b.distillDate||''; if(!$('#bo_proof').value)$('#bo_proof').value=b.entryProof||''; $('#bo_qty').max=barrelCount(b); if(+$('#bo_qty').value>barrelCount(b))$('#bo_qty').value=barrelCount(b); } else { $('#bo_class').value=''; $('#bo_distill').value=''; } updateBottleCalc(); }
+function updateBottleCalc(){ const wg=bottlesToWG($('#bo_bottles').value); const pg=round1(wg*(+$('#bo_proof').value||0)/100); $('#bo_wg').textContent=numf(wg,2)+' WG'; $('#bo_pg').textContent=numf(pg)+' PG'; }
+function doBottle(){
+  const b=state.barrels.find(x=>x.id===$('#bo_select').value);
+  if(!b){ alert('Choose a barrel or lot to bottle.'); return; }
+  const dumpQty=Math.max(1,Math.min(barrelCount(b),+$('#bo_qty').value||1));
+  const bottles=+$('#bo_bottles').value||0, proof=+$('#bo_proof').value||0;
+  const wg=bottlesToWG(bottles), pg=round1(wg*proof/100);
+  if(!confirm(`Bottle ${dumpQty} barrel(s) of ${b.spirit||''} into ${bottles} × 750 ml (${numf(wg,2)} WG / ${numf(pg)} PG) and remove ${dumpQty} from inventory?`)) return;
+  const perBarrelPG=barrelPG(b)/barrelCount(b);
+  if(dumpQty>=barrelCount(b)){ b.status='Dumped'; b.dumpDate=$('#bo_date').value; }
+  else { b.qty=barrelCount(b)-dumpQty; if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') b.pgTotal=round1(+b.pgTotal-perBarrelPG*dumpQty); }
+  state.bottlings.push({id:uid(),date:$('#bo_date').value,spirit:(b.spiritType?b.spiritType+' / ':'')+(b.spirit||''),distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg});
+  save(); $('#bo_bottles').value=''; refreshAll(); switchView('bottling');
+  flash('Bottled '+bottles+' bottles; removed '+dumpQty+' barrel(s).');
+}
+function renderBottling(){ renderBottleSelect(); updateBottleCalc();
+  const rows=[...(state.bottlings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
+  $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
+}
+function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save(); renderBottling(); }
 
 /* ================= Boot ================= */
 function wireOnce(){
@@ -837,7 +955,9 @@ function wireOnce(){
   $('#saveBarrel').onclick=()=>saveBarrelForm(false);$('#saveBarrelAnother').onclick=()=>saveBarrelForm(true);
   $('#cancelBarrel').onclick=cancelBarrelEdit;
   $('#barrelSearch').oninput=renderBarrels;$('#barrelStatus').onchange=renderBarrels;$('#barrelSpirit').onchange=renderBarrels;$('#exportBarrelsCsv').onclick=exportBarrelsCsv;
-  initEntryForm(); initBarrelForm();
+  $('#tibAddLine').onclick=tibAddLine; $('#tibReceive').onclick=tibReceive;
+  $('#bo_do').onclick=doBottle;
+  initEntryForm(); initBarrelForm(); initTib(); initBottling();
 }
 let wired=false;
 async function boot(rejoin){
