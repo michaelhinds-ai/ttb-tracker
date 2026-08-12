@@ -28,6 +28,8 @@
   .dspbadge b{display:block;font-size:13.5px;color:#fff}
   .sync{display:flex;align-items:center;gap:7px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#e9dcc7;background:#00000030;padding:6px 11px;border-radius:20px}
   .dot{width:9px;height:9px;border-radius:50%;background:#8a8}
+  .undo{background:#3a2a1c;color:#f4e9d6;border:1px solid #6b543c;padding:6px 13px;border-radius:20px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;cursor:pointer}
+  .undo:hover{background:#4a3626}
   .dot.synced{background:#5ec27e;box-shadow:0 0 0 3px #5ec27e33}
   .dot.saving{background:#e6b34d;box-shadow:0 0 0 3px #e6b34d33;animation:pulse 1s infinite}
   .dot.offline{background:#d97a6c;box-shadow:0 0 0 3px #d97a6c33}
@@ -122,6 +124,7 @@
       <div class="sub">Distilled Spirits Plant · Federal &amp; Kentucky · synced across your devices</div>
     </div>
     <div class="headright">
+      <button class="undo noprint" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
@@ -282,8 +285,9 @@
         <span class="hint" id="tibSummary" style="margin:0"></span>
       </div>
       <details class="sched" style="margin-top:16px"><summary style="color:var(--ky)">Bulk paste — import many lots at once</summary>
-        <p class="hint" style="margin-top:10px">Fill in <b>Received from / permit / date</b> above, then paste one lot per line as <b>Class, Fill Date, Proof Gallons, # Barrels, Lot Code</b> (commas or tabs; leave proof out — PG is what's gauged). Then click Import.</p>
-        <textarea id="tibBulk" rows="6" placeholder="Bourbon, 09/12/2014, 757.10, 12, 14I12&#10;Rye, 12/17/2015, 190.80, 3, 15L17"></textarea>
+        <p class="hint" style="margin-top:10px">Fill in <b>Received from / permit / date</b> above, then paste one lot per line as <b>Class, Fill Date, Proof Gallons, # Barrels, Lot Code, Proof</b> (commas or tabs). The last column, Proof, is optional — include it to show a proof on each barrel; leave it off and PG stands alone. Then click Import.</p>
+        <textarea id="tibBulk" rows="6" placeholder="Bourbon, 09/12/2014, 757.10, 12, 14I12, 120&#10;Rye, 12/17/2015, 190.80, 3, 15L17, 120"></textarea>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px"><input type="checkbox" id="tibReplace"> Replace existing aging received-in-bond barrels from this same source first (use when re-importing to correct a batch)</label>
         <div class="row-actions" style="margin-top:10px"><button class="btn ky sm" id="tibBulkImport">Import pasted barrels</button><span class="hint" id="tibBulkMsg" style="margin:0"></span></div>
       </details>
     </div>
@@ -615,10 +619,34 @@ async function cloudLoad(){
   }
 }
 let saveTimer=null, saving=false, pending=false;
+let undoStack=[], lastSavedJSON=null; const UNDO_MAX=50;
 function save(){
+  // snapshot the pre-change state for rewind
+  if(lastSavedJSON!==null){ undoStack.push(lastSavedJSON); if(undoStack.length>UNDO_MAX) undoStack.shift(); }
+  lastSavedJSON=JSON.stringify(state);
+  updateUndoBtn();
+  persist();
+}
+function persist(){
   try{ localStorage.setItem(cacheKey(),JSON.stringify(state)); }catch(e){}
   if(!cloudAvailable){ setSync('offline'); return; }
   setSync('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>cloudSave(),650);
+}
+function undo(){
+  if(!undoStack.length){ return; }
+  if(!confirm('Undo the last change? This restores everything to how it was just before your most recent action.')) return;
+  const prev=undoStack.pop();
+  state=normalize(JSON.parse(prev));
+  lastSavedJSON=JSON.stringify(state);
+  updateUndoBtn();
+  persist();
+  refreshAll();
+  flash('Reverted the last change.');
+}
+function updateUndoBtn(){
+  const b=$('#undoBtn'); if(!b) return;
+  b.style.display=undoStack.length?'':'none';
+  b.textContent='↶ Undo ('+undoStack.length+')';
 }
 async function cloudSave(silent){
   if(!cloudAvailable) return;
@@ -648,6 +676,18 @@ function addDays(d,n){ const dt=new Date(d+'T00:00:00'); dt.setDate(dt.getDate()
 
 /* ================= Calculations ================= */
 function balances(){ let b={Production:0,Storage:0,Processing:0}; for(const e of state.entries){const t=TXBYID[e.type];if(!t)continue;b.Production+=t.prod*e.pg;b.Storage+=t.stor*e.pg;b.Processing+=t.proc*e.pg;} b.Production=round1(b.Production);b.Storage=round1(b.Storage);b.Processing=round1(b.Processing); return b; }
+function agingBarrelPG(){ return round1((state.barrels||[]).filter(b=>b.status==='Aging').reduce((s,b)=>s+barrelPG(b),0)); }
+function barrelMoves(){
+  const dep=[], wd=[];
+  (state.barrels||[]).forEach(b=>{
+    const pg=barrelPG(b); const tib=b.origin==='Received in bond (TIB)';
+    const rd = tib ? (b.tibInDate||b.fillDate||b.distillDate) : (b.fillDate||b.distillDate);
+    if(rd && pg>0) dep.push({date:rd, pg, tib});
+    if(b.status==='Dumped' && b.dumpDate && pg>0) wd.push({date:b.dumpDate, pg, kind:'dump'});
+    else if(b.status==='Transferred out (TIB)' && b.tibOutDate && pg>0) wd.push({date:b.tibOutDate, pg, kind:'tibout'});
+  });
+  return {dep,wd};
+}
 function taxablePG(fn){ return round1(state.entries.filter(e=>TXBYID[e.type]&&TXBYID[e.type].taxable&&fn(e)).reduce((s,e)=>s+e.pg,0)); }
 function taxableWG(fn){ return round2(state.entries.filter(e=>TXBYID[e.type]&&TXBYID[e.type].taxable&&fn(e)).reduce((s,e)=>s+(+e.wg||0),0)); }
 function cbmaTax(prior,qty){ let rem=qty,base=prior,tax=0,lines=[]; for(const t of TIERS){ if(rem<=0)break; const capLeft=t.upTo-base; if(capLeft<=0)continue; const take=Math.min(rem,capLeft); if(take>0){tax+=take*t.rate;lines.push({pg:round1(take),rate:t.rate,amt:take*t.rate});} rem-=take;base+=take; } return {tax,lines}; }
@@ -658,7 +698,7 @@ function renderDashboard(){
   const yr=state.settings.year;
   $('#tierYear').textContent=yr; $('#qtrYear').textContent=yr;
   const ytd=taxablePG(e=>yearOf(e.date)===yr); const {tax:ytdTax}=cbmaTax(0,ytd);
-  const bal=balances(); const onHand=round1(bal.Production+bal.Storage+bal.Processing);
+  const bal=balances(); bal.Storage=round1(bal.Storage+agingBarrelPG()); const onHand=round1(bal.Production+bal.Storage+bal.Processing);
   const kyYtd=kyYearTotal(yr);
   const aging=(state.barrels||[]).filter(b=>b.status==='Aging');
   const agingCount=aging.reduce((s,b)=>s+barrelCount(b),0);
@@ -738,6 +778,19 @@ function opsReport(kind){
   const types=TX.filter(t=>(kind==='production'?t.prod:kind==='storage'?t.stor:t.proc)!==0);
   let inc=[],dec=[],net=0;
   types.forEach(t=>{const sum=round1(rel.filter(e=>e.type===t.id).reduce((s,e)=>s+e.pg,0));if(sum<=0)return;const d=kind==='production'?t.prod:kind==='storage'?t.stor:t.proc;net+=d*sum;(d>0?inc:dec).push({label:t.label,pg:sum});});
+  if(kind==='storage'){
+    const {dep,wd}=barrelMoves();
+    const bef=x=>x.date && x.date<`${ym}-01`;
+    const inMo=x=>x.date && +x.date.slice(0,4)===y && (+x.date.slice(5,7))===m;
+    const sum=(arr,pred)=>round1(arr.filter(pred).reduce((s,x)=>s+x.pg,0));
+    opening=round1(opening + sum(dep,bef) - sum(wd,bef));
+    const depTib=sum(dep,x=>inMo(x)&&x.tib), depMake=sum(dep,x=>inMo(x)&&!x.tib);
+    const wdDump=sum(wd,x=>inMo(x)&&x.kind==='dump'), wdTib=sum(wd,x=>inMo(x)&&x.kind==='tibout');
+    if(depTib>0){ inc.push({label:'Received in bond — barrel register',pg:depTib}); net+=depTib; }
+    if(depMake>0){ inc.push({label:'Deposited in storage — barrel fills',pg:depMake}); net+=depMake; }
+    if(wdDump>0){ dec.push({label:'Dumped for bottling — barrel register',pg:wdDump}); net-=wdDump; }
+    if(wdTib>0){ dec.push({label:'Transferred out in bond — barrel register',pg:wdTib}); net-=wdTib; }
+  }
   net=round1(net);const closing=round1(opening+net);
   const monthName=new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
   const rInc=inc.length?inc.map(r=>`<tr><td>${r.label}</td><td class="num">${numf(r.pg)}</td></tr>`).join(''):`<tr><td colspan="2" style="color:var(--muted)">None</td></tr>`;
@@ -974,7 +1027,7 @@ function renderBarrels(){
       ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
       : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
     const cnt=barrelCount(b);
-    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.fillDate?fmtDate(b.fillDate):(b.distillDate?'distilled '+fmtDate(b.distillDate):'—')}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${numf(b.entryProof||0,1)}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.fillDate?fmtDate(b.fillDate):(b.distillDate?'distilled '+fmtDate(b.distillDate):'—')}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
@@ -1012,7 +1065,7 @@ function tibReceive(){
   const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value;
   const valid=tibRows.filter(r=>(+r.qty>0)&&(+r.pg>0));
   if(!valid.length){ alert('Add at least one line with proof gallons and a barrel count.'); return; }
-  if(!from && !confirm('No source DSP entered. Receive anyway?')) return;
+  if(!from){ alert('Enter the source DSP (who you received these barrels from) before receiving.'); $('#tib_from').focus(); return; }
   valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:date,entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
   const nb=valid.reduce((s,r)=>s+(+r.qty||0),0);
   save(); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
@@ -1021,6 +1074,7 @@ function tibReceive(){
 function normDate(s){ s=(s||'').trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s; const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(m){let y=m[3];if(y.length===2)y='20'+y;return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;} return s; }
 function tibBulkImport(){
   const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value||new Date().toISOString().slice(0,10);
+  if(!from){ alert('Enter the source DSP (who you received these barrels from) before importing.'); $('#tib_from').focus(); return; }
   const txt=($('#tibBulk').value||'').trim(); if(!txt){ alert('Paste some rows first.'); return; }
   const lines=txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const recs=[]; let bbl=0,pg=0,skipped=0;
@@ -1031,14 +1085,20 @@ function tibBulkImport(){
     const lotPG=parseFloat((parts[2]||'').replace(/[^0-9.]/g,''));
     const qty=parseInt((parts[3]||'').replace(/[^0-9]/g,''),10);
     const lot=parts[4]||'';
+    const proof=parts[5]?round1(parseFloat((parts[5]||'').replace(/[^0-9.]/g,''))):0;
     if(!(lotPG>0)||!(qty>0)){ skipped++; continue; }
     const type=/agave|tequila/i.test(cls)?'Agave':/rum/i.test(cls)?'Rum':/brandy/i.test(cls)?'Brandy':'Whiskey';
-    recs.push({id:uid(),barrelNo:'',spirit:cls,spiritType:type,fillDate:fill,distillDate:fill,entryProof:0,pgTotal:round2(lotPG),qty:qty,size:'53 gal (standard)',char:'',cooperage:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:lot?('Lot '+lot):'',status:'Aging'});
+    const fillWG=proof>0?round2(lotPG*100/proof):0;
+    recs.push({id:uid(),barrelNo:'',spirit:cls,spiritType:type,fillDate:fill,distillDate:fill,entryProof:proof>0?proof:0,fillWG,pgTotal:round2(lotPG),qty:qty,size:'53 gal (standard)',char:'',cooperage:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:lot?('Lot '+lot):'',status:'Aging'});
     bbl+=qty; pg+=lotPG;
   }
-  if(!recs.length){ alert('No valid rows found. Expected each line: Class, Fill Date, Proof Gallons, # Barrels, Lot Code.'); return; }
-  if(!confirm(`Import ${recs.length} lots — ${bbl} barrels, ${numf(round1(pg))} PG — received in bond${from?(' from '+from):''}?`)) return;
-  state.barrels.push(...recs); save(); refreshAll(); $('#tibBulk').value='';
+  if(!recs.length){ alert('No valid rows found. Expected each line: Class, Fill Date, Proof Gallons, # Barrels, Lot Code, [Proof].'); return; }
+  const replace=$('#tibReplace').checked;
+  const willRemove=replace?state.barrels.filter(b=>b.status==='Aging'&&b.origin==='Received in bond (TIB)'&&(b.sourceDSP||'').trim().toLowerCase()===from.toLowerCase()).length:0;
+  const rmMsg=replace?`\n\nThis will first REMOVE ${willRemove} existing aging received-in-bond barrel record(s) from ${from}, then import the pasted lots.`:'';
+  if(!confirm(`Import ${recs.length} lots — ${bbl} barrels, ${numf(round1(pg))} PG — received in bond${from?(' from '+from):''}?`+rmMsg)) return;
+  if(replace){ state.barrels=state.barrels.filter(b=>!(b.status==='Aging'&&b.origin==='Received in bond (TIB)'&&(b.sourceDSP||'').trim().toLowerCase()===from.toLowerCase())); }
+  state.barrels.push(...recs); save(); refreshAll(); $('#tibBulk').value=''; $('#tib_from').value=''; $('#tib_permit').value=''; $('#tibReplace').checked=false;
   $('#tibBulkMsg').textContent=`Imported ${bbl} barrels (${recs.length} lots)`+(skipped?`, ${skipped} skipped`:'');
   flash(`Imported ${bbl} barrels in bond.`);
 }
@@ -1229,6 +1289,7 @@ function wireOnce(){
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
+  $('#undoBtn').onclick=undo;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
 }
 let wired=false;
@@ -1238,7 +1299,9 @@ async function boot(rejoin){
   cloudAvailable=(location.protocol!=='file:');
   setSync('connecting');
   await cloudLoad();
+  undoStack=[]; lastSavedJSON=JSON.stringify(state);
   if(!wired){ wireOnce(); wired=true; }
+  updateUndoBtn();
   loadSettingsForm(); refreshAll(); qbRefresh();
   // show sync banner if brand-new empty workspace
   $('#syncBanner').style.display = (cloudAvailable && state.entries.length===0)?'flex':'none';
