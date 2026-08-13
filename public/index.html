@@ -351,7 +351,7 @@
         <button class="btn ghost sm" id="exportBarrelsCsv">Export CSV</button>
       </div>
       <div class="tablewrap"><table><thead><tr id="barrelHead">
-        <th class="bs" data-bsort="barrelNo">Barrel #</th><th class="bs" data-bsort="spirit">Spirit</th><th class="bs" data-bsort="fillDate">Fill Date</th><th class="bs num" data-bsort="age">Age</th><th class="bs num" data-bsort="entryProof">Proof</th><th class="bs num" data-bsort="pg">PG</th><th class="bs" data-bsort="warehouse">Warehouse / Loc</th><th class="bs" data-bsort="origin">Origin</th><th class="bs" data-bsort="status">Status</th><th class="noprint"></th>
+        <th class="bs" data-bsort="barrelNo">Barrel #</th><th class="bs" data-bsort="spirit">Spirit</th><th class="bs" data-bsort="fillDate">Distilled / Filled</th><th class="bs num" data-bsort="age">Age</th><th class="bs num" data-bsort="entryProof">Proof</th><th class="bs num" data-bsort="pg">PG</th><th class="bs" data-bsort="warehouse">Warehouse / Loc</th><th class="bs" data-bsort="origin">Origin</th><th class="bs" data-bsort="status">Status</th><th class="noprint"></th>
       </tr></thead><tbody id="barrelBody"></tbody></table></div>
       <div id="barrelEmpty"></div>
     </div>
@@ -1023,7 +1023,7 @@ function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return;
 function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save('Transferred a barrel out in bond'+(dest.trim()?(' to '+dest.trim()):'')); refreshAll(); flash('Barrel transferred out (TIB).'); }
 function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save('Reactivated a barrel'); refreshAll(); }
 function barrelStatusPill(s){ const m={'Aging':'aging','Dumped':'dumped','Transferred out (TIB)':'tibout','Loss':'loss'}; return `<span class="pill ${m[s]||'aging'}">${s}</span>`; }
-const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.fillDate||b.distillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
+const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.distillDate||b.fillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
 let barrelSort={key:'fillDate',dir:-1};
 function sortBarrels(list){ const f=SORTVAL[barrelSort.key]||SORTVAL.fillDate; return list.slice().sort((a,b)=>{const va=f(a),vb=f(b); let c=(typeof va==='number'&&typeof vb==='number')?va-vb:String(va).localeCompare(String(vb)); return c*barrelSort.dir;}); }
 function setBarrelSort(key){ if(barrelSort.key===key)barrelSort.dir*=-1; else{barrelSort.key=key; barrelSort.dir=(key==='fillDate'||key==='age'||key==='pg'||key==='entryProof')?-1:1;} renderBarrels(); }
@@ -1052,12 +1052,12 @@ function renderBarrels(){
       ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
       : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
     const cnt=barrelCount(b);
-    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.fillDate?fmtDate(b.fillDate):(b.distillDate?'distilled '+fmtDate(b.distillDate):'—')}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
   $('#barrelBySpirit').innerHTML=Object.keys(bySpirit).sort().map(k=>`<tr><td>${k}</td><td class="num">${bySpirit[k].n}</td><td class="num">${numf(round1(bySpirit[k].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
-  const byYear={}; aging.forEach(b=>{const y=((b.fillDate||b.distillDate||'').slice(0,4))||'—';byYear[y]=byYear[y]||{n:0,pg:0};byYear[y].n+=barrelCount(b);byYear[y].pg+=barrelPG(b);});
+  const byYear={}; aging.forEach(b=>{const y=((b.distillDate||b.fillDate||'').slice(0,4))||'—';byYear[y]=byYear[y]||{n:0,pg:0};byYear[y].n+=barrelCount(b);byYear[y].pg+=barrelPG(b);});
   $('#barrelByYear').innerHTML=Object.keys(byYear).sort((a,b)=>b.localeCompare(a)).map(y=>`<tr><td>${y}</td><td class="num">${byYear[y].n}</td><td class="num">${numf(round1(byYear[y].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
 }
 function exportBarrelsCsv(){
@@ -1091,7 +1091,7 @@ function tibReceive(){
   const valid=tibRows.filter(r=>(+r.qty>0)&&(+r.pg>0));
   if(!valid.length){ alert('Add at least one line with proof gallons and a barrel count.'); return; }
   if(!from){ alert('Enter the source DSP (who you received these barrels from) before receiving.'); $('#tib_from').focus(); return; }
-  valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:date,entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
+  valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:(r.distill||date),entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
   const nb=valid.reduce((s,r)=>s+(+r.qty||0),0);
   save('Received '+nb+' barrel(s) in bond from '+from); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
   flash('Received '+nb+' barrels in bond.');
