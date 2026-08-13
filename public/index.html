@@ -258,6 +258,7 @@
           <option value="monthly">Monthly Distilled Spirits Return</option>
           <option value="barrel">Annual Barrel (Ad Valorem) Tax</option>
           <option value="73a525">Form 73A525 — Retail / Gift Shop (from Square)</option>
+          <option value="salestax">Sales &amp; Use Tax — Retail Collected (from Square)</option>
         </select></div>
         <div id="kyMonthWrap"><label class="fld">Month</label><input type="month" id="kyMonth"></div>
         <div id="kyYearWrap" style="display:none"><label class="fld">Assessment Year (Jan 1)</label><select id="kyYear"></select></div>
@@ -278,6 +279,18 @@
         <button class="btn ghost sm noprint" id="sqPrint" style="display:none">Print / Save PDF</button>
       </div>
       <div id="sqOut" style="margin-top:8px"></div>
+    </div>
+    <div class="card" id="kyTaxCard" style="display:none">
+      <h3>Retail Sales &amp; Use Tax Collected (from Square)</h3>
+      <p class="hint">Total Kentucky sales tax Square collected at retail for the month — what you remit on your KY Sales &amp; Use Tax return. Pulled across all your Square locations.</p>
+      <div id="stxStatus" class="note" style="margin-bottom:12px">Checking Square connection…</div>
+      <div class="toolbar">
+        <div><label class="fld">Reporting month</label><input type="month" id="stxMonth"></div>
+        <button class="btn ky sm" id="stxRun">Run sales-tax report</button>
+        <button class="btn ghost sm noprint" id="stxCsv" style="display:none">Export CSV</button>
+        <button class="btn ghost sm noprint" id="stxPrint" style="display:none">Print / Save PDF</button>
+      </div>
+      <div id="stxOut" style="margin-top:8px"></div>
     </div>
   </section>
 
@@ -901,8 +914,14 @@ function kyMonthlyCalc(rec){
 function initKyControls(){
   $('#kyMonth').value=new Date().toISOString().slice(0,7);
   const sel=$('#kyYear');const yr=state.settings.year;let o='';for(let y=yr+1;y>=2025;y--)o+=`<option ${y===yr?'selected':''}>${y}</option>`;sel.innerHTML=o;
-  if(!$('#sqMonth').value){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); $('#sqMonth').value=d.toISOString().slice(0,7); }
-  $('#kyKind').onchange=()=>{const k=$('#kyKind').value;const sq=k==='73a525';$('#kyMonthWrap').style.display=(k==='monthly')?'block':'none';$('#kyYearWrap').style.display=k==='barrel'?'block':'none';$('#kySqCard').style.display=sq?'block':'none';$('#kyOut').style.display=sq?'none':'block';$('#printKy').style.display=sq?'none':'inline-flex';if(sq)sqStatus();else renderKy();};
+  const lastMonth=()=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); };
+  if(!$('#sqMonth').value) $('#sqMonth').value=lastMonth();
+  if(!$('#stxMonth').value) $('#stxMonth').value=lastMonth();
+  $('#kyKind').onchange=()=>{const k=$('#kyKind').value;const sq=k==='73a525',stx=k==='salestax',anySq=sq||stx;
+    $('#kyMonthWrap').style.display=(k==='monthly')?'block':'none';$('#kyYearWrap').style.display=k==='barrel'?'block':'none';
+    $('#kySqCard').style.display=sq?'block':'none';$('#kyTaxCard').style.display=stx?'block':'none';
+    $('#kyOut').style.display=anySq?'none':'block';$('#printKy').style.display=anySq?'none':'inline-flex';
+    if(sq)sqStatus();else if(stx)stxStatus();else renderKy();};
   $('#kyMonth').onchange=renderKy; $('#kyYear').onchange=renderKy;
 }
 function renderKy(){ $('#kyOut').innerHTML=$('#kyKind').value==='monthly'?kyMonthlyReport():kyBarrelReport(); }
@@ -1070,6 +1089,59 @@ function sqCsv(){
   [['Line 1 gift-shop 9L cases',f.line1],['Line 2 sample 9L cases',f.line2],['Line 6 total cases',f.line6],['Line 7 rate',f.line7rate],['Line 11 excise due',f.line11],['Line 12 wholesale base',f.line12],['Line 15 wholesale tax due',f.line15],['Line 16 TOTAL DUE',f.line16]].forEach(r=>lines.push(r.map(csv).join(',')));
   const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=`73A525_${sqLast.year}-${String(sqLast.month).padStart(2,'0')}.csv`; a.click();
+}
+/* ---- Retail sales & use tax collected (Square) ---- */
+let stxLast=null;
+async function stxStatus(){
+  const el=$('#stxStatus'); if(!el)return;
+  if(location.protocol==='file:'){ el.innerHTML='The Square sales-tax report runs only on the hosted site.'; $('#stxRun').disabled=true; return; }
+  el.textContent='Checking Square connection…';
+  try{
+    const r=await fetch('/api/square/status',{cache:'no-store'}); const d=await r.json();
+    if(!d.configured){ el.innerHTML='⚠️ Square isn’t connected yet. Add your <b>SQUARE_ACCESS_TOKEN</b> in Netlify, then reload.'; $('#stxRun').disabled=true; return; }
+    if(!d.connected){ el.innerHTML='⚠️ Square token set but the connection failed'+(d.error?(' ('+d.error+')'):'')+'.'; $('#stxRun').disabled=true; return; }
+    $('#stxRun').disabled=false;
+    el.innerHTML=`✅ Connected: ${d.merchant||''} <span style="color:var(--muted)">(${d.environment})</span>`;
+  }catch(e){ el.textContent='Could not reach the Square status endpoint.'; }
+}
+async function stxRun(){
+  const ym=$('#stxMonth').value; if(!ym){ alert('Choose a reporting month.'); return; }
+  const [y,m]=ym.split('-').map(Number);
+  $('#stxOut').innerHTML='<div class="empty">Pulling Square sales for '+ym+'…</div>'; $('#stxCsv').style.display='none'; $('#stxPrint').style.display='none';
+  try{
+    const r=await fetch('/api/square/salestax',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({year:y,month:m})});
+    const d=await r.json();
+    if(d.error){ $('#stxOut').innerHTML='<div class="note">⚠️ '+(d.detail||d.error)+'</div>'; return; }
+    stxLast=d; renderStx(d); $('#stxCsv').style.display='inline-flex'; $('#stxPrint').style.display='inline-flex';
+  }catch(e){ $('#stxOut').innerHTML='<div class="note">Could not reach the Square sales-tax endpoint.</div>'; }
+}
+function renderStx(d){
+  const mName=new Date(d.year,d.month-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const due=new Date(d.year,d.month,20).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const locRows=d.byLocation.map(l=>`<tr><td>${l.name}</td><td class="num">${l.orders}</td><td class="num">${money(l.gross)}</td><td class="num">${money(l.tax)}</td></tr>`).join('');
+  const taxRows=d.byTax.length?d.byTax.map(t=>`<tr><td>${t.name}</td><td class="num">${money(t.tax)}</td></tr>`).join(''):`<tr><td colspan="2" style="color:var(--muted)">No tax lines.</td></tr>`;
+  $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected','Sales tax collected through Square (for Form 51A102)',mName)+`
+    <div class="note ky">Pulled from Square (${d.orderCount} completed orders, all locations). This is the sales tax you collected and must remit.</div>
+    <table><tbody>
+      <tr><td>Gross retail sales (before tax &amp; tips)</td><td class="num">${money(d.grossSales)}</td></tr>
+      <tr class="total"><td>Total sales tax collected</td><td class="num">${money(d.taxCollected)}</td></tr>
+    </tbody></table>
+    <h4>By tax</h4><div class="tablewrap"><table><thead><tr><th>Tax</th><th class="num">Collected</th></tr></thead><tbody>${taxRows}</tbody></table></div>
+    <h4>By location</h4><div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Gross</th><th class="num">Tax</th></tr></thead><tbody>${locRows}</tbody></table></div>
+    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Sales Tax to Remit</div><div class="due">${money(d.taxCollected)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">KY Sales &amp; Use Tax (Form 51A102) is generally due by the 20th of the following month (by <b>${due}</b>).</div></div>
+    <div class="disclaimer">This totals the sales tax Square collected on completed orders in the month, net of tips. It does not deduct refunds/returns or account for exempt sales or use tax on purchases — reconcile against your Square tax report and confirm your filing figures with the Kentucky DOR before filing.</div>`;
+}
+function stxCsv(){
+  if(!stxLast)return; const d=stxLast;
+  const lines=[['Kentucky Retail Sales Tax Collected',`${d.year}-${String(d.month).padStart(2,'0')}`].join(',')];
+  lines.push(['Gross retail sales',d.grossSales].join(','));
+  lines.push(['Total sales tax collected',d.taxCollected].join(','));
+  lines.push(''); lines.push(['By tax','Collected'].join(','));
+  d.byTax.forEach(t=>lines.push([csv(t.name),t.tax].join(',')));
+  lines.push(''); lines.push(['By location','Orders','Gross','Tax'].join(','));
+  d.byLocation.forEach(l=>lines.push([csv(l.name),l.orders,l.gross,l.tax].join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`KY-salestax_${d.year}-${String(d.month).padStart(2,'0')}.csv`; a.click();
 }
 
 /* ================= Setup / sync / data ================= */
@@ -1606,6 +1678,8 @@ function wireOnce(){
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
   $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv; $('#sqPdf').onclick=sqPdf;
+  $('#stxRun').onclick=stxRun; $('#stxCsv').onclick=stxCsv;
+  $('#stxPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
