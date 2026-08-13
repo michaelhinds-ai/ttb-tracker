@@ -380,7 +380,7 @@
         <button class="btn ghost sm" id="exportBarrelsCsv">Export CSV</button>
       </div>
       <div class="tablewrap"><table><thead><tr id="barrelHead">
-        <th class="bs" data-bsort="barrelNo">Barrel #</th><th class="bs" data-bsort="spirit">Spirit</th><th class="bs" data-bsort="fillDate">Distilled / Filled</th><th class="bs num" data-bsort="age">Age</th><th class="bs num" data-bsort="entryProof">Proof</th><th class="bs num" data-bsort="pg">PG</th><th class="bs" data-bsort="warehouse">Warehouse / Loc</th><th class="bs" data-bsort="origin">Origin</th><th class="bs" data-bsort="status">Status</th><th class="noprint"></th>
+        <th class="bs" data-bsort="barrelNo">Barrel #</th><th class="bs" data-bsort="spirit">Spirit</th><th class="bs" data-bsort="fillDate">Distilled / Filled</th><th class="bs num" data-bsort="age">Age</th><th class="bs num" data-bsort="entryProof">Proof</th><th class="bs num" data-bsort="pg">PG</th><th class="bs num" data-bsort="bottles">Bottles</th><th class="bs" data-bsort="origin">Origin</th><th class="bs" data-bsort="status">Status</th><th class="noprint"></th>
       </tr></thead><tbody id="barrelBody"></tbody></table></div>
       <div id="barrelEmpty"></div>
     </div>
@@ -696,7 +696,9 @@ function persist(){
 function rewindTo(id){
   const hist=state.history||[]; const i=hist.findIndex(h=>h.id===id);
   if(i<0) return;
-  if(!confirm('Rewind to before "'+hist[i].label+'"?\n\nThis undoes that change and everything done after it.')) return;
+  const ans=prompt('Rewind to before "'+hist[i].label+'"?\n\nThis undoes that change and everything done after it — it cannot itself be undone.\n\nType REWIND to confirm:');
+  if(ans===null) return;
+  if(ans.trim().toUpperCase()!=='REWIND'){ flash('Rewind cancelled — you must type REWIND to confirm.'); return; }
   const data=JSON.parse(hist[i].snap);
   const keep=hist.slice(0,i);            // keep actions that came before this one
   state=normalize(Object.assign(data,{history:keep}));
@@ -1386,7 +1388,8 @@ function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return;
 function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save('Transferred a barrel out in bond'+(dest.trim()?(' to '+dest.trim()):'')); refreshAll(); flash('Barrel transferred out (TIB).'); }
 function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save('Reactivated a barrel'); refreshAll(); }
 function barrelStatusPill(s){ const m={'Aging':'aging','Dumped':'dumped','Transferred out (TIB)':'tibout','Loss':'loss'}; return `<span class="pill ${m[s]||'aging'}">${s}</span>`; }
-const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.distillDate||b.fillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
+const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.distillDate||b.fillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),bottles:b=>bottlesForBarrel(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
+function bottlesForBarrel(b){ if(!b||!b.dumpBottlingId) return 0; const bt=(state.bottlings||[]).find(x=>x.id===b.dumpBottlingId); return bt?(+bt.bottles||0):0; }
 let barrelSort={key:'fillDate',dir:-1};
 function sortBarrels(list){ const f=SORTVAL[barrelSort.key]||SORTVAL.fillDate; return list.slice().sort((a,b)=>{const va=f(a),vb=f(b); let c=(typeof va==='number'&&typeof vb==='number')?va-vb:String(va).localeCompare(String(vb)); return c*barrelSort.dir;}); }
 function setBarrelSort(key){ if(barrelSort.key===key)barrelSort.dir*=-1; else{barrelSort.key=key; barrelSort.dir=(key==='fillDate'||key==='age'||key==='pg'||key==='entryProof')?-1:1;} renderBarrels(); }
@@ -1417,8 +1420,9 @@ function renderBarrels(){
     const cnt=barrelCount(b);
     const bt=b.dumpBottlingId?(state.bottlings||[]).find(x=>x.id===b.dumpBottlingId):null;
     const ageCell=b.status==='Aging'?fmtAge(barrelAge(b)):(b.status==='Dumped'&&b.dumpDate?`${fmtAge(barrelAge(b,b.dumpDate))}<div style="font-size:11px;color:var(--muted)">at dump</div>`:'—');
-    const bottledLine=(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''}${bt?` · ${(+bt.bottles||0).toLocaleString()} btl · ${numf(bt.pg)} PG`:''} ›</button></div>`:'';
-    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${bottledLine}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${ageCell}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    const bottledLine=(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''}${bt?` · ${numf(bt.pg)} PG bottled`:''} ›</button></div>`:'';
+    const bottlesCell=bt?(+bt.bottles||0).toLocaleString():'—';
+    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${bottledLine}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${ageCell}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td class="num">${bottlesCell}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
