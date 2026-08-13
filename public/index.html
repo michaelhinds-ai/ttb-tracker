@@ -826,20 +826,21 @@ function opsReport(kind){
   types.forEach(t=>{const sum=round1(rel.filter(e=>e.type===t.id).reduce((s,e)=>s+e.pg,0));if(sum<=0)return;const d=kind==='production'?t.prod:kind==='storage'?t.stor:t.proc;net+=d*sum;(d>0?inc:dec).push({label:t.label,pg:sum});});
   if(kind==='storage'){
     const {dep,wd}=barrelMoves();
-    const bef=x=>x.date && x.date<`${ym}-01`;
-    const inMo=x=>x.date && +x.date.slice(0,4)===y && (+x.date.slice(5,7))===m;
-    const sum=(arr,pred)=>round1(arr.filter(pred).reduce((s,x)=>s+x.pg,0));
-    opening=round1(opening + sum(dep,bef) - sum(wd,bef));
-    const depTib=sum(dep,x=>inMo(x)&&x.tib), depMake=sum(dep,x=>inMo(x)&&!x.tib);
-    const wdDump=sum(wd,x=>inMo(x)&&x.kind==='dump'), wdTib=sum(wd,x=>inMo(x)&&x.kind==='tibout');
+    const befd=d=>d && d<`${ym}-01`, inMod=d=>d && +d.slice(0,4)===y && (+d.slice(5,7))===m;
+    const sumA=(arr,dp)=>round1(arr.filter(x=>dp(x.date)).reduce((s,x)=>s+x.pg,0));
+    const bt=(state.bottlings||[]);
+    const dumpSum=dp=>round1(bt.filter(b=>dp(b.date)).reduce((s,b)=>s+((b.dumpPG!=null?+b.dumpPG:+b.pg)||0),0));   // entry PG removed (full + partial dumps)
+    const bottledSum=dp=>round1(bt.filter(b=>dp(b.date)).reduce((s,b)=>s+(+b.pg||0),0));
+    const tibArr=wd.filter(x=>x.kind==='tibout');
+    // opening = ledger opening + barrel deposits before month − dumps before month − TIB-outs before month
+    opening=round1(opening + sumA(dep,befd) - dumpSum(befd) - sumA(tibArr,befd));
+    const depTib=sumA(dep.filter(x=>x.tib),inMod), depMake=sumA(dep.filter(x=>!x.tib),inMod);
     if(depTib>0){ inc.push({label:'Received in bond — barrel register',pg:depTib}); net+=depTib; }
     if(depMake>0){ inc.push({label:'Deposited in storage — barrel fills',pg:depMake}); net+=depMake; }
-    if(wdDump>0){
-      const bottledMo=round1((state.bottlings||[]).filter(bt=>inMo({date:bt.date})).reduce((s,bt)=>s+(+bt.pg||0),0));
-      const procPG=round1(Math.min(wdDump,bottledMo)), lossPG=round1(wdDump-procPG);
-      dec.push({label:'Transferred to processing account (bottled)',pg:procPG}); net-=procPG;
-      if(lossPG>0){ dec.push({label:'Storage losses (angels’ share)',pg:lossPG}); net-=lossPG; }
-    }
+    const dumpM=dumpSum(inMod), procM=bottledSum(inMod), lossM=round1(Math.max(0,dumpM-procM));
+    if(procM>0){ dec.push({label:'Transferred to processing account (bottled)',pg:procM}); net-=procM; }
+    if(lossM>0){ dec.push({label:'Storage losses (angels’ share)',pg:lossM}); net-=lossM; }
+    const wdTib=sumA(tibArr,inMod);
     if(wdTib>0){ dec.push({label:'Transferred out in bond — barrel register',pg:wdTib}); net-=wdTib; }
   }
   if(kind==='processing'){
