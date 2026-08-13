@@ -422,7 +422,7 @@
       <div class="row-actions" style="margin-top:6px"><button class="btn" id="bo_do" style="background:#7a5a2b">Bottle</button></div>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Bottling History</h3><div class="row-actions noprint" style="margin:0"><button class="btn ghost sm" id="reconcileDumps">Reconcile past dumps</button><button class="btn ghost sm" id="recalcLoss">Recalculate dump losses</button></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Bottling History</h3></div>
       <div class="tablewrap" style="border:0;box-shadow:none;margin-top:10px"><table><thead><tr><th>Date</th><th>Barrel #</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">Bottled PG</th><th class="num">Loss PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
       <div id="bottlingEmpty"></div>
     </div>
@@ -466,7 +466,7 @@
       </div>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Order History</h3><div class="row-actions noprint" style="margin:0"><button class="btn ghost sm" id="syncAllQB">Sync all to QuickBooks</button><button class="btn ghost sm" id="backfillGift">Backfill gift-shop orders</button></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Order History</h3><div class="row-actions noprint" style="margin:0"><button class="btn ghost sm" id="syncAllQB">Sync all to QuickBooks</button></div></div>
       <div class="tablewrap" style="border:0;box-shadow:none;margin-top:10px"><table><thead><tr><th>#</th><th>Date</th><th>Customer</th><th class="num">Cases</th><th class="num">PG removed</th><th class="num">Total</th><th>QuickBooks</th><th class="noprint"></th></tr></thead><tbody id="orderBody"></tbody></table></div>
       <div id="orderEmpty"></div>
     </div>
@@ -577,6 +577,23 @@
         <button class="btn gray" id="clearAll">Erase This Workspace</button>
       </div>
       <div class="note" id="dataStatus"></div>
+    </div>
+
+    <div class="card">
+      <details class="sched">
+        <summary>Maintenance &amp; one-time fixes</summary>
+        <p class="hint" style="margin-top:10px">New bottlings and orders handle these automatically. Use them once to fix up older records, or after restoring a backup. All are safe to re-run and can be undone from Recent Activity on the dashboard.</p>
+        <div class="row-actions" style="margin-top:6px">
+          <button class="btn ghost sm" id="reconcileDumps">Reconcile past dumps</button>
+          <button class="btn ghost sm" id="recalcLoss">Recalculate dump losses</button>
+          <button class="btn ghost sm" id="backfillGift">Backfill gift-shop orders</button>
+        </div>
+        <div class="hint" style="line-height:1.7;margin-top:10px">
+          <b>Reconcile past dumps</b> — gives every past bottling a searchable "dumped" barrel record on the Barrels page. Tracking only; doesn't change report totals.<br>
+          <b>Recalculate dump losses</b> — recomputes angel's-share loss on older bottlings from the source barrel's proof gallons.<br>
+          <b>Backfill gift-shop orders</b> — creates a $0 order trail (and links the GiftShop customer) for past gift-shop bottlings.
+        </div>
+      </details>
     </div>
 
     <div class="card">
@@ -1330,7 +1347,7 @@ const bottlesToWG=(bottles,ml=750)=>round2((+bottles||0)*ml/ML_PER_GAL);
 let editingBarrelId=null;
 function barrelCount(b){ return Math.max(0,+b.qty||1); }
 function barrelPG(b){ if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') return round1(+b.pgTotal); return round1((+b.fillWG||0)*(+b.entryProof||0)/100*barrelCount(b)); }
-function barrelAge(b){ const base=b.distillDate||b.fillDate; if(!base) return 0; const f=new Date(base+'T00:00:00'), n=new Date(); return Math.max(0,(n-f)/(365.25*24*3600*1000)); }
+function barrelAge(b,endISO){ const base=b.distillDate||b.fillDate; if(!base) return 0; const f=new Date(base+'T00:00:00'), n=endISO?new Date(endISO+'T00:00:00'):new Date(); return Math.max(0,(n-f)/(365.25*24*3600*1000)); }
 function fmtAge(y){ return y<1?Math.floor(y*12)+' mo':(Math.floor(y*10)/10).toFixed(1)+' yr'; }
 function initBarrelForm(){
   $('#b_size').innerHTML=BARREL_SIZES.map(s=>`<option>${s}</option>`).join('');
@@ -1398,7 +1415,10 @@ function renderBarrels(){
       ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
       : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
     const cnt=barrelCount(b);
-    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''} ›</button></div>`:''}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    const bt=b.dumpBottlingId?(state.bottlings||[]).find(x=>x.id===b.dumpBottlingId):null;
+    const ageCell=b.status==='Aging'?fmtAge(barrelAge(b)):(b.status==='Dumped'&&b.dumpDate?`${fmtAge(barrelAge(b,b.dumpDate))}<div style="font-size:11px;color:var(--muted)">at dump</div>`:'—');
+    const bottledLine=(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''}${bt?` · ${(+bt.bottles||0).toLocaleString()} btl · ${numf(bt.pg)} PG`:''} ›</button></div>`:'';
+    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${bottledLine}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${ageCell}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
