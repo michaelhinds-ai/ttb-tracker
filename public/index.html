@@ -1434,7 +1434,7 @@ function renderBarrels(){
   const ssY=summSort.year; yrArr.sort((a,b)=>{const d=ssY.key==='year'?String(a.year).localeCompare(String(b.year)):(a[ssY.key]-b[ssY.key]); return d*ssY.dir;});
   $('#barrelByYear').innerHTML=yrArr.map(r=>`<tr><td>${r.year}</td><td class="num">${r.n}</td><td class="num">${numf(round1(r.pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
 }
-let summSort={spirit:{key:'name',dir:1},year:{key:'year',dir:-1}};
+let summSort={spirit:{key:'n',dir:-1},year:{key:'n',dir:-1}};
 function setSummSort(which,key){ const s=summSort[which]; if(s.key===key)s.dir*=-1; else{s.key=key; s.dir=(key==='name'||key==='year')?1:-1;} renderBarrels(); }
 function exportBarrelsCsv(){
   const head=['BarrelNo','Spirit','Mashbill','DistillationDate','FillDate','EntryProof','FillWineGal','ProofGallons','Size','Char','Cooperage','Warehouse','Location','Origin','SourceDSP','SourcePermit','TIBInDate','Status','DumpDate','DestDSP','TIBOutDate','Notes'];
