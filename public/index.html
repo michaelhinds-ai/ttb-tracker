@@ -1120,22 +1120,27 @@ function renderStx(d){
   const due=new Date(d.year,d.month,20).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const locRows=d.byLocation.map(l=>`<tr><td>${l.name}</td><td class="num">${l.orders}</td><td class="num">${money(l.gross)}</td><td class="num">${money(l.tax)}</td></tr>`).join('');
   const taxRows=d.byTax.length?d.byTax.map(t=>`<tr><td>${t.name}</td><td class="num">${money(t.tax)}</td></tr>`).join(''):`<tr><td colspan="2" style="color:var(--muted)">No tax lines.</td></tr>`;
-  $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected','Sales tax collected through Square (for Form 51A102)',mName)+`
-    <div class="note ky">Pulled from Square (${d.orderCount} completed orders, all locations). This is the sales tax you collected and must remit.</div>
+  const netTax=d.taxNet!=null?d.taxNet:d.taxCollected;
+  $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected','Sales tax collected through Square, net of refunds (for Form 51A102)',mName)+`
+    <div class="note ky">Pulled from Square (${d.orderCount} completed orders${d.refundCount?`, ${d.refundCount} refund(s)`:''}, all locations). Refunds are netted out so this ties to what you remit.</div>
     <table><tbody>
       <tr><td>Gross retail sales (before tax &amp; tips)</td><td class="num">${money(d.grossSales)}</td></tr>
-      <tr class="total"><td>Total sales tax collected</td><td class="num">${money(d.taxCollected)}</td></tr>
+      <tr><td>Sales tax collected</td><td class="num">${money(d.taxCollected)}</td></tr>
+      <tr><td>Less: sales tax refunded${d.refundCount?` (${d.refundCount})`:''}</td><td class="num">(${money(d.taxRefunded||0)})</td></tr>
+      <tr class="total"><td>Net sales tax to remit</td><td class="num">${money(netTax)}</td></tr>
     </tbody></table>
     <h4>By tax</h4><div class="tablewrap"><table><thead><tr><th>Tax</th><th class="num">Collected</th></tr></thead><tbody>${taxRows}</tbody></table></div>
     <h4>By location</h4><div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Gross</th><th class="num">Tax</th></tr></thead><tbody>${locRows}</tbody></table></div>
-    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Sales Tax to Remit</div><div class="due">${money(d.taxCollected)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">KY Sales &amp; Use Tax (Form 51A102) is generally due by the 20th of the following month (by <b>${due}</b>).</div></div>
-    <div class="disclaimer">This totals the sales tax Square collected on completed orders in the month, net of tips. It does not deduct refunds/returns or account for exempt sales or use tax on purchases — reconcile against your Square tax report and confirm your filing figures with the Kentucky DOR before filing.</div>`;
+    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net Sales Tax to Remit</div><div class="due">${money(netTax)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">KY Sales &amp; Use Tax (Form 51A102) is generally due by the 20th of the following month (by <b>${due}</b>).</div></div>
+    <div class="disclaimer">Totals the sales tax Square collected on completed orders (net of tips), minus tax refunded during the month (apportioned from each refund). It does not account for exempt sales or use tax on your own purchases — reconcile against your Square tax report and confirm your filing figures with the Kentucky DOR before filing.</div>`;
 }
 function stxCsv(){
   if(!stxLast)return; const d=stxLast;
   const lines=[['Kentucky Retail Sales Tax Collected',`${d.year}-${String(d.month).padStart(2,'0')}`].join(',')];
   lines.push(['Gross retail sales',d.grossSales].join(','));
-  lines.push(['Total sales tax collected',d.taxCollected].join(','));
+  lines.push(['Sales tax collected',d.taxCollected].join(','));
+  lines.push(['Sales tax refunded',d.taxRefunded||0].join(','));
+  lines.push(['Net sales tax to remit',d.taxNet!=null?d.taxNet:d.taxCollected].join(','));
   lines.push(''); lines.push(['By tax','Collected'].join(','));
   d.byTax.forEach(t=>lines.push([csv(t.name),t.tax].join(',')));
   lines.push(''); lines.push(['By location','Orders','Gross','Tax'].join(','));
