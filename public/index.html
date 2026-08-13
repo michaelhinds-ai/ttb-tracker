@@ -960,8 +960,8 @@ const bottlesToWG=(bottles,ml=750)=>round2((+bottles||0)*ml/ML_PER_GAL);
 let editingBarrelId=null;
 function barrelCount(b){ return Math.max(0,+b.qty||1); }
 function barrelPG(b){ if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') return round1(+b.pgTotal); return round1((+b.fillWG||0)*(+b.entryProof||0)/100*barrelCount(b)); }
-function barrelAge(b){ if(!b.fillDate) return 0; const f=new Date(b.fillDate+'T00:00:00'), n=new Date(); return Math.max(0,(n-f)/(365.25*24*3600*1000)); }
-function fmtAge(y){ return y<1?Math.round(y*12)+' mo':y.toFixed(1)+' yr'; }
+function barrelAge(b){ const base=b.distillDate||b.fillDate; if(!base) return 0; const f=new Date(base+'T00:00:00'), n=new Date(); return Math.max(0,(n-f)/(365.25*24*3600*1000)); }
+function fmtAge(y){ return y<1?Math.floor(y*12)+' mo':(Math.floor(y*10)/10).toFixed(1)+' yr'; }
 function initBarrelForm(){
   $('#b_size').innerHTML=BARREL_SIZES.map(s=>`<option>${s}</option>`).join('');
   $('#b_char').innerHTML=BARREL_CHARS.map(c=>`<option>${c}</option>`).join('');
