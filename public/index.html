@@ -842,6 +842,16 @@ function opsReport(kind){
     }
     if(wdTib>0){ dec.push({label:'Transferred out in bond — barrel register',pg:wdTib}); net-=wdTib; }
   }
+  if(kind==='processing'){
+    const bef=d=>d && d<`${ym}-01`;
+    const inMo=d=>d && +d.slice(0,4)===y && (+d.slice(5,7))===m;
+    const bt=(state.bottlings||[]);
+    const sumB=pred=>round1(bt.filter(b=>pred(b.date)).reduce((s,b)=>s+(+b.pg||0),0));
+    // bottled spirits dumped into the processing account (deposits) come from the bottling log, not the ledger
+    opening=round1(opening + sumB(bef));
+    const depM=sumB(inMo);
+    if(depM>0){ inc.push({label:'Dumped & bottled into processing account',pg:depM}); net+=depM; }
+  }
   net=round1(net);const closing=round1(opening+net);
   const monthName=new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
   const rInc=inc.length?inc.map(r=>`<tr><td>${r.label}</td><td class="num">${numf(r.pg)}</td></tr>`).join(''):`<tr><td colspan="2" style="color:var(--muted)">None</td></tr>`;
@@ -1522,13 +1532,16 @@ function deleteBottling(id){ if(!confirm('Delete this bottling record? (This doe
 function backfillBottlingLoss(){
   let fixed=0;
   const sp=b=>((b.spiritType?b.spiritType+' / ':'')+(b.spirit||''));
-  const perBarrel=list=>{ for(const b of list){ const c=barrelCount(b); if(c>0) return barrelPG(b)/c; } return null; };
+  // Best per-barrel entry PG: prefer a lot whose per-barrel PG is >= the bottled-per-barrel (can't bottle more than dumped)
+  const bestPer=(list,target)=>{ const v=list.map(b=>{const c=barrelCount(b);return c>0?barrelPG(b)/c:0;}).filter(x=>x>0);
+    if(!v.length) return null; const above=v.filter(x=>x>=target).sort((a,b)=>a-b); return above.length?above[0]:Math.max.apply(null,v); };
   (state.bottlings||[]).forEach(bt=>{
     if(bt.dumpExact) return; // created with an exact dump PG — never overwrite
-    // Match the source barrel/lot by spirit + distillation date; per-barrel PG stays valid even after partial dumps
-    let pb=perBarrel((state.barrels||[]).filter(b=>sp(b)===bt.spirit&&(b.distillDate||'')===(bt.distillDate||'')));
-    if(pb==null) pb=perBarrel((state.barrels||[]).filter(b=>sp(b)===bt.spirit));
-    const dumpPG = pb!=null ? round1(pb*(+bt.barrels||1)) : (+bt.pg||0);
+    const nB=Math.max(1,+bt.barrels||1); const target=(+bt.pg||0)/nB;
+    let pb=bestPer((state.barrels||[]).filter(b=>sp(b)===bt.spirit&&(b.distillDate||'')===(bt.distillDate||'')),target);
+    if(pb==null) pb=bestPer((state.barrels||[]).filter(b=>sp(b)===bt.spirit),target);
+    if(pb==null) pb=bestPer((state.barrels||[]),target);
+    const dumpPG = pb!=null ? round1(pb*nB) : (+bt.pg||0);
     bt.dumpPG=dumpPG; bt.lossPG=round1(Math.max(0,dumpPG-(+bt.pg||0))); fixed++;
   });
   return fixed;
