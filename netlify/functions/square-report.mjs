@@ -75,7 +75,7 @@ export default async (req) => {
   } catch (e) {
     if (e instanceof SqError && e.status === 401) return json({ configured: false, error: "not_configured" }, 200);
     console.error("square-report error", e && e.status, e && e.detail);
-    return json({ error: "square_error", status: e && e.status, detail: safe(e && e.detail) }, 502);
+    return json({ error: "square_error", status: (e && e.status) || null, detail: safe(e && (e.detail || e.message)) || "unknown error" }, 502);
   }
 };
 

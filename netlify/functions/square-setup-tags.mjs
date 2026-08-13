@@ -13,7 +13,7 @@ export default async (req) => {
     const { defId, key, created } = await findOrCreateDef();
     // list all items
     const items = await allItems();
-    const tagged = [], skipped = [];
+    const tagged = [], skipped = [], failed = [];
     for (const o of items) {
       const name = (o.item_data && o.item_data.name) || "";
       const size = bottleSize(name);
@@ -23,20 +23,23 @@ export default async (req) => {
       let cur = null;
       for (const k of Object.keys(cav)) { const v = cav[k]; if (v && v.custom_attribute_definition_id === defId && v.number_value != null) cur = parseInt(v.number_value, 10); }
       if (cur === size) { skipped.push({ name, size }); continue; }
-      // retrieve fresh, set value, upsert whole object
-      const got = await sq(`/v2/catalog/object/${o.id}`);
-      const obj = got.object;
-      obj.custom_attribute_values = obj.custom_attribute_values || {};
-      obj.custom_attribute_values[key] = { custom_attribute_definition_id: defId, key, type: "NUMBER", number_value: String(size) };
-      await sq("/v2/catalog/object", { method: "POST", body: { idempotency_key: randomUUID(), object: obj } });
-      tagged.push({ name, size });
+      try {
+        const got = await sq(`/v2/catalog/object/${o.id}`);
+        const obj = got.object;
+        obj.custom_attribute_values = obj.custom_attribute_values || {};
+        obj.custom_attribute_values[key] = { custom_attribute_definition_id: defId, key, type: "NUMBER", number_value: String(size) };
+        await sq("/v2/catalog/object", { method: "POST", body: { idempotency_key: randomUUID(), object: obj } });
+        tagged.push({ name, size });
+      } catch (ie) {
+        failed.push({ name, size, error: safe(ie && (ie.detail || ie.message)) });
+      }
     }
-    return json({ configured: true, ok: true, definitionCreated: created, definitionId: defId, tagged, skipped, totalBottles: tagged.length + skipped.length });
+    return json({ configured: true, ok: true, definitionCreated: created, definitionKey: key, definitionId: defId, tagged, skipped, failed, totalBottles: tagged.length + skipped.length + failed.length });
   } catch (e) {
     if (e instanceof SqError && e.status === 401) return json({ configured: false, error: "not_configured" }, 200);
     if (e instanceof SqError && e.status === 403) return json({ error: "insufficient_scope", detail: "The Square token needs Items (read & write). Regenerate it with those scopes." }, 403);
     console.error("square-setup error", e && e.status, e && e.detail);
-    return json({ error: "square_error", status: e && e.status, detail: safe(e && e.detail) }, 502);
+    return json({ error: "square_error", status: (e && e.status) || null, detail: safe(e && (e.detail || e.message)) || "unknown error" }, 502);
   }
 };
 
