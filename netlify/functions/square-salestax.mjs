@@ -37,10 +37,26 @@ export default async (req) => {
         byTax[key] = (byTax[key] || 0) + money(t.applied_money);
       }
     }
+    // Refunds in the month (by refund date), apportioning the tax portion of each refund
+    const refunds = await allRefunds(startISO, endISO);
+    let refundTaxTotal = 0, refundGrossTotal = 0, refundCount = 0;
+    const orderIds = [...new Set(refunds.map((r) => r.order_id).filter(Boolean))];
+    const ordMap = await orderTaxMap(orderIds);
+    for (const rf of refunds) {
+      const amt = money(rf.amount_money); if (amt <= 0) continue;
+      refundCount++;
+      const om = ordMap[rf.order_id];
+      let taxPortion = 0;
+      if (om && om.total > 0) taxPortion = amt * (om.tax / om.total); // apportion tax within the refunded amount
+      refundTaxTotal += taxPortion; refundGrossTotal += (amt - taxPortion);
+    }
+
     const c2 = (cents) => Math.round(cents) / 100;
     return json({
-      configured: true, year, month, tz, startISO, endISO, orderCount,
+      configured: true, year, month, tz, startISO, endISO, orderCount, refundCount,
       grossSales: c2(grossTotal), taxCollected: c2(taxTotal),
+      taxRefunded: c2(refundTaxTotal), grossRefunded: c2(refundGrossTotal),
+      taxNet: c2(taxTotal - refundTaxTotal), grossNet: c2(grossTotal - refundGrossTotal),
       byLocation: Object.values(byLoc).map((b) => ({ name: b.name, orders: b.orders, gross: c2(b.gross), tax: c2(b.tax) })).sort((a, b) => b.tax - a.tax),
       byTax: Object.keys(byTax).map((k) => ({ name: k, tax: c2(byTax[k]) })).sort((a, b) => b.tax - a.tax),
     });
@@ -65,6 +81,25 @@ async function allOrders(locIds, startISO, endISO) {
     cursor = r.cursor;
   } while (cursor);
   return out;
+}
+async function allRefunds(startISO, endISO) {
+  const out = []; let cursor;
+  do {
+    const q = `/v2/refunds?begin_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}&sort_order=ASC&status=COMPLETED` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    const r = await sq(q);
+    for (const rf of (r.refunds || [])) out.push(rf);
+    cursor = r.cursor;
+  } while (cursor);
+  return out;
+}
+async function orderTaxMap(orderIds) {
+  const map = {};
+  for (let i = 0; i < orderIds.length; i += 100) {
+    const chunk = orderIds.slice(i, i + 100);
+    const r = await sq("/v2/orders/batch-retrieve", { method: "POST", body: { order_ids: chunk } });
+    for (const o of (r.orders || [])) map[o.id] = { tax: money(o.total_tax_money), total: money(o.total_money) };
+  }
+  return map;
 }
 function money(m) { return (m && +m.amount) || 0; }
 function safe(d) { try { return typeof d === "string" ? d.slice(0, 400) : JSON.stringify(d).slice(0, 400); } catch { return ""; } }
