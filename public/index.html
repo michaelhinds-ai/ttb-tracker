@@ -422,7 +422,7 @@
       <div class="row-actions" style="margin-top:6px"><button class="btn" id="bo_do" style="background:#7a5a2b">Bottle</button></div>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Bottling History</h3><button class="btn ghost sm noprint" id="recalcLoss">Recalculate dump losses</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Bottling History</h3><div class="row-actions noprint" style="margin:0"><button class="btn ghost sm" id="reconcileDumps">Reconcile past dumps</button><button class="btn ghost sm" id="recalcLoss">Recalculate dump losses</button></div></div>
       <div class="tablewrap" style="border:0;box-shadow:none;margin-top:10px"><table><thead><tr><th>Date</th><th>Barrel #</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">Bottled PG</th><th class="num">Loss PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
       <div id="bottlingEmpty"></div>
     </div>
@@ -743,6 +743,7 @@ function agingBarrelPG(){ return round1((state.barrels||[]).filter(b=>b.status==
 function barrelMoves(){
   const dep=[], wd=[];
   (state.barrels||[]).forEach(b=>{
+    if(b.fromBottling)return; // tracking-only reconciled dumps: reporting comes from the bottling log
     const pg=barrelPG(b); const tib=b.origin==='Received in bond (TIB)';
     const rd = tib ? (b.tibInDate||b.fillDate||b.distillDate) : (b.fillDate||b.distillDate);
     if(rd && pg>0) dep.push({date:rd, pg, tib});
@@ -1214,7 +1215,7 @@ function storageForm(y,m){
   const cols=['b','c','d','e','f','g','h','i','j','k','l'];
   const C={}; cols.forEach(c=>C[c]={open:0,dep:0,proc:0,loss:0,close:0});
   // On-hand / deposits from the barrel register (entry proof gallons)
-  (state.barrels||[]).forEach(bl=>{ const pg=barrelPG(bl); if(!(pg>0))return; const col=stCol(bl); if(!C[col])return;
+  (state.barrels||[]).forEach(bl=>{ if(bl.fromBottling)return; const pg=barrelPG(bl); if(!(pg>0))return; const col=stCol(bl); if(!C[col])return;
     const tib=bl.origin==='Received in bond (TIB)';
     const dep=tib?(bl.tibInDate||bl.fillDate||bl.distillDate):(bl.fillDate||bl.distillDate);
     const wd=bl.status==='Dumped'?bl.dumpDate:(bl.status==='Transferred out (TIB)'?bl.tibOutDate:null);
@@ -1709,6 +1710,58 @@ function recalcLosses(){
   save('Recalculated dump losses on '+n+' bottling(s)'); renderBottling();
   flash('Updated '+n+' bottling record(s) with dump loss.');
 }
+// Give every past bottling a matching "dumped" barrel record so each true barrel shows on the
+// Barrels page (searchable by the code you assigned) and links to its bottling detail.
+// These records are tracking-only (flagged fromBottling) and DO NOT change any report math —
+// storage/processing totals still come from the bottling log, so validated filings are untouched.
+function planReconcileDumps(){
+  const bottled=(state.bottlings||[]);
+  const plan=[];
+  bottled.forEach(bt=>{
+    // already represented by a dumped barrel tied to this bottling?
+    const linked=(state.barrels||[]).some(b=>b.dumpBottlingId===bt.id);
+    if(linked) return;
+    // if this bottling fully dumped a still-present single barrel, adopt it in place (no new record)
+    let src=null;
+    if(bt.barrelId) src=(state.barrels||[]).find(b=>b.id===bt.barrelId&&b.status==='Dumped');
+    plan.push({bt, adopt:src||null});
+  });
+  return plan;
+}
+function reconcilePastDumps(){
+  const plan=planReconcileDumps();
+  if(!plan.length){ flash('Every past dump already has a barrel record.'); return; }
+  if(!confirm(`Create a dumped-barrel record for ${plan.length} past bottling(s)?\n\nEach becomes a searchable barrel on the Barrels page (found by the code you assigned) and links to its bottling detail. This is a tracking trail only — it does NOT change any TTB report totals. Undo anytime from Recent Activity.`)) return;
+  let n=0;
+  plan.forEach(({bt})=>{
+    const spiritFull=bt.spirit||'';
+    const parts=spiritFull.split(' / ');
+    const spiritType=parts.length>1?parts[0]:'';
+    const cls=parts.length>1?parts.slice(1).join(' / '):spiritFull;
+    const perBarrel=Math.max(1,+bt.barrels||1);
+    const pgEach=round1((bt.dumpPG!=null?+bt.dumpPG:+bt.pg||0));
+    // pull entry proof/wine-gal from the source lot if we can find one, else from the bottling
+    const match=(state.barrels||[]).find(b=>((b.spiritType?b.spiritType+' / ':'')+(b.spirit||''))===spiritFull&&(b.distillDate||'')===(bt.distillDate||''))
+      || (state.barrels||[]).find(b=>(b.spirit||'')===cls);
+    const entryProof=match?(+match.entryProof||+bt.proof||0):(+bt.proof||0);
+    const nb={
+      id:uid(), fromBottling:true, barrelNo:bt.barrelNo||'', dumpNo:bt.barrelNo||'',
+      spirit:cls, spiritType, mashbill:match?match.mashbill:'',
+      distillDate:bt.distillDate||'', fillDate:match?match.fillDate:(bt.distillDate||''),
+      entryProof, fillWG:0, pgTotal:pgEach, qty:1,
+      warehouse:match?match.warehouse:'', location:match?match.location:'',
+      origin:match?match.origin:'', sourceDSP:match?match.sourceDSP:'', sourcePermit:match?match.sourcePermit:'',
+      tibInDate:match?match.tibInDate:'',
+      status:'Dumped', dumpDate:bt.date||'', dumpBottlingId:bt.id,
+      notes:'Reconciled from bottling record'+(perBarrel>1?(' (1 of '+perBarrel+' barrels dumped together)'):'')
+    };
+    state.barrels.push(nb);
+    bt.barrelId=nb.id;
+    n++;
+  });
+  save('Reconciled '+n+' past dump(s) into barrel records'); refreshAll();
+  flash('Added '+n+' dumped-barrel record(s). Filter Barrels by "Dumped" to see them.');
+}
 
 /* ---- QuickBooks (front-end) ---- */
 async function qbRefresh(){
@@ -1765,7 +1818,7 @@ function wireOnce(){
   document.querySelectorAll('#barrelHead th.bs').forEach(th=>th.onclick=()=>setBarrelSort(th.dataset.bsort));
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
-  $('#recalcLoss').onclick=recalcLosses; $('#backfillGift').onclick=runBackfillGift; $('#syncAllQB').onclick=syncAllPendingQB;
+  $('#recalcLoss').onclick=recalcLosses; $('#reconcileDumps').onclick=reconcilePastDumps; $('#backfillGift').onclick=runBackfillGift; $('#syncAllQB').onclick=syncAllPendingQB;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
