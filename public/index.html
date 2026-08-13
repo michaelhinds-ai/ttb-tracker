@@ -966,7 +966,9 @@ async function sqSetup(){
     const r=await fetch('/api/square/setup-tags',{method:'POST'}); const d=await r.json();
     if(d.error){ el.innerHTML='⚠️ '+(d.detail||d.error); $('#sqSetup').disabled=false; return; }
     const list=(d.tagged||[]).concat(d.skipped||[]).sort((a,b)=>a.name.localeCompare(b.name));
-    $('#sqOut').innerHTML=`<div class="note ky">Tagged <b>${d.totalBottles}</b> bottle item(s) in Square${d.definitionCreated?' and created the size attribute':''}. ${(d.tagged||[]).length} updated, ${(d.skipped||[]).length} already set.</div>`+
+    const failed=d.failed||[];
+    $('#sqOut').innerHTML=`<div class="note ky">Tagged <b>${d.totalBottles}</b> bottle item(s) in Square${d.definitionCreated?' and created the size attribute':''}. ${(d.tagged||[]).length} updated, ${(d.skipped||[]).length} already set${failed.length?`, <b style="color:#a33">${failed.length} failed</b>`:''}.</div>`+
+      (failed.length?`<div class="note" style="border-color:#a33">Failed items:<br>`+failed.map(x=>`• ${x.name} — ${x.error}`).join('<br>')+`</div>`:'')+
       `<div class="tablewrap"><table><thead><tr><th>Bottle</th><th class="num">Size (mL)</th></tr></thead><tbody>`+
       list.map(x=>`<tr><td>${x.name}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`;
     sqStatus();
