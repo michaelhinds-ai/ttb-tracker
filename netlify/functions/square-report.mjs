@@ -34,7 +34,7 @@ export default async (req) => {
         const itemId = var2item[li.catalog_object_id];
         if (!itemId) { excludedNames[li.name || "?"] = (excludedNames[li.name || "?"] || 0) + 1; continue; }
         const qty = parseInt(li.quantity || "0", 10) || 0;
-        const base = money(li.base_price_money);
+        const base = money(li.base_price_money) / 100; // Square amounts are in cents
         const net = money(li.gross_sales_money) - money(li.total_discount_money);
         const a = agg[itemId] || (agg[itemId] = { sold: 0, samp: 0, retail: 0 });
         a.retail = Math.max(a.retail, base);
