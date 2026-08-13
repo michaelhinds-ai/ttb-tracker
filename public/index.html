@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TTB Reporting Tracker — Distilled Spirits Plant</title>
+<title>Mikey Systems — Distilled Spirits Plant</title>
 <style>
   :root{
     --bg:#f6f1e7; --panel:#fffdf8; --ink:#2b2118; --muted:#7a6a56;
@@ -122,7 +122,7 @@
   <div class="wrap">
     <div class="logo">⚗️</div>
     <div>
-      <h1>TTB Reporting Tracker</h1>
+      <h1>Mikey Systems</h1>
       <div class="sub">Distilled Spirits Plant · Federal &amp; Kentucky · synced across your devices</div>
     </div>
     <div class="headright">
@@ -369,8 +369,9 @@
     <div class="card">
       <h3>Bottle a Barrel / Lot</h3>
       <p class="hint">Pick what you're dumping from inventory. Enter the bottling proof and how many 750 ml bottles you filled — wine gallons and proof gallons are computed. Bottling removes those barrels from your aging inventory.</p>
-      <div class="grid g2">
+      <div class="grid g3">
         <div><label class="fld">Select from inventory</label><select id="bo_select"></select></div>
+        <div><label class="fld">Barrel #(s) <span style="font-weight:400;color:var(--muted)">— for records</span></label><input type="text" id="bo_barrelno" placeholder="e.g. 14I12-A, or 101-104"></div>
         <div><label class="fld"># of barrels to dump</label><input type="number" id="bo_qty" step="1" min="1" value="1" inputmode="numeric"></div>
       </div>
       <div class="grid g4" style="margin-top:14px">
@@ -393,7 +394,7 @@
     </div>
     <div class="card">
       <h3>Bottling History</h3>
-      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
+      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Barrel #</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
       <div id="bottlingEmpty"></div>
     </div>
   </section>
@@ -1153,8 +1154,9 @@ function doBottle(){
   const date=$('#bo_date').value; let entryId=null;
   if(gift){ entryId=addRemovalEntry(date,cls,wg,proof,'Gift shop removal','giftshop'); }
   else { addToFinishedGoods(cls,b.distillDate,proof,bottles,date); }
-  state.bottlings.push({id:uid(),date,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,giftShop:gift,entryId,qbInvoice:gift?'pending':null});
-  save('Bottled '+dumpQty+' barrel(s) → '+bottles+' bottles'+(gift?' (gift shop removal)':'')); $('#bo_bottles').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
+  const barrelNo=$('#bo_barrelno').value.trim();
+  state.bottlings.push({id:uid(),date,barrelNo,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,giftShop:gift,entryId,qbInvoice:gift?'pending':null});
+  save('Bottled '+dumpQty+' barrel(s)'+(barrelNo?(' #'+barrelNo):'')+' → '+bottles+' bottles'+(gift?' (gift shop removal)':'')); $('#bo_bottles').value=''; $('#bo_barrelno').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
   flash(gift?`Gift shop: ${bottles} bottles removed from bond.`:`${bottles} bottles → finished goods (in bond).`);
 }
 
@@ -1260,7 +1262,7 @@ function renderOrders(){
 
 function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   const rows=[...(state.bottlings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
+  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.barrelNo||'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
 function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
