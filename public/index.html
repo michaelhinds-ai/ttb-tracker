@@ -30,6 +30,8 @@
   .dot{width:9px;height:9px;border-radius:50%;background:#8a8}
   .undo{background:#3a2a1c;color:#f4e9d6;border:1px solid #6b543c;padding:6px 13px;border-radius:20px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;cursor:pointer}
   .undo:hover{background:#4a3626}
+  .rewind{background:#f4ece0;color:#7a4a1f;border:1px solid #d9c3a5;padding:4px 10px;border-radius:14px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12px;cursor:pointer}
+  .rewind:hover{background:#ecdfc9}
   .dot.synced{background:#5ec27e;box-shadow:0 0 0 3px #5ec27e33}
   .dot.saving{background:#e6b34d;box-shadow:0 0 0 3px #e6b34d33;animation:pulse 1s infinite}
   .dot.offline{background:#d97a6c;box-shadow:0 0 0 3px #d97a6c33}
@@ -174,7 +176,8 @@
     </div>
     <div class="card">
       <h3>Recent Activity</h3>
-      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Account</th><th>Transaction</th><th>Spirit</th><th class="num">PG</th></tr></thead><tbody id="recentBody"></tbody></table></div>
+      <p class="hint">Everything you save is logged here. Use <b>Rewind</b> to undo an action and everything done after it.</p>
+      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>When</th><th>Action</th><th class="num noprint"></th></tr></thead><tbody id="recentBody"></tbody></table></div>
     </div>
   </section>
 
@@ -580,7 +583,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -590,7 +593,7 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; return s; }
 
 function setSync(status){
   const dot=document.getElementById('syncDot'), txt=document.getElementById('syncTxt');
@@ -619,12 +622,18 @@ async function cloudLoad(){
   }
 }
 let saveTimer=null, saving=false, pending=false;
-let undoStack=[], lastSavedJSON=null; const UNDO_MAX=50;
-function save(){
-  // snapshot the pre-change state for rewind
-  if(lastSavedJSON!==null){ undoStack.push(lastSavedJSON); if(undoStack.length>UNDO_MAX) undoStack.shift(); }
-  lastSavedJSON=JSON.stringify(state);
-  updateUndoBtn();
+let lastSnap=null; const HIST_MAX=25;
+// data-only snapshot (excludes the history log itself, so snapshots never nest)
+function dataOnly(){ const c=Object.assign({},state); delete c.history; return JSON.stringify(c); }
+function save(label){
+  if(!state.history) state.history=[];
+  // record the just-completed action, storing the PRE-action state for rewind
+  if(lastSnap!==null && label!==false){
+    state.history.push({id:uid(), ts:Date.now(), label:label||'Change saved', snap:lastSnap});
+    if(state.history.length>HIST_MAX) state.history.shift();
+  }
+  lastSnap=dataOnly();
+  updateUndoBtn(); renderActivity();
   persist();
 }
 function persist(){
@@ -632,21 +641,36 @@ function persist(){
   if(!cloudAvailable){ setSync('offline'); return; }
   setSync('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>cloudSave(),650);
 }
-function undo(){
-  if(!undoStack.length){ return; }
-  if(!confirm('Undo the last change? This restores everything to how it was just before your most recent action.')) return;
-  const prev=undoStack.pop();
-  state=normalize(JSON.parse(prev));
-  lastSavedJSON=JSON.stringify(state);
-  updateUndoBtn();
-  persist();
-  refreshAll();
-  flash('Reverted the last change.');
+function rewindTo(id){
+  const hist=state.history||[]; const i=hist.findIndex(h=>h.id===id);
+  if(i<0) return;
+  if(!confirm('Rewind to before "'+hist[i].label+'"?\n\nThis undoes that change and everything done after it.')) return;
+  const data=JSON.parse(hist[i].snap);
+  const keep=hist.slice(0,i);            // keep actions that came before this one
+  state=normalize(Object.assign(data,{history:keep}));
+  lastSnap=dataOnly();
+  updateUndoBtn(); persist(); refreshAll();
+  flash('Rewound.');
 }
+function undo(){ const h=state.history||[]; if(!h.length) return; rewindTo(h[h.length-1].id); }
 function updateUndoBtn(){
-  const b=$('#undoBtn'); if(!b) return;
-  b.style.display=undoStack.length?'':'none';
-  b.textContent='↶ Undo ('+undoStack.length+')';
+  const b=$('#undoBtn'); if(!b) return; const n=(state.history||[]).length;
+  b.style.display=n?'':'none';
+  b.textContent='↶ Undo ('+n+')';
+}
+function relTime(ts){
+  const s=Math.max(0,(Date.now()-ts)/1000);
+  if(s<60) return 'just now';
+  if(s<3600) return Math.floor(s/60)+' min ago';
+  if(s<86400) return Math.floor(s/3600)+' hr ago';
+  const d=Math.floor(s/86400); if(d<30) return d+(d===1?' day ago':' days ago');
+  return new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+function renderActivity(){
+  const el=$('#recentBody'); if(!el) return;
+  const hist=(state.history||[]).slice().reverse();
+  if(!hist.length){ el.innerHTML=`<tr><td colspan="3" class="empty">No activity yet. Anything you save shows up here — with a Rewind button to undo it.</td></tr>`; return; }
+  el.innerHTML=hist.map(h=>`<tr><td style="white-space:nowrap;color:var(--muted)">${relTime(h.ts)}</td><td>${h.label}</td><td class="num noprint"><button class="rewind" onclick="rewindTo('${h.id}')">↶ Rewind</button></td></tr>`).join('');
 }
 async function cloudSave(silent){
   if(!cloudAvailable) return;
@@ -715,8 +739,7 @@ function renderDashboard(){
   $('#balBody').innerHTML=['Production','Storage','Processing'].map(a=>`<tr><td>${a}</td><td class="num">${numf(bal[a])}</td></tr>`).join('')+`<tr class="total" style="font-weight:700"><td>Total</td><td class="num">${numf(onHand)}</td></tr>`;
   let maxq=1; const qs=[1,2,3,4].map(q=>{const pg=taxablePG(e=>yearOf(e.date)===yr&&quarterOf(e.date)===q);const {tax}=cbmaTax(ytdTaxableBeforeQuarter(yr,q),pg);maxq=Math.max(maxq,pg);return{q,pg,tax};});
   $('#qtrBars').innerHTML=qs.map(o=>`<div style="margin:10px 0"><div style="display:flex;justify-content:space-between;font-size:13px;font-family:-apple-system,Segoe UI,sans-serif;margin-bottom:3px"><b>Q${o.q}</b><span style="color:var(--muted)">${numf(o.pg)} PG · ${money(o.tax)}</span></div><div class="meter" style="height:12px"><span style="width:${o.pg/maxq*100}%"></span></div></div>`).join('');
-  const recent=[...state.entries].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
-  $('#recentBody').innerHTML=recent.length?recent.map(e=>{const t=TXBYID[e.type];return `<tr><td>${fmtDate(e.date)}</td><td>${accPill(t.account)}</td><td>${t.label}${t.taxable?' <span class="pill tax">tax</span>':''}</td><td>${e.spirit}</td><td class="num">${numf(e.pg)}</td></tr>`;}).join(''):`<tr><td colspan="5" class="empty">No entries yet. Add your first transaction to get started.</td></tr>`;
+  renderActivity();
 }
 function kpi(c,l,v,f){return `<div class="kpi ${c}"><div class="label">${l}</div><div class="val">${v}</div><div class="foot">${f}</div></div>`;}
 function accPill(a){const c=a==='Production'?'prod':a==='Storage'?'stor':'proc';return `<span class="pill ${c}">${a}</span>`;}
@@ -737,15 +760,16 @@ function readForm(){ const wg=+$('#f_wg').value,proof=+$('#f_proof').value; retu
 function validEntry(d){ if(!d.date){alert('Please choose a date.');return false;} if(!(d.wg>0)){alert('Enter wine gallons greater than zero.');return false;} if(!(d.proof>0)){alert('Enter a proof greater than zero.');return false;} return true; }
 function saveEntryForm(again){
   const d=readForm(); if(!validEntry(d))return;
+  const was=!!editingId; const tl=(TXBYID[d.type]&&TXBYID[d.type].label)||'entry';
   if(editingId){const i=state.entries.findIndex(e=>e.id===editingId);if(i>=0)state.entries[i]={...state.entries[i],...d};editingId=null;$('#cancelEdit').style.display='none';$('#entryTitle').textContent='New Entry';}
   else state.entries.push({id:uid(),...d});
-  save(); refreshAll();
+  save((was?'Edited entry — ':'Added entry — ')+tl+' · '+numf(d.pg)+' PG'); refreshAll();
   if(again){['f_wg','f_proof','f_ref','f_notes'].forEach(i=>$('#'+i).value='');updatePG();$('#f_wg').focus();}
   else switchView('ledger');
   flash('Entry saved.');
 }
 function editEntry(id){const e=state.entries.find(x=>x.id===id);if(!e)return;editingId=id;switchView('entry');$('#f_date').value=e.date;$('#f_account').value=TXBYID[e.type].account;populateTypes();$('#f_type').value=e.type;$('#f_spirit').value=e.spirit;$('#f_wg').value=e.wg;$('#f_proof').value=e.proof;$('#f_ref').value=e.ref||'';$('#f_notes').value=e.notes||'';updatePG();showTypeNote();$('#entryTitle').textContent='Edit Entry';$('#cancelEdit').style.display='inline-block';}
-function deleteEntry(id){if(!confirm('Delete this entry?'))return;state.entries=state.entries.filter(e=>e.id!==id);save();refreshAll();}
+function deleteEntry(id){if(!confirm('Delete this entry?'))return;state.entries=state.entries.filter(e=>e.id!==id);save('Deleted a ledger entry');refreshAll();}
 
 /* ================= Ledger ================= */
 function renderLedger(){
@@ -874,7 +898,7 @@ function kyUseSuggest(){ const ym=kyMonthKey(); $('#ky_gallons').value=kySuggest
 function kySaveMonthly(){
   const ym=kyMonthKey();
   state.ky.monthly[ym]={gallons:$('#ky_gallons').value===''?'':+$('#ky_gallons').value,cases:$('#ky_cases').value===''?'':+$('#ky_cases').value,sales:$('#ky_sales').value===''?'':+$('#ky_sales').value};
-  save(); renderKy(); renderDashboard(); flash('Kentucky return saved.');
+  save('Saved a Kentucky monthly return'); renderKy(); renderDashboard(); flash('Kentucky return saved.');
 }
 function kyBarrelReport(){
   const y=+$('#kyYear').value;const rec=state.ky.barrel[y]||{value:'',rate:''};
@@ -901,19 +925,19 @@ function kyBarrelReport(){
     <div class="tablewrap" style="margin-top:10px;max-width:320px"><table><thead><tr><th>Assessment year</th><th class="num">% owed</th></tr></thead><tbody>${scheduleRows}</tbody></table></div></details>
     <div class="disclaimer">Barrel-tax rates are set locally and vary by county, city, school, and fire district — enter your combined rate per $100 of assessed value. This worksheet applies the statewide HB 5 phase-out percentage to your full computed tax. Assessment, valuation, and filing are handled through your county PVA and the Kentucky DOR; confirm your value, rate, and any available credits with them.</div>`;
 }
-function kySaveBarrel(){ const y=+$('#kyYear').value; state.ky.barrel[y]={value:$('#kb_value').value===''?'':+$('#kb_value').value,rate:$('#kb_rate').value===''?'':+$('#kb_rate').value}; save(); renderKy(); flash('Barrel-tax worksheet saved.'); }
+function kySaveBarrel(){ const y=+$('#kyYear').value; state.ky.barrel[y]={value:$('#kb_value').value===''?'':+$('#kb_value').value,rate:$('#kb_rate').value===''?'':+$('#kb_rate').value}; save('Saved KY barrel-tax worksheet'); renderKy(); flash('Barrel-tax worksheet saved.'); }
 
 /* ================= Setup / sync / data ================= */
 function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
-function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save();refreshAll();flash('Details saved.');}
+function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
 function copyLink(){ const v=$('#syncLink').value; navigator.clipboard?.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); }
 function joinWorkspace(){ const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
 function exportJson(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);}
 function exportCsv(){const head=['Date','Account','Transaction','Spirit','WineGallons','Proof','ProofGallons','TaxDetermined','Reference','Notes'];const rows=state.entries.map(e=>{const t=TXBYID[e.type];return [e.date,t.account,t.label,e.spirit,e.wg,e.proof,e.pg,t.taxable?'YES':'',e.ref||'',e.notes||''].map(csv).join(',');});const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-ledger-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);}
 const csv=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-function importJson(file){const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.entries)throw 0;if(!confirm('Restore will replace the data in this workspace. Continue?'))return;state=normalize(p);save();loadSettingsForm();refreshAll();flash('Backup restored — '+state.entries.length+' entries.');}catch(e){alert('That file could not be read as a valid backup.');}};r.readAsText(file);}
-function clearAll(){if(!confirm('Erase ALL data in this workspace? Export a backup first if unsure.'))return;state=freshState();save();loadSettingsForm();refreshAll();flash('Workspace erased.');}
+function importJson(file){const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.entries)throw 0;if(!confirm('Restore will replace the data in this workspace. Continue?'))return;state=normalize(p);save('Restored a backup file');loadSettingsForm();refreshAll();flash('Backup restored — '+state.entries.length+' entries.');}catch(e){alert('That file could not be read as a valid backup.');}};r.readAsText(file);}
+function clearAll(){if(!confirm('Erase ALL data in this workspace? Export a backup first if unsure.'))return;state=freshState();save('Erased the entire workspace');loadSettingsForm();refreshAll();flash('Workspace erased.');}
 
 /* ================= Sample ================= */
 function loadSample(){
@@ -937,7 +961,7 @@ function loadSample(){
   ab('24-0140','Rye',`${y-1}-06-03`,120,53,'Rickhouse A','R4-F2-T3');
   ab('23-0210','Bourbon',`${y-3}-09-20`,110,53,'Rickhouse B','R2-F3-T1');
   ab('TIB-9001','Bourbon',`${y-1}-03-11`,120,53,'Rickhouse B','R6-F1-T4','Received in bond (TIB)',{origin:'Received in bond (TIB)',sourceDSP:'Partner Distillery LLC',sourcePermit:'DSP-KY-20099',tibInDate:`${y-1}-03-11`});
-  save();refreshAll();flash('Sample data loaded.');
+  save('Loaded sample data');refreshAll();flash('Sample data loaded.');
 }
 
 /* ================= UI plumbing ================= */
@@ -976,9 +1000,10 @@ function readBarrel(){ return {barrelNo:$('#b_no').value.trim(),spirit:$('#b_spi
 function validBarrel(d){ if(!d.fillDate){alert('Choose a fill date.');return false;} if(!(d.fillWG>0)){alert('Enter fill wine gallons greater than zero.');return false;} if(!(d.entryProof>0)){alert('Enter the entry proof.');return false;} return true; }
 function saveBarrelForm(again){
   const d=readBarrel(); if(!validBarrel(d))return;
+  const wasB=!!editingBarrelId; const bl=(d.barrelNo?('barrel '+d.barrelNo):((d.qty>1?d.qty+' ':'')+(d.spirit||'barrel')));
   if(editingBarrelId){ const i=state.barrels.findIndex(b=>b.id===editingBarrelId); if(i>=0) state.barrels[i]=Object.assign(state.barrels[i],d); cancelBarrelEdit(true); }
   else { state.barrels.push(Object.assign({id:uid(),status:'Aging'},d)); }
-  save(); refreshAll();
+  save((wasB?'Edited ':'Added ')+bl); refreshAll();
   if(again){['b_no','b_wg','b_notes','b_loc'].forEach(i=>$('#'+i).value='');updateBarrelPG();$('#b_no').focus();}
   flash('Barrel saved.');
 }
@@ -993,10 +1018,10 @@ function editBarrel(id){
   toggleTibIn(); updateBarrelPG(); $('#barrelFormTitle').textContent='Edit Barrel'; $('#saveBarrel').textContent='Update Barrel'; $('#cancelBarrel').style.display='inline-block';
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function deleteBarrel(id){ if(!confirm('Delete this barrel record?'))return; state.barrels=state.barrels.filter(b=>b.id!==id); save(); refreshAll(); }
-function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; if(!confirm(`Mark barrel ${b.barrelNo||''} as dumped today?`))return; b.status='Dumped'; b.dumpDate=new Date().toISOString().slice(0,10); save(); refreshAll(); flash('Barrel marked dumped.'); }
-function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save(); refreshAll(); flash('Barrel transferred out (TIB).'); }
-function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save(); refreshAll(); }
+function deleteBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!confirm('Delete this barrel record?'))return; state.barrels=state.barrels.filter(b=>b.id!==id); save('Deleted a barrel record'+(b&&b.spirit?(' — '+b.spirit):'')); refreshAll(); }
+function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; if(!confirm(`Mark barrel ${b.barrelNo||''} as dumped today?`))return; b.status='Dumped'; b.dumpDate=new Date().toISOString().slice(0,10); save('Marked a barrel dumped'); refreshAll(); flash('Barrel marked dumped.'); }
+function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save('Transferred a barrel out in bond'+(dest.trim()?(' to '+dest.trim()):'')); refreshAll(); flash('Barrel transferred out (TIB).'); }
+function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save('Reactivated a barrel'); refreshAll(); }
 function barrelStatusPill(s){ const m={'Aging':'aging','Dumped':'dumped','Transferred out (TIB)':'tibout','Loss':'loss'}; return `<span class="pill ${m[s]||'aging'}">${s}</span>`; }
 const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.fillDate||b.distillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
 let barrelSort={key:'fillDate',dir:-1};
@@ -1068,7 +1093,7 @@ function tibReceive(){
   if(!from){ alert('Enter the source DSP (who you received these barrels from) before receiving.'); $('#tib_from').focus(); return; }
   valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:date,entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
   const nb=valid.reduce((s,r)=>s+(+r.qty||0),0);
-  save(); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
+  save('Received '+nb+' barrel(s) in bond from '+from); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
   flash('Received '+nb+' barrels in bond.');
 }
 function normDate(s){ s=(s||'').trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s; const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(m){let y=m[3];if(y.length===2)y='20'+y;return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;} return s; }
@@ -1098,7 +1123,7 @@ function tibBulkImport(){
   const rmMsg=replace?`\n\nThis will first REMOVE ${willRemove} existing aging received-in-bond barrel record(s) from ${from}, then import the pasted lots.`:'';
   if(!confirm(`Import ${recs.length} lots — ${bbl} barrels, ${numf(round1(pg))} PG — received in bond${from?(' from '+from):''}?`+rmMsg)) return;
   if(replace){ state.barrels=state.barrels.filter(b=>!(b.status==='Aging'&&b.origin==='Received in bond (TIB)'&&(b.sourceDSP||'').trim().toLowerCase()===from.toLowerCase())); }
-  state.barrels.push(...recs); save(); refreshAll(); $('#tibBulk').value=''; $('#tib_from').value=''; $('#tib_permit').value=''; $('#tibReplace').checked=false;
+  state.barrels.push(...recs); save((replace?('Replaced & imported '):('Imported '))+bbl+' barrels in bond from '+from); refreshAll(); $('#tibBulk').value=''; $('#tib_from').value=''; $('#tib_permit').value=''; $('#tibReplace').checked=false;
   $('#tibBulkMsg').textContent=`Imported ${bbl} barrels (${recs.length} lots)`+(skipped?`, ${skipped} skipped`:'');
   flash(`Imported ${bbl} barrels in bond.`);
 }
@@ -1129,7 +1154,7 @@ function doBottle(){
   if(gift){ entryId=addRemovalEntry(date,cls,wg,proof,'Gift shop removal','giftshop'); }
   else { addToFinishedGoods(cls,b.distillDate,proof,bottles,date); }
   state.bottlings.push({id:uid(),date,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,giftShop:gift,entryId,qbInvoice:gift?'pending':null});
-  save(); $('#bo_bottles').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
+  save('Bottled '+dumpQty+' barrel(s) → '+bottles+' bottles'+(gift?' (gift shop removal)':'')); $('#bo_bottles').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
   flash(gift?`Gift shop: ${bottles} bottles removed from bond.`:`${bottles} bottles → finished goods (in bond).`);
 }
 
@@ -1160,18 +1185,18 @@ function renderFinished(){
   $('#fgBody').innerHTML=rows.map(f=>`<tr><td><b>${f.sku}</b></td><td>${f.spirit||''}</td><td>${f.distillDate?fmtDate(f.distillDate):'—'}</td><td class="num">${numf(f.proof,1)}</td><td class="num">${fgCases(f)}</td><td class="num">${fgSingles(f)}</td><td class="num">${(+f.bottles||0).toLocaleString()}</td><td class="num">${numf(fgPG(f))}</td><td class="noprint"><button class="link" onclick="editFgSku('${f.id}')">Rename</button> · <button class="del" onclick="deleteFg('${f.id}')">Del</button></td></tr>`).join('');
   $('#fgEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No finished goods in bond yet. Bottle a barrel with Gift Shop unchecked to create some.</div>`;
 }
-function editFgSku(id){ const f=state.finishedGoods.find(x=>x.id===id); if(!f)return; const v=prompt('SKU name:',f.sku); if(v===null)return; f.sku=(v.trim()||f.sku); save(); renderFinished(); }
-function deleteFg(id){ if(!confirm('Delete this finished-goods line? Use only to fix an error — it does not record a removal.'))return; state.finishedGoods=state.finishedGoods.filter(x=>x.id!==id); save(); refreshAll(); }
+function editFgSku(id){ const f=state.finishedGoods.find(x=>x.id===id); if(!f)return; const v=prompt('SKU name:',f.sku); if(v===null)return; f.sku=(v.trim()||f.sku); save('Renamed a finished-goods SKU'); renderFinished(); }
+function deleteFg(id){ if(!confirm('Delete this finished-goods line? Use only to fix an error — it does not record a removal.'))return; state.finishedGoods=state.finishedGoods.filter(x=>x.id!==id); save('Deleted a finished-goods line'); refreshAll(); }
 function exportFgCsv(){ const head=['SKU','Spirit','DistillationDate','Proof','Cases','Singles','Bottles','ProofGallons']; const rows=(state.finishedGoods||[]).filter(f=>+f.bottles>0).map(f=>[f.sku,f.spirit,f.distillDate,f.proof,fgCases(f),fgSingles(f),f.bottles,fgPG(f)].map(csv).join(',')); const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='finished-goods.csv';a.click();URL.revokeObjectURL(a.href); }
 
 /* ---- Customers ---- */
 let editingCustId=null;
 function readCust(){ return {name:$('#c_name').value.trim(),contact:$('#c_contact').value.trim(),email:$('#c_email').value.trim(),phone:$('#c_phone').value.trim(),terms:$('#c_terms').value.trim(),notes:$('#c_notes').value.trim()}; }
-function saveCust(){ const d=readCust(); if(!d.name){alert('Enter a customer name.');return;} if(editingCustId){const i=state.customers.findIndex(c=>c.id===editingCustId);if(i>=0)state.customers[i]=Object.assign(state.customers[i],d);cancelCust();} else state.customers.push(Object.assign({id:uid(),qbId:null},d)); clearCust(); save(); refreshAll(); flash('Customer saved.'); }
+function saveCust(){ const d=readCust(); if(!d.name){alert('Enter a customer name.');return;} if(editingCustId){const i=state.customers.findIndex(c=>c.id===editingCustId);if(i>=0)state.customers[i]=Object.assign(state.customers[i],d);cancelCust();} else state.customers.push(Object.assign({id:uid(),qbId:null},d)); const cl=(d.name?(' — '+d.name):''); clearCust(); save('Saved a customer'+cl); refreshAll(); flash('Customer saved.'); }
 function clearCust(){ ['c_name','c_contact','c_email','c_phone','c_terms','c_notes'].forEach(i=>$('#'+i).value=''); }
 function editCust(id){ const c=state.customers.find(x=>x.id===id); if(!c)return; editingCustId=id; $('#c_name').value=c.name||'';$('#c_contact').value=c.contact||'';$('#c_email').value=c.email||'';$('#c_phone').value=c.phone||'';$('#c_terms').value=c.terms||'';$('#c_notes').value=c.notes||''; $('#custFormTitle').textContent='Edit Customer'; $('#custCancel').style.display='inline-block'; switchView('customers'); window.scrollTo({top:0,behavior:'smooth'}); }
 function cancelCust(){ editingCustId=null; clearCust(); $('#custCancel').style.display='none'; $('#custFormTitle').textContent='Add Customer'; }
-function deleteCust(id){ if(!confirm('Delete this customer?'))return; state.customers=state.customers.filter(x=>x.id!==id); save(); refreshAll(); }
+function deleteCust(id){ if(!confirm('Delete this customer?'))return; state.customers=state.customers.filter(x=>x.id!==id); save('Deleted a customer'); refreshAll(); }
 function renderCustomers(){
   const q=($('#custSearch').value||'').toLowerCase();
   const rows=[...state.customers].filter(c=>!q||`${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(q)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
@@ -1217,13 +1242,13 @@ function orderCreate(){
     total+=l.cases*l.price; pgTotal+=pg; casesTotal+=l.cases; });
   state.orders.push({id:uid(),num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
   orderLines=[orderNewLine()]; $('#o_ref').value='';
-  save(); refreshAll(); switchView('orders');
+  save('Created order #'+num+' — '+casesTotal+' cases · '+cust.name); refreshAll(); switchView('orders');
   flash(`Order #${num} created — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
 }
 function deleteOrder(id){ const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
   (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f)f.bottles=(+f.bottles||0)+(+l.bottles||0); });
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
-  state.orders=state.orders.filter(x=>x.id!==id); save(); refreshAll(); flash('Order #'+o.num+' reversed.'); }
+  state.orders=state.orders.filter(x=>x.id!==id); save('Reversed order #'+o.num); refreshAll(); flash('Order #'+o.num+' reversed.'); }
 function renderOrders(){
   const cs=[...state.customers].sort((a,b)=>(a.name||'').localeCompare(b.name||'')); const cur=$('#o_customer').value;
   $('#o_customer').innerHTML=`<option value="">— choose customer —</option>`+cs.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${c.name}</option>`).join('');
@@ -1238,7 +1263,7 @@ function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
-function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save(); renderBottling(); }
+function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
 
 /* ---- QuickBooks (front-end) ---- */
 async function qbRefresh(){
@@ -1263,7 +1288,7 @@ async function sendOrderToQB(id){
   try{
     const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:cust.email,phone:cust.phone},lines,docNumber:o.num,txnDate:o.date,privateNote:'TTB Tracker order #'+o.num})});
     const d=await r.json();
-    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(); renderOrders(); flash('Invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
+    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash('Invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
     else if(d.error==='not_connected'){ alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
     else { alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
   }catch(e){ alert('Could not reach QuickBooks: '+e.message); }
@@ -1299,7 +1324,7 @@ async function boot(rejoin){
   cloudAvailable=(location.protocol!=='file:');
   setSync('connecting');
   await cloudLoad();
-  undoStack=[]; lastSavedJSON=JSON.stringify(state);
+  if(!state.history) state.history=[]; lastSnap=dataOnly();
   if(!wired){ wireOnce(); wired=true; }
   updateUndoBtn();
   loadSettingsForm(); refreshAll(); qbRefresh();
