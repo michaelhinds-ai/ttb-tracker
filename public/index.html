@@ -115,6 +115,24 @@
   details.sched summary{cursor:pointer;font-family:-apple-system,Segoe UI,sans-serif;font-weight:600;color:var(--copper)}
 
   @media print{header.app,nav.tabs,.noprint{display:none!important}body{background:#fff}main{padding:0}.card{box-shadow:none;border:1px solid #ccc;break-inside:avoid}.view{display:none!important}.view.printing{display:block!important}}
+  /* Role-based access (UI gating) */
+  body:not(.perm-write) .cap-write{display:none!important}
+  body:not(.perm-delete) .cap-delete{display:none!important}
+  body:not(.perm-setup) .cap-setup{display:none!important}
+  body:not(.perm-users) .cap-users{display:none!important}
+  body:not(.perm-reports) .cap-reports{display:none!important}
+  .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
+  .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
+  .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
+  .authwrap{position:fixed;inset:0;background:#241812;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,Segoe UI,sans-serif}
+  .authcard{background:#fbf6ec;max-width:400px;width:100%;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.5);overflow:hidden}
+  .authcard .hd{background:#3a2a1c;color:#f4e9d6;padding:20px 22px}
+  .authcard .hd h2{margin:0;font-family:Georgia,serif;font-size:22px}
+  .authcard .bd{padding:20px 22px}
+  .authcard label{display:block;font-size:12px;font-weight:700;color:#6b543c;text-transform:uppercase;letter-spacing:.03em;margin:12px 0 5px}
+  .authcard select,.authcard input{width:100%;padding:11px 12px;border:1px solid #d9c3a5;border-radius:9px;font-size:15px;background:#fff;box-sizing:border-box}
+  .authcard .err{color:#b23a2e;font-size:13px;margin-top:10px;min-height:18px}
+  .userrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee2d0;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px}
 </style>
 </head>
 <body>
@@ -126,7 +144,8 @@
       <div class="sub">Distilled Spirits Plant · Federal &amp; Kentucky · synced across your devices</div>
     </div>
     <div class="headright">
-      <button class="undo noprint" id="undoBtn" style="display:none">↶ Undo</button>
+      <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
+      <div class="whoami noprint" id="whoami" style="display:none"></div>
       <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
@@ -184,7 +203,7 @@
   <!-- ADD ENTRY -->
   <section class="view" id="view-entry">
     <h2 class="section">Record a Transaction</h2>
-    <div class="card">
+    <div class="card cap-write">
       <h3 id="entryTitle">New Entry</h3>
       <p class="hint">Log every movement of spirits. Enter wine gallons and proof — proof gallons compute automatically. Tax-determined removals feed your federal excise return, and their gallons flow into your Kentucky monthly return.</p>
       <div class="grid g3">
@@ -243,7 +262,7 @@
       </select></div>
       <div id="periodQuarterWrap"><label class="fld">Quarter</label><select id="rptQuarter"></select></div>
       <div id="periodMonthWrap" style="display:none"><label class="fld">Month</label><input type="month" id="rptMonth"></div>
-      <button class="btn ghost sm noprint" id="fillFed">Fill official TTB form (PDF)</button>
+      <button class="btn ghost sm noprint cap-reports" id="fillFed">Fill official TTB form (PDF)</button>
       <button class="btn ghost sm" id="printRpt">Print / Save PDF</button>
     </div></div>
     <div class="card rpt" id="rptOut"></div>
@@ -272,8 +291,8 @@
       <div id="sqStatus" class="note" style="margin-bottom:12px">Checking Square connection…</div>
       <div class="toolbar">
         <div><label class="fld">Reporting month</label><input type="month" id="sqMonth"></div>
-        <button class="btn ky sm" id="sqRun">Run 73A525</button>
-        <button class="btn ghost sm" id="sqSetup">Set up bottle tags</button>
+        <button class="btn ky sm cap-reports" id="sqRun">Run 73A525</button>
+        <button class="btn ghost sm cap-setup" id="sqSetup">Set up bottle tags</button>
         <button class="btn ghost sm noprint" id="sqPdf" style="display:none">Fill 73A525 (PDF)</button>
         <button class="btn ghost sm noprint" id="sqCsv" style="display:none">Export CSV</button>
         <button class="btn ghost sm noprint" id="sqPrint" style="display:none">Print / Save PDF</button>
@@ -286,7 +305,7 @@
       <div id="stxStatus" class="note" style="margin-bottom:12px">Checking Square connection…</div>
       <div class="toolbar">
         <div><label class="fld">Reporting month</label><input type="month" id="stxMonth"></div>
-        <button class="btn ky sm" id="stxRun">Run sales-tax report</button>
+        <button class="btn ky sm cap-reports" id="stxRun">Run sales-tax report</button>
         <button class="btn ghost sm noprint" id="stxCsv" style="display:none">Export CSV</button>
         <button class="btn ghost sm noprint" id="stxPrint" style="display:none">Print / Save PDF</button>
       </div>
@@ -299,7 +318,7 @@
     <h2 class="section">Barrel Inventory</h2>
     <div class="kpis" id="barrelKpis"></div>
 
-    <div class="card" style="border-color:var(--ky)">
+    <div class="card cap-write" style="border-color:var(--ky)">
       <h3>Receive Barrels — Transfer in Bond (TIB)</h3>
       <p class="hint">Record barrels received in bond from another DSP without tax determination. Add a line for each lot — you can receive several lots on one transfer.</p>
       <div class="grid g3">
@@ -324,7 +343,7 @@
       </details>
     </div>
 
-    <div class="card">
+    <div class="card cap-write">
       <h3 id="barrelFormTitle">Add a Barrel</h3>
       <p class="hint">Track each barrel with its key data. Proof gallons compute from fill gallons × entry proof. Mark barrels received in bond (TIB) from another DSP, and record dumps or transfers out.</p>
       <div class="grid g4">
@@ -395,7 +414,7 @@
   <!-- BOTTLING -->
   <section class="view" id="view-bottling">
     <h2 class="section">Bottling / Dump</h2>
-    <div class="card">
+    <div class="card cap-write">
       <h3>Bottle a Barrel / Lot</h3>
       <p class="hint">Pick what you're dumping from inventory. Enter the bottling proof and how many 750 ml bottles you filled — wine gallons and proof gallons are computed. Bottling removes those barrels from your aging inventory.</p>
       <div class="grid g3">
@@ -446,7 +465,7 @@
   <!-- ORDERS -->
   <section class="view" id="view-orders">
     <h2 class="section">Orders</h2>
-    <div class="card">
+    <div class="card cap-write">
       <h3 id="orderFormTitle">New Order</h3>
       <p class="hint">Pick a customer and add cases of finished goods (only items with stock on hand appear). Enter the case price for this customer — it can differ per account. Creating the order removes the cases from bond, records the federal excise proof gallons, and is ready to invoice in QuickBooks.</p>
       <div class="grid g3">
@@ -475,7 +494,7 @@
   <!-- CUSTOMERS -->
   <section class="view" id="view-customers">
     <h2 class="section">Customers</h2>
-    <div class="card">
+    <div class="card cap-write">
       <h3 id="custFormTitle">Add Customer</h3>
       <div class="grid g3">
         <div><label class="fld">Name / Account</label><input type="text" id="c_name" placeholder="Account or business name"></div>
@@ -526,7 +545,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card cap-setup">
       <h3>Distillery Details</h3>
       <p class="hint">These appear on your report headers.</p>
       <div class="grid g2">
@@ -551,7 +570,7 @@
       <div class="row-actions" style="margin-top:14px"><button class="btn" id="saveSettings">Save Details</button></div>
     </div>
 
-    <div class="card">
+    <div class="card cap-setup">
       <h3>QuickBooks Online — Louisville</h3>
       <p class="hint">Connect your Louisville QuickBooks company so orders post as invoices. Uses the production Intuit keys stored in your Netlify environment variables.</p>
       <div class="row-actions"><span id="qbStatus" class="hint" style="margin:0">Checking connection…</span></div>
@@ -566,7 +585,7 @@
       <p class="hint">Questions or an issue with the app or a QuickBooks sync? Contact <a href="mailto:michael.hinds@gmail.com" style="color:var(--copper);font-weight:600">michael.hinds@gmail.com</a>. QuickBooks errors show an Intuit reference id (intuit_tid) to speed up troubleshooting.</p>
     </div>
 
-    <div class="card">
+    <div class="card cap-setup">
       <h3>Backup &amp; Data</h3>
       <p class="hint">Your data lives in your synced workspace. A JSON backup is still worth keeping — it's a portable snapshot you fully control.</p>
       <div class="row-actions">
@@ -579,7 +598,13 @@
       <div class="note" id="dataStatus"></div>
     </div>
 
-    <div class="card">
+    <div class="card cap-setup">
+      <h3>🛟 Automatic Daily Backups</h3>
+      <p class="hint">A point-in-time snapshot of your data is saved automatically once a day (the first time an editor or admin opens the app that day), kept for the last 30 days in your synced workspace. Download any day's copy, or restore your data back to how it looked on that date. Restores keep your users/login and are undoable from Recent Activity.</p>
+      <div id="backupList"></div>
+    </div>
+
+    <div class="card cap-write">
       <details class="sched">
         <summary>Maintenance &amp; one-time fixes</summary>
         <p class="hint" style="margin-top:10px">New bottlings and orders handle these automatically. Use them once to fix up older records, or after restoring a backup. All are safe to re-run and can be undone from Recent Activity on the dashboard.</p>
@@ -594,6 +619,25 @@
           <b>Backfill gift-shop orders</b> — creates a $0 order trail (and links the GiftShop customer) for past gift-shop bottlings.
         </div>
       </details>
+    </div>
+
+    <div class="card cap-users">
+      <h3>👤 Users &amp; Access</h3>
+      <p class="hint">Require a login and control what each person can do. Roles: <b>Admin</b> (everything, incl. managing users), <b>Editor</b> (add/edit data &amp; run reports, no deleting/rewind/setup), <b>Reports</b> (view &amp; generate reports only), <b>Viewer</b> (read-only). This is UI-level access control for trusted staff — the data still lives in your synced workspace, so it deters mistakes and casual access but isn't hardened security.</p>
+      <div id="authState"></div>
+      <div id="userMgmt" style="display:none">
+        <div class="tablewrap" style="border:0;box-shadow:none;margin-top:6px"><table><thead><tr><th>Name</th><th>Role</th><th class="noprint"></th></tr></thead><tbody id="userBody"></tbody></table></div>
+        <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
+        <div class="grid g3" style="margin-top:6px">
+          <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
+        </div>
+        <div class="row-actions" style="margin-top:12px">
+          <button class="btn" id="userSave">Save user</button>
+          <button class="btn gray" id="userCancel" style="display:none">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -635,7 +679,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -645,7 +689,174 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; return s; }
+
+/* ================= Access control (UI-gated roles) ================= */
+const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], reports:['reports'], viewer:[] };
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', reports:'Reports', viewer:'Viewer' };
+let SESSION=null; // {userId,name,role}
+function authOn(){ return !!(state.auth&&state.auth.enabled&&(state.auth.users||[]).length); }
+function currentRole(){ if(!authOn()) return 'admin'; return SESSION?SESSION.role:'viewer'; }
+function can(cap){ return (ROLE_CAPS[currentRole()]||[]).includes(cap); }
+function requireCap(cap){ if(can(cap)) return true; flash('Your role ('+ROLE_LABEL[currentRole()]+') can’t do that.'); return false; }
+async function hashPin(pin){ const enc=new TextEncoder().encode('ttbsalt:'+pin); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+function sessKey(){ return 'ttb_sess_'+(WS||''); }
+function loadSession(){ try{ const j=sessionStorage.getItem(sessKey()); if(j){ const s=JSON.parse(j); if(state.auth.users.some(u=>u.id===s.userId&&u.role===s.role)) SESSION=s; } }catch(e){} }
+function saveSession(){ try{ sessionStorage.setItem(sessKey(),JSON.stringify(SESSION)); }catch(e){} }
+function clearSession(){ SESSION=null; try{ sessionStorage.removeItem(sessKey()); }catch(e){} }
+function gateBoot(){
+  loadSession();
+  if(authOn() && !SESSION){ showLogin(); return false; }
+  applyPermissions(); return true;
+}
+function showLogin(){
+  let ov=$('#authWrap'); if(ov) ov.remove();
+  const users=[...(state.auth.users||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  ov=document.createElement('div'); ov.id='authWrap'; ov.className='authwrap';
+  ov.innerHTML=`<div class="authcard"><div class="hd"><h2>Mikey Systems</h2><div style="opacity:.8;font-size:13px;margin-top:4px">${state.settings.name||'Sign in to continue'}</div></div>
+  <div class="bd">
+    <label>User</label><select id="authUser">${users.map(u=>`<option value="${u.id}">${u.name} — ${ROLE_LABEL[u.role]||u.role}</option>`).join('')}</select>
+    <label>PIN</label><input type="password" id="authPin" inputmode="numeric" autocomplete="off" placeholder="Enter your PIN">
+    <div class="err" id="authErr"></div>
+    <button class="btn" id="authGo" style="width:100%;margin-top:6px">Sign in</button>
+  </div></div>`;
+  document.body.appendChild(ov);
+  const go=async()=>{ const uid=$('#authUser').value, pin=$('#authPin').value||''; const u=state.auth.users.find(x=>x.id===uid);
+    if(!u){ $('#authErr').textContent='Pick a user.'; return; }
+    const h=await hashPin(pin);
+    if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
+    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); applyPermissions(); refreshAll();
+  };
+  $('#authGo').onclick=go;
+  $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+  setTimeout(()=>$('#authPin').focus(),50);
+}
+function logout(){ clearSession(); if(authOn()){ showLogin(); } }
+function applyPermissions(){
+  const role=currentRole();
+  const b=document.body;
+  ['write','delete','setup','users','reports'].forEach(c=>b.classList.toggle('perm-'+c, can(c)));
+  const el=$('#whoami'); if(el){
+    if(authOn()&&SESSION){ el.style.display=''; el.innerHTML=`<span>${SESSION.name}</span><span class="role">${ROLE_LABEL[role]||role}</span><button class="logout" id="logoutBtn">Sign out</button>`; const lb=$('#logoutBtn'); if(lb) lb.onclick=logout; }
+    else { el.style.display='none'; el.innerHTML=''; }
+  }
+}
+/* ================= Automatic daily backups ================= */
+const BACKUP_MAX=30;
+async function gzB64(str){
+  try{ if(typeof CompressionStream==='undefined') throw 0;
+    const cs=new CompressionStream('gzip'); const w=cs.writable.getWriter(); w.write(new TextEncoder().encode(str)); w.close();
+    const buf=await new Response(cs.readable).arrayBuffer(); const u=new Uint8Array(buf); let bin=''; for(let i=0;i<u.length;i++) bin+=String.fromCharCode(u[i]); return 'gz:'+btoa(bin);
+  }catch(e){ return 'raw:'+str; }
+}
+async function ungzB64(s){
+  if(s.startsWith('raw:')) return s.slice(4);
+  const bin=atob(s.slice(3)); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  const ds=new DecompressionStream('gzip'); const w=ds.writable.getWriter(); w.write(u); w.close();
+  const buf=await new Response(ds.readable).arrayBuffer(); return new TextDecoder().decode(buf);
+}
+function dataForBackup(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; return c; }
+async function maybeDailyBackup(){
+  if(!(can('write')||!authOn())) return false;   // don't let view-only sessions trigger a workspace write
+  if(!state.dailyBackups) state.dailyBackups=[];
+  const today=new Date().toISOString().slice(0,10);
+  if(state.dailyBackups.some(b=>b.date===today)) return false;
+  const gz=await gzB64(JSON.stringify(dataForBackup()));
+  state.dailyBackups.push({date:today, ts:Date.now(), gz, by:(SESSION?SESSION.name:null)});
+  state.dailyBackups.sort((a,b)=>a.date.localeCompare(b.date));
+  while(state.dailyBackups.length>BACKUP_MAX) state.dailyBackups.shift();
+  persist(); renderBackups();
+  return true;
+}
+async function restoreDailyBackup(date){
+  if(!requireCap('setup'))return;
+  const bk=(state.dailyBackups||[]).find(b=>b.date===date); if(!bk)return;
+  if(!confirm('Restore the backup from '+date+'?\n\nThis replaces the current data with that day’s snapshot. Your users/login settings are kept, and a new activity entry is recorded so you can rewind this.'))return;
+  let data; try{ data=JSON.parse(await ungzB64(bk.gz)); }catch(e){ alert('That backup could not be read.'); return; }
+  const keepBackups=state.dailyBackups, keepAuth=state.auth;
+  state=normalize(Object.assign(data,{dailyBackups:keepBackups}));
+  state.auth=keepAuth; // never lock anyone out via a restore
+  save('Restored the daily backup from '+date); loadSettingsForm(); refreshAll(); flash('Restored backup from '+date+'.');
+}
+async function downloadDailyBackup(date){
+  const bk=(state.dailyBackups||[]).find(b=>b.date===date); if(!bk)return;
+  let json; try{ json=await ungzB64(bk.gz); }catch(e){ alert('That backup could not be read.'); return; }
+  const blob=new Blob([json],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mikey-backup-'+date+'.json'; a.click(); URL.revokeObjectURL(a.href);
+}
+function renderBackups(){
+  const el=$('#backupList'); if(!el) return;
+  const rows=[...(state.dailyBackups||[])].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!rows.length){ el.innerHTML='<div class="hint">No automatic backups yet — the first one is taken the next time an editor or admin opens the app.</div>'; return; }
+  el.innerHTML=`<div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Taken</th><th class="noprint"></th></tr></thead><tbody>`+
+    rows.map(b=>`<tr><td><b>${fmtDate(b.date)}</b></td><td style="color:var(--muted)">${b.ts?new Date(b.ts).toLocaleString('en-US'):''}${b.by?(' · '+b.by):''}</td><td class="noprint"><button class="link" onclick="downloadDailyBackup('${b.date}')">Download</button>${can('setup')?` · <button class="link" onclick="restoreDailyBackup('${b.date}')">Restore</button>`:''}</td></tr>`).join('')+
+    `</tbody></table></div>`;
+}
+let editingUserId=null;
+function renderUsers(){
+  const st=$('#authState'); const mg=$('#userMgmt'); if(!st) return;
+  if(!authOn()){
+    st.innerHTML=`<div class="note">Login is currently <b>off</b> — anyone with the sync link has full access. Turn it on to create accounts and assign roles.</div><div class="row-actions" style="margin-top:10px"><button class="btn" id="enableLogin">Enable login</button></div>`;
+    if(mg) mg.style.display='none';
+    const eb=$('#enableLogin'); if(eb) eb.onclick=enableLogin; return;
+  }
+  st.innerHTML=`<div class="note" style="background:#eaf4ee;border-color:#bcdcc7"><b>Login is on.</b> ${state.auth.users.length} user(s) — each signs in with their name and PIN.</div><div class="row-actions" style="margin-top:10px"><button class="btn gray" id="disableLogin">Turn login off</button></div>`;
+  if(mg) mg.style.display='';
+  const db=$('#disableLogin'); if(db) db.onclick=disableLogin;
+  const rows=[...state.auth.users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${u.name||''}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${ROLE_LABEL[u.role]||u.role}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
+}
+async function enableLogin(){
+  if(!requireCap('users'))return;
+  const name=prompt('Create the first ADMIN account.\n\nAdmin name:',state.settings.signer||''); if(name===null)return; if(!name.trim()){ alert('Enter a name.'); return; }
+  const pin=prompt('Set a PIN for '+name.trim()+' (4+ digits) — you’ll use it to sign in:'); if(pin===null)return; if((pin||'').length<4){ alert('PIN must be at least 4 digits.'); return; }
+  const u={id:uid(),name:name.trim(),role:'admin',pinHash:await hashPin(pin)};
+  state.auth.users=[u]; state.auth.enabled=true;
+  SESSION={userId:u.id,name:u.name,role:'admin'}; saveSession();
+  save('Enabled user login'); applyPermissions(); refreshAll();
+  flash('Login enabled — you’re signed in as Admin.');
+}
+function disableLogin(){
+  if(!requireCap('users'))return;
+  if(!confirm('Turn login OFF? Everyone with the sync link gets full access again. Your user list is kept.'))return;
+  state.auth.enabled=false; clearSession(); save('Disabled user login'); applyPermissions(); refreshAll(); flash('Login turned off.');
+}
+async function userSave(){
+  if(!requireCap('users'))return;
+  const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||'';
+  if(!name){ alert('Enter a name.'); return; }
+  if(editingUserId){
+    const u=state.auth.users.find(x=>x.id===editingUserId); if(!u)return;
+    if(u.role==='admin' && role!=='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t change the last admin’s role — add another admin first.'); return; }
+    u.name=name; u.role=role;
+    if(pin){ if(pin.length<4){alert('PIN must be at least 4 digits.');return;} u.pinHash=await hashPin(pin); }
+    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; saveSession(); }
+    cancelUser(); save('Updated a user'); applyPermissions(); refreshAll(); flash('User updated.');
+  } else {
+    if(pin.length<4){ alert('PIN must be at least 4 digits.'); return; }
+    state.auth.users.push({id:uid(),name,role,pinHash:await hashPin(pin)});
+    cancelUser(); save('Added a user'); refreshAll(); flash('User added.');
+  }
+}
+function editUser(id){
+  if(!requireCap('users'))return;
+  const u=state.auth.users.find(x=>x.id===id); if(!u)return;
+  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value='';
+  $('#u_pin').placeholder='Leave blank to keep current PIN';
+  $('#userFormTitle').textContent='Edit '+(u.name||'user'); $('#userCancel').style.display='inline-block';
+  switchView('data'); $('#u_name').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
+function deleteUser(id){
+  if(!requireCap('users'))return;
+  const u=state.auth.users.find(x=>x.id===id); if(!u)return;
+  if(u.role==='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t delete the last admin.'); return; }
+  if(!confirm('Delete user '+(u.name||'')+'?'))return;
+  const wasSelf=SESSION&&SESSION.userId===id;
+  state.auth.users=state.auth.users.filter(x=>x.id!==id);
+  save('Deleted a user');
+  if(wasSelf){ clearSession(); if(authOn()){ showLogin(); return; } }
+  applyPermissions(); refreshAll(); flash('User deleted.');
+}
 
 function setSync(status){
   const dot=document.getElementById('syncDot'), txt=document.getElementById('syncTxt');
@@ -676,12 +887,12 @@ async function cloudLoad(){
 let saveTimer=null, saving=false, pending=false;
 let lastSnap=null; const HIST_MAX=25;
 // data-only snapshot (excludes the history log itself, so snapshots never nest)
-function dataOnly(){ const c=Object.assign({},state); delete c.history; return JSON.stringify(c); }
+function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; return JSON.stringify(c); }
 function save(label,ref){
   if(!state.history) state.history=[];
   // record the just-completed action, storing the PRE-action state for rewind
   if(lastSnap!==null && label!==false){
-    state.history.push({id:uid(), ts:Date.now(), label:label||'Change saved', snap:lastSnap, ref:ref||null});
+    state.history.push({id:uid(), ts:Date.now(), label:label||'Change saved', snap:lastSnap, ref:ref||null, by:(authOn()&&SESSION)?SESSION.name:null});
     if(state.history.length>HIST_MAX) state.history.shift();
   }
   lastSnap=dataOnly();
@@ -696,6 +907,7 @@ function persist(){
 function rewindTo(id){
   const hist=state.history||[]; const i=hist.findIndex(h=>h.id===id);
   if(i<0) return;
+  if(!requireCap('delete'))return;
   const ans=prompt('Rewind to before "'+hist[i].label+'"?\n\nThis undoes that change and everything done after it — it cannot itself be undone.\n\nType REWIND to confirm:');
   if(ans===null) return;
   if(ans.trim().toUpperCase()!=='REWIND'){ flash('Rewind cancelled — you must type REWIND to confirm.'); return; }
@@ -727,7 +939,8 @@ function renderActivity(){
   el.innerHTML=hist.map(h=>{
     const isBt=h.ref&&h.ref.type==='bottling'&&(state.bottlings||[]).some(b=>b.id===h.ref.id);
     const lbl=isBt?`<button class="link" style="text-align:left" onclick="openBottlingDetail('${h.ref.id}')">${h.label}</button>`:h.label;
-    return `<tr><td style="white-space:nowrap;color:var(--muted)">${relTime(h.ts)}</td><td>${lbl}</td><td class="num noprint"><button class="rewind" onclick="rewindTo('${h.id}')">↶ Rewind</button></td></tr>`;
+    const who=h.by?`<span style="color:var(--muted);font-size:11px"> · ${h.by}</span>`:'';
+    return `<tr><td style="white-space:nowrap;color:var(--muted)">${relTime(h.ts)}</td><td>${lbl}${who}</td><td class="num noprint">${can('delete')?`<button class="rewind" onclick="rewindTo('${h.id}')">↶ Rewind</button>`:''}</td></tr>`;
   }).join('');
 }
 async function cloudSave(silent){
@@ -818,6 +1031,7 @@ function showTypeNote(){ const t=TXBYID[$('#f_type').value]; $('#typeNote').text
 function readForm(){ const wg=+$('#f_wg').value,proof=+$('#f_proof').value; return {date:$('#f_date').value,type:$('#f_type').value,spirit:$('#f_spirit').value,wg,proof,pg:pgCalc(wg,proof),ref:$('#f_ref').value.trim(),notes:$('#f_notes').value.trim()}; }
 function validEntry(d){ if(!d.date){alert('Please choose a date.');return false;} if(!(d.wg>0)){alert('Enter wine gallons greater than zero.');return false;} if(!(d.proof>0)){alert('Enter a proof greater than zero.');return false;} return true; }
 function saveEntryForm(again){
+  if(!requireCap('write'))return;
   const d=readForm(); if(!validEntry(d))return;
   const was=!!editingId; const tl=(TXBYID[d.type]&&TXBYID[d.type].label)||'entry';
   if(editingId){const i=state.entries.findIndex(e=>e.id===editingId);if(i>=0)state.entries[i]={...state.entries[i],...d};editingId=null;$('#cancelEdit').style.display='none';$('#entryTitle').textContent='New Entry';}
@@ -827,14 +1041,14 @@ function saveEntryForm(again){
   else switchView('ledger');
   flash('Entry saved.');
 }
-function editEntry(id){const e=state.entries.find(x=>x.id===id);if(!e)return;editingId=id;switchView('entry');$('#f_date').value=e.date;$('#f_account').value=TXBYID[e.type].account;populateTypes();$('#f_type').value=e.type;$('#f_spirit').value=e.spirit;$('#f_wg').value=e.wg;$('#f_proof').value=e.proof;$('#f_ref').value=e.ref||'';$('#f_notes').value=e.notes||'';updatePG();showTypeNote();$('#entryTitle').textContent='Edit Entry';$('#cancelEdit').style.display='inline-block';}
-function deleteEntry(id){if(!confirm('Delete this entry?'))return;state.entries=state.entries.filter(e=>e.id!==id);save('Deleted a ledger entry');refreshAll();}
+function editEntry(id){if(!requireCap('write'))return;const e=state.entries.find(x=>x.id===id);if(!e)return;editingId=id;switchView('entry');$('#f_date').value=e.date;$('#f_account').value=TXBYID[e.type].account;populateTypes();$('#f_type').value=e.type;$('#f_spirit').value=e.spirit;$('#f_wg').value=e.wg;$('#f_proof').value=e.proof;$('#f_ref').value=e.ref||'';$('#f_notes').value=e.notes||'';updatePG();showTypeNote();$('#entryTitle').textContent='Edit Entry';$('#cancelEdit').style.display='inline-block';}
+function deleteEntry(id){if(!requireCap('delete'))return;if(!confirm('Delete this entry?'))return;state.entries=state.entries.filter(e=>e.id!==id);save('Deleted a ledger entry');refreshAll();}
 
 /* ================= Ledger ================= */
 function renderLedger(){
   const q=($('#ledgerSearch').value||'').toLowerCase(),acc=$('#ledgerAccount').value,yr=$('#ledgerYear').value;
   let rows=[...state.entries].sort((a,b)=>b.date.localeCompare(a.date)).filter(e=>{const t=TXBYID[e.type];if(!t)return false;if(acc&&t.account!==acc)return false;if(yr&&String(yearOf(e.date))!==yr)return false;if(q){const h=(e.spirit+' '+t.label+' '+(e.ref||'')+' '+(e.notes||'')).toLowerCase();if(!h.includes(q))return false;}return true;});
-  $('#ledgerBody').innerHTML=rows.map(e=>{const t=TXBYID[e.type];return `<tr><td>${fmtDate(e.date)}</td><td>${accPill(t.account)}</td><td>${t.label}${t.taxable?' <span class="pill tax">tax</span>':''}</td><td>${e.spirit}</td><td class="num">${numf(e.wg,2)}</td><td class="num">${numf(e.proof,1)}</td><td class="num"><b>${numf(e.pg)}</b></td><td>${e.ref||''}</td><td class="noprint"><button class="link" onclick="editEntry('${e.id}')">Edit</button> · <button class="del" onclick="deleteEntry('${e.id}')">Del</button></td></tr>`;}).join('');
+  $('#ledgerBody').innerHTML=rows.map(e=>{const t=TXBYID[e.type];return `<tr><td>${fmtDate(e.date)}</td><td>${accPill(t.account)}</td><td>${t.label}${t.taxable?' <span class="pill tax">tax</span>':''}</td><td>${e.spirit}</td><td class="num">${numf(e.wg,2)}</td><td class="num">${numf(e.proof,1)}</td><td class="num"><b>${numf(e.pg)}</b></td><td>${e.ref||''}</td><td class="noprint">${[can('write')?`<button class="link" onclick="editEntry('${e.id}')">Edit</button>`:'',can('delete')?`<button class="del" onclick="deleteEntry('${e.id}')">Del</button>`:''].filter(Boolean).join(' · ')}</td></tr>`;}).join('');
   $('#ledgerEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">📒</div>No matching entries.</div>`;
 }
 
@@ -965,7 +1179,7 @@ function kyMonthlyReport(){
       <div><label class="fld">Cases sold</label><input type="number" id="ky_cases" step="1" min="0" value="${rec.cases!==''?rec.cases:''}" placeholder="0"></div>
       <div><label class="fld">Gross wholesale receipts ($)</label><input type="number" id="ky_sales" step="0.01" min="0" value="${rec.sales!==''?rec.sales:''}" placeholder="0.00"></div>
     </div>
-    <div class="row-actions" style="margin:12px 0"><button class="btn ky sm" onclick="kySaveMonthly()">Save &amp; Calculate</button></div>
+    <div class="row-actions cap-write" style="margin:12px 0"><button class="btn ky sm" onclick="kySaveMonthly()">Save &amp; Calculate</button></div>
     <h4>Tax computation</h4>
     <table><tbody>
       <tr><td>Excise tax — ${numf(rec.gallons||0,2)} gal × ${money(s.kyExcise)}/gal</td><td class="num">${money(c.excise)}</td></tr>
@@ -978,6 +1192,7 @@ function kyMonthlyReport(){
 }
 function kyUseSuggest(){ const ym=kyMonthKey(); $('#ky_gallons').value=kySuggestGallons(ym); }
 function kySaveMonthly(){
+  if(!requireCap('write'))return;
   const ym=kyMonthKey();
   state.ky.monthly[ym]={gallons:$('#ky_gallons').value===''?'':+$('#ky_gallons').value,cases:$('#ky_cases').value===''?'':+$('#ky_cases').value,sales:$('#ky_sales').value===''?'':+$('#ky_sales').value};
   save('Saved a Kentucky monthly return'); renderKy(); renderDashboard(); flash('Kentucky return saved.');
@@ -995,7 +1210,7 @@ function kyBarrelReport(){
       <div><label class="fld">Assessed taxable value on Jan 1 ($)</label><input type="number" id="kb_value" step="0.01" min="0" value="${rec.value!==''?rec.value:''}" placeholder="0.00"></div>
       <div><label class="fld">Combined tax rate ($ per $100 of value)</label><input type="number" id="kb_rate" step="0.0001" min="0" value="${rec.rate!==''?rec.rate:''}" placeholder="e.g. 0.85"></div>
     </div>
-    <div class="row-actions" style="margin:12px 0"><button class="btn ky sm" onclick="kySaveBarrel()">Save &amp; Calculate</button></div>
+    <div class="row-actions cap-write" style="margin:12px 0"><button class="btn ky sm" onclick="kySaveBarrel()">Save &amp; Calculate</button></div>
     <h4>Tax computation</h4>
     <table><tbody>
       <tr><td>Full barrel tax — ${money(value)} × ${numf(rate,4)} / $100</td><td class="num">${money(base)}</td></tr>
@@ -1007,7 +1222,7 @@ function kyBarrelReport(){
     <div class="tablewrap" style="margin-top:10px;max-width:320px"><table><thead><tr><th>Assessment year</th><th class="num">% owed</th></tr></thead><tbody>${scheduleRows}</tbody></table></div></details>
     <div class="disclaimer">Barrel-tax rates are set locally and vary by county, city, school, and fire district — enter your combined rate per $100 of assessed value. This worksheet applies the statewide HB 5 phase-out percentage to your full computed tax. Assessment, valuation, and filing are handled through your county PVA and the Kentucky DOR; confirm your value, rate, and any available credits with them.</div>`;
 }
-function kySaveBarrel(){ const y=+$('#kyYear').value; state.ky.barrel[y]={value:$('#kb_value').value===''?'':+$('#kb_value').value,rate:$('#kb_rate').value===''?'':+$('#kb_rate').value}; save('Saved KY barrel-tax worksheet'); renderKy(); flash('Barrel-tax worksheet saved.'); }
+function kySaveBarrel(){ if(!requireCap('write'))return; const y=+$('#kyYear').value; state.ky.barrel[y]={value:$('#kb_value').value===''?'':+$('#kb_value').value,rate:$('#kb_rate').value===''?'':+$('#kb_rate').value}; save('Saved KY barrel-tax worksheet'); renderKy(); flash('Barrel-tax worksheet saved.'); }
 
 /* ---- Form 73A525 from Square ---- */
 let sqLast=null;
@@ -1026,6 +1241,7 @@ async function sqStatus(){
   }catch(e){ el.textContent='Could not reach the Square status endpoint.'; }
 }
 async function sqSetup(){
+  if(!requireCap('setup'))return;
   if(!confirm('Set up the TTB Bottle Size attribute in Square and tag your bottle items (750/375)? This adds a tag to bottle products in your Square catalog — it does not change prices, names, or anything else.')) return;
   const el=$('#sqStatus'); el.textContent='Setting up bottle tags in Square…'; $('#sqSetup').disabled=true;
   try{
@@ -1041,6 +1257,7 @@ async function sqSetup(){
   }catch(e){ el.textContent='Setup failed to reach Square.'; $('#sqSetup').disabled=false; }
 }
 async function sqRun(){
+  if(!requireCap('reports'))return;
   const ym=$('#sqMonth').value; if(!ym){ alert('Choose a reporting month.'); return; }
   const [y,m]=ym.split('-').map(Number);
   $('#sqOut').innerHTML='<div class="empty">Pulling Square sales for '+ym+'…</div>'; $('#sqCsv').style.display='none'; $('#sqPrint').style.display='none';
@@ -1129,6 +1346,7 @@ async function stxStatus(){
   }catch(e){ el.textContent='Could not reach the Square status endpoint.'; }
 }
 async function stxRun(){
+  if(!requireCap('reports'))return;
   const ym=$('#stxMonth').value; if(!ym){ alert('Choose a reporting month.'); return; }
   const [y,m]=ym.split('-').map(Number);
   $('#stxOut').innerHTML='<div class="empty">Pulling Square sales for '+ym+'…</div>'; $('#stxCsv').style.display='none'; $('#stxPrint').style.display='none';
@@ -1175,18 +1393,19 @@ function stxCsv(){
 
 /* ================= Setup / sync / data ================= */
 function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
-function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
+function saveSettings(){if(!requireCap('setup'))return;const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
 function copyLink(){ const v=$('#syncLink').value; navigator.clipboard?.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); }
-function joinWorkspace(){ const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
+function joinWorkspace(){ if(!requireCap('setup'))return; const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
 function exportJson(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);}
 function exportCsv(){const head=['Date','Account','Transaction','Spirit','WineGallons','Proof','ProofGallons','TaxDetermined','Reference','Notes'];const rows=state.entries.map(e=>{const t=TXBYID[e.type];return [e.date,t.account,t.label,e.spirit,e.wg,e.proof,e.pg,t.taxable?'YES':'',e.ref||'',e.notes||''].map(csv).join(',');});const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-ledger-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);}
 const csv=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-function importJson(file){const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.entries)throw 0;if(!confirm('Restore will replace the data in this workspace. Continue?'))return;state=normalize(p);save('Restored a backup file');loadSettingsForm();refreshAll();flash('Backup restored — '+state.entries.length+' entries.');}catch(e){alert('That file could not be read as a valid backup.');}};r.readAsText(file);}
-function clearAll(){if(!confirm('Erase ALL data in this workspace? Export a backup first if unsure.'))return;state=freshState();save('Erased the entire workspace');loadSettingsForm();refreshAll();flash('Workspace erased.');}
+function importJson(file){if(!requireCap('setup'))return;const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.entries)throw 0;if(!confirm('Restore will replace the data in this workspace. Continue?'))return;state=normalize(p);save('Restored a backup file');loadSettingsForm();refreshAll();flash('Backup restored — '+state.entries.length+' entries.');}catch(e){alert('That file could not be read as a valid backup.');}};r.readAsText(file);}
+function clearAll(){if(!requireCap('setup'))return;if(!confirm('Erase ALL data in this workspace? Export a backup first if unsure.'))return;state=freshState();save('Erased the entire workspace');loadSettingsForm();refreshAll();flash('Workspace erased.');}
 
 /* ================= Sample ================= */
 function loadSample(){
+  if(!requireCap('setup'))return;
   if(state.entries.length&&!confirm('Add sample data on top of existing entries?'))return;
   const y=new Date().getFullYear();const S=(m,d)=>`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   const add=(date,type,spirit,wg,proof,ref)=>state.entries.push({id:uid(),date,type,spirit,wg,proof,pg:pgCalc(wg,proof),ref,notes:''});
@@ -1214,11 +1433,12 @@ function loadSample(){
 function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();dataStatus();syncUI();}
+function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
 async function fedPdf(){
+  if(!requireCap('reports'))return;
   const k=$('#rptKind').value;
   if(k==='excise') return fillExcise();
   if(k==='storage') return fillStorage();
@@ -1364,6 +1584,7 @@ function updateBarrelPG(){ const q=Math.max(1,+$('#b_qty').value||1); $('#b_pg')
 function readBarrel(){ return {barrelNo:$('#b_no').value.trim(),spirit:$('#b_spirit').value,fillDate:$('#b_fill').value,distillDate:$('#b_distill').value,mashbill:$('#b_mash').value.trim(),qty:Math.max(1,+$('#b_qty').value||1),entryProof:+$('#b_proof').value||0,fillWG:+$('#b_wg').value||0,size:$('#b_size').value,char:$('#b_char').value,cooperage:$('#b_coop').value.trim(),warehouse:$('#b_wh').value.trim(),location:$('#b_loc').value.trim(),origin:$('#b_origin').value,notes:$('#b_notes').value.trim(),sourceDSP:$('#b_srcDsp').value.trim(),sourcePermit:$('#b_srcPermit').value.trim(),tibInDate:$('#b_tibDate').value}; }
 function validBarrel(d){ if(!d.fillDate){alert('Choose a fill date.');return false;} if(!(d.fillWG>0)){alert('Enter fill wine gallons greater than zero.');return false;} if(!(d.entryProof>0)){alert('Enter the entry proof.');return false;} return true; }
 function saveBarrelForm(again){
+  if(!requireCap('write'))return;
   const d=readBarrel(); if(!validBarrel(d))return;
   const wasB=!!editingBarrelId; const bl=(d.barrelNo?('barrel '+d.barrelNo):((d.qty>1?d.qty+' ':'')+(d.spirit||'barrel')));
   if(editingBarrelId){ const i=state.barrels.findIndex(b=>b.id===editingBarrelId); if(i>=0) state.barrels[i]=Object.assign(state.barrels[i],d); cancelBarrelEdit(true); }
@@ -1373,7 +1594,7 @@ function saveBarrelForm(again){
   flash('Barrel saved.');
 }
 function cancelBarrelEdit(silent){ editingBarrelId=null; $('#cancelBarrel').style.display='none'; $('#barrelFormTitle').textContent='Add a Barrel'; $('#saveBarrel').textContent='Save Barrel'; if(!silent){['b_no','b_wg','b_notes','b_loc','b_coop','b_srcDsp','b_srcPermit'].forEach(i=>$('#'+i).value='');updateBarrelPG();} }
-function editBarrel(id){
+function editBarrel(id){ if(!requireCap('write'))return;
   const b=state.barrels.find(x=>x.id===id); if(!b)return; editingBarrelId=id; switchView('barrels');
   $('#b_no').value=b.barrelNo||''; $('#b_spirit').value=b.spirit||'Bourbon'; $('#b_fill').value=b.fillDate||''; $('#b_distill').value=b.distillDate||''; $('#b_mash').value=b.mashbill||''; $('#b_qty').value=b.qty||1;
   $('#b_proof').value=b.entryProof||''; $('#b_wg').value=b.fillWG||''; $('#b_size').value=b.size||BARREL_SIZES[0];
@@ -1383,10 +1604,10 @@ function editBarrel(id){
   toggleTibIn(); updateBarrelPG(); $('#barrelFormTitle').textContent='Edit Barrel'; $('#saveBarrel').textContent='Update Barrel'; $('#cancelBarrel').style.display='inline-block';
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function deleteBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!confirm('Delete this barrel record?'))return; state.barrels=state.barrels.filter(b=>b.id!==id); save('Deleted a barrel record'+(b&&b.spirit?(' — '+b.spirit):'')); refreshAll(); }
-function dumpBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; if(!confirm(`Mark barrel ${b.barrelNo||''} as dumped today?`))return; b.status='Dumped'; b.dumpDate=new Date().toISOString().slice(0,10); save('Marked a barrel dumped'); refreshAll(); flash('Barrel marked dumped.'); }
-function tibOutBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save('Transferred a barrel out in bond'+(dest.trim()?(' to '+dest.trim()):'')); refreshAll(); flash('Barrel transferred out (TIB).'); }
-function reactivateBarrel(id){ const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save('Reactivated a barrel'); refreshAll(); }
+function deleteBarrel(id){ if(!requireCap('delete'))return; const b=state.barrels.find(x=>x.id===id); if(!confirm('Delete this barrel record?'))return; state.barrels=state.barrels.filter(b=>b.id!==id); save('Deleted a barrel record'+(b&&b.spirit?(' — '+b.spirit):'')); refreshAll(); }
+function dumpBarrel(id){ if(!requireCap('write'))return; const b=state.barrels.find(x=>x.id===id); if(!b)return; if(!confirm(`Mark barrel ${b.barrelNo||''} as dumped today?`))return; b.status='Dumped'; b.dumpDate=new Date().toISOString().slice(0,10); save('Marked a barrel dumped'); refreshAll(); flash('Barrel marked dumped.'); }
+function tibOutBarrel(id){ if(!requireCap('write'))return; const b=state.barrels.find(x=>x.id===id); if(!b)return; const dest=prompt('Transfer in bond OUT — destination DSP name:',''); if(dest===null)return; b.status='Transferred out (TIB)'; b.destDSP=dest.trim(); b.tibOutDate=new Date().toISOString().slice(0,10); save('Transferred a barrel out in bond'+(dest.trim()?(' to '+dest.trim()):'')); refreshAll(); flash('Barrel transferred out (TIB).'); }
+function reactivateBarrel(id){ if(!requireCap('write'))return; const b=state.barrels.find(x=>x.id===id); if(!b)return; b.status='Aging'; delete b.dumpDate; delete b.tibOutDate; delete b.destDSP; save('Reactivated a barrel'); refreshAll(); }
 function barrelStatusPill(s){ const m={'Aging':'aging','Dumped':'dumped','Transferred out (TIB)':'tibout','Loss':'loss'}; return `<span class="pill ${m[s]||'aging'}">${s}</span>`; }
 const SORTVAL={barrelNo:b=>(b.barrelNo||'').toLowerCase(),spirit:b=>(b.spirit||'').toLowerCase(),fillDate:b=>(b.distillDate||b.fillDate||''),age:b=>barrelAge(b),entryProof:b=>+b.entryProof||0,pg:b=>barrelPG(b),bottles:b=>bottlesForBarrel(b),warehouse:b=>((b.warehouse||'')+' '+(b.location||'')).toLowerCase(),origin:b=>(b.origin||''),status:b=>(b.status||'')};
 function bottlesForBarrel(b){ if(!b||!b.dumpBottlingId) return 0; const bt=(state.bottlings||[]).find(x=>x.id===b.dumpBottlingId); return bt?(+bt.bottles||0):0; }
@@ -1414,9 +1635,11 @@ function renderBarrels(){
   rows=sortBarrels(rows); updateBarrelHeadArrows();
   $('#barrelBody').innerHTML=rows.map(b=>{
     const origin=b.origin==='Received in bond (TIB)'?`<span class="pill tibin">TIB in</span>`:'—';
-    const acts=b.status==='Aging'
-      ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
-      : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
+    const ap=[];
+    if(b.status==='Aging'){ if(can('write')) ap.push(`<button class="link" onclick="editBarrel('${b.id}')">Edit</button>`,`<button class="link" onclick="dumpBarrel('${b.id}')">Dump</button>`,`<button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button>`); }
+    else if(can('write')) ap.push(`<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button>`);
+    if(can('delete')) ap.push(`<button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`);
+    const acts=ap.join(' · ');
     const cnt=barrelCount(b);
     const bt=b.dumpBottlingId?(state.bottlings||[]).find(x=>x.id===b.dumpBottlingId):null;
     const ageCell=b.status==='Aging'?fmtAge(barrelAge(b)):(b.status==='Dumped'&&b.dumpDate?`${fmtAge(barrelAge(b,b.dumpDate))}<div style="font-size:11px;color:var(--muted)">at dump</div>`:'—');
@@ -1463,6 +1686,7 @@ function renderTibLines(){
 function updateTibSummary(){ const nb=tibRows.reduce((s,r)=>s+(+r.qty||0),0); const pg=round1(tibRows.reduce((s,r)=>s+(+r.pg||0),0)); $('#tibSummary').textContent=nb?`${nb} barrels · ${numf(pg)} PG to receive`:''; }
 function tibAddLine(){ tibRows.push(tibNewRow()); renderTibLines(); }
 function tibReceive(){
+  if(!requireCap('write'))return;
   const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value;
   const valid=tibRows.filter(r=>(+r.qty>0)&&(+r.pg>0));
   if(!valid.length){ alert('Add at least one line with proof gallons and a barrel count.'); return; }
@@ -1474,6 +1698,7 @@ function tibReceive(){
 }
 function normDate(s){ s=(s||'').trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s; const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(m){let y=m[3];if(y.length===2)y='20'+y;return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;} return s; }
 function tibBulkImport(){
+  if(!requireCap('write'))return;
   const from=$('#tib_from').value.trim(), permit=$('#tib_permit').value.trim(), date=$('#tib_date').value||new Date().toISOString().slice(0,10);
   if(!from){ alert('Enter the source DSP (who you received these barrels from) before importing.'); $('#tib_from').focus(); return; }
   const txt=($('#tibBulk').value||'').trim(); if(!txt){ alert('Paste some rows first.'); return; }
@@ -1512,6 +1737,7 @@ function renderBottleSelect(){ const recs=agingRecords(); const cur=$('#bo_selec
 function onBottleSelect(){ const b=state.barrels.find(x=>x.id===$('#bo_select').value); if(b){ $('#bo_class').value=(b.spiritType?b.spiritType+' / ':'')+(b.spirit||''); $('#bo_distill').value=b.distillDate||''; if(!$('#bo_proof').value)$('#bo_proof').value=b.entryProof||''; $('#bo_qty').max=barrelCount(b); if(+$('#bo_qty').value>barrelCount(b))$('#bo_qty').value=barrelCount(b); } else { $('#bo_class').value=''; $('#bo_distill').value=''; } updateBottleCalc(); }
 function updateBottleCalc(){ const wg=bottlesToWG($('#bo_bottles').value); const pg=round1(wg*(+$('#bo_proof').value||0)/100); $('#bo_wg').textContent=numf(wg,2)+' WG'; $('#bo_pg').textContent=numf(pg)+' PG'; }
 function doBottle(){
+  if(!requireCap('write'))return;
   const b=state.barrels.find(x=>x.id===$('#bo_select').value);
   if(!b){ alert('Choose a barrel or lot to bottle.'); return; }
   const dumpQty=Math.max(1,Math.min(barrelCount(b),+$('#bo_qty').value||1));
@@ -1570,25 +1796,25 @@ function renderFinished(){
   ].join('');
   const q=($('#fgSearch').value||'').toLowerCase();
   const rows=all.filter(f=>!q||`${f.sku} ${f.spirit}`.toLowerCase().includes(q)).sort((a,b)=>a.sku.localeCompare(b.sku));
-  $('#fgBody').innerHTML=rows.map(f=>`<tr><td><b>${f.sku}</b></td><td>${f.spirit||''}</td><td>${f.distillDate?fmtDate(f.distillDate):'—'}</td><td class="num">${numf(f.proof,1)}</td><td class="num">${fgCases(f)}</td><td class="num">${fgSingles(f)}</td><td class="num">${(+f.bottles||0).toLocaleString()}</td><td class="num">${numf(fgPG(f))}</td><td class="noprint"><button class="link" onclick="editFgSku('${f.id}')">Rename</button> · <button class="del" onclick="deleteFg('${f.id}')">Del</button></td></tr>`).join('');
+  $('#fgBody').innerHTML=rows.map(f=>{const a=[];if(can('write'))a.push(`<button class="link" onclick="editFgSku('${f.id}')">Rename</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteFg('${f.id}')">Del</button>`);return `<tr><td><b>${f.sku}</b></td><td>${f.spirit||''}</td><td>${f.distillDate?fmtDate(f.distillDate):'—'}</td><td class="num">${numf(f.proof,1)}</td><td class="num">${fgCases(f)}</td><td class="num">${fgSingles(f)}</td><td class="num">${(+f.bottles||0).toLocaleString()}</td><td class="num">${numf(fgPG(f))}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
   $('#fgEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No finished goods in bond yet. Bottle a barrel with Gift Shop unchecked to create some.</div>`;
 }
-function editFgSku(id){ const f=state.finishedGoods.find(x=>x.id===id); if(!f)return; const v=prompt('SKU name:',f.sku); if(v===null)return; f.sku=(v.trim()||f.sku); save('Renamed a finished-goods SKU'); renderFinished(); }
-function deleteFg(id){ if(!confirm('Delete this finished-goods line? Use only to fix an error — it does not record a removal.'))return; state.finishedGoods=state.finishedGoods.filter(x=>x.id!==id); save('Deleted a finished-goods line'); refreshAll(); }
+function editFgSku(id){ if(!requireCap('write'))return; const f=state.finishedGoods.find(x=>x.id===id); if(!f)return; const v=prompt('SKU name:',f.sku); if(v===null)return; f.sku=(v.trim()||f.sku); save('Renamed a finished-goods SKU'); renderFinished(); }
+function deleteFg(id){ if(!requireCap('delete'))return; if(!confirm('Delete this finished-goods line? Use only to fix an error — it does not record a removal.'))return; state.finishedGoods=state.finishedGoods.filter(x=>x.id!==id); save('Deleted a finished-goods line'); refreshAll(); }
 function exportFgCsv(){ const head=['SKU','Spirit','DistillationDate','Proof','Cases','Singles','Bottles','ProofGallons']; const rows=(state.finishedGoods||[]).filter(f=>+f.bottles>0).map(f=>[f.sku,f.spirit,f.distillDate,f.proof,fgCases(f),fgSingles(f),f.bottles,fgPG(f)].map(csv).join(',')); const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='finished-goods.csv';a.click();URL.revokeObjectURL(a.href); }
 
 /* ---- Customers ---- */
 let editingCustId=null;
 function readCust(){ return {name:$('#c_name').value.trim(),contact:$('#c_contact').value.trim(),email:$('#c_email').value.trim(),phone:$('#c_phone').value.trim(),terms:$('#c_terms').value.trim(),notes:$('#c_notes').value.trim()}; }
-function saveCust(){ const d=readCust(); if(!d.name){alert('Enter a customer name.');return;} if(editingCustId){const i=state.customers.findIndex(c=>c.id===editingCustId);if(i>=0)state.customers[i]=Object.assign(state.customers[i],d);cancelCust();} else state.customers.push(Object.assign({id:uid(),qbId:null},d)); const cl=(d.name?(' — '+d.name):''); clearCust(); save('Saved a customer'+cl); refreshAll(); flash('Customer saved.'); }
+function saveCust(){ if(!requireCap('write'))return; const d=readCust(); if(!d.name){alert('Enter a customer name.');return;} if(editingCustId){const i=state.customers.findIndex(c=>c.id===editingCustId);if(i>=0)state.customers[i]=Object.assign(state.customers[i],d);cancelCust();} else state.customers.push(Object.assign({id:uid(),qbId:null},d)); const cl=(d.name?(' — '+d.name):''); clearCust(); save('Saved a customer'+cl); refreshAll(); flash('Customer saved.'); }
 function clearCust(){ ['c_name','c_contact','c_email','c_phone','c_terms','c_notes'].forEach(i=>$('#'+i).value=''); }
-function editCust(id){ const c=state.customers.find(x=>x.id===id); if(!c)return; editingCustId=id; $('#c_name').value=c.name||'';$('#c_contact').value=c.contact||'';$('#c_email').value=c.email||'';$('#c_phone').value=c.phone||'';$('#c_terms').value=c.terms||'';$('#c_notes').value=c.notes||''; $('#custFormTitle').textContent='Edit Customer'; $('#custCancel').style.display='inline-block'; switchView('customers'); window.scrollTo({top:0,behavior:'smooth'}); }
+function editCust(id){ if(!requireCap('write'))return; const c=state.customers.find(x=>x.id===id); if(!c)return; editingCustId=id; $('#c_name').value=c.name||'';$('#c_contact').value=c.contact||'';$('#c_email').value=c.email||'';$('#c_phone').value=c.phone||'';$('#c_terms').value=c.terms||'';$('#c_notes').value=c.notes||''; $('#custFormTitle').textContent='Edit Customer'; $('#custCancel').style.display='inline-block'; switchView('customers'); window.scrollTo({top:0,behavior:'smooth'}); }
 function cancelCust(){ editingCustId=null; clearCust(); $('#custCancel').style.display='none'; $('#custFormTitle').textContent='Add Customer'; }
-function deleteCust(id){ if(!confirm('Delete this customer?'))return; state.customers=state.customers.filter(x=>x.id!==id); save('Deleted a customer'); refreshAll(); }
+function deleteCust(id){ if(!requireCap('delete'))return; if(!confirm('Delete this customer?'))return; state.customers=state.customers.filter(x=>x.id!==id); save('Deleted a customer'); refreshAll(); }
 function renderCustomers(){
   const q=($('#custSearch').value||'').toLowerCase();
   const rows=[...state.customers].filter(c=>!q||`${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(q)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  $('#custBody').innerHTML=rows.map(c=>`<tr><td><b>${c.name||''}</b></td><td>${c.contact||''}</td><td>${c.email||''}</td><td>${c.phone||''}</td><td>${c.terms||''}</td><td>${c.qbId?`<span class="pill tax">linked</span>`:'—'}</td><td class="noprint"><button class="link" onclick="editCust('${c.id}')">Edit</button> · <button class="del" onclick="deleteCust('${c.id}')">Del</button></td></tr>`).join('');
+  $('#custBody').innerHTML=rows.map(c=>{const a=[];if(can('write'))a.push(`<button class="link" onclick="editCust('${c.id}')">Edit</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteCust('${c.id}')">Del</button>`);return `<tr><td><b>${c.name||''}</b></td><td>${c.contact||''}</td><td>${c.email||''}</td><td>${c.phone||''}</td><td>${c.terms||''}</td><td>${c.qbId?`<span class="pill tax">linked</span>`:'—'}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
   $('#custEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">👤</div>No customers yet. Add one above.</div>`;
 }
 
@@ -1622,6 +1848,7 @@ function findOrCreateCustomer(name){
   return c;
 }
 function orderCreate(){
+  if(!requireCap('write'))return;
   const cust=findOrCreateCustomer($('#o_customer').value);
   if(!cust){ alert('Enter a customer name.'); return; }
   const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
@@ -1641,7 +1868,7 @@ function orderCreate(){
   autoSyncOrder(oid);
   flash(`Order #${num} created — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
 }
-function deleteOrder(id){ const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
+function deleteOrder(id){ if(!requireCap('delete'))return; const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
   (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f)f.bottles=(+f.bottles||0)+(+l.bottles||0); });
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
   state.orders=state.orders.filter(x=>x.id!==id); save('Reversed order #'+o.num); refreshAll(); flash('Order #'+o.num+' reversed.'); }
@@ -1650,7 +1877,7 @@ function renderOrders(){
   const dl=$('#custList'); if(dl) dl.innerHTML=cs.map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}"></option>`).join('');
   renderOrderLines();
   const rows=[...state.orders].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||0)-(a.num||0));
-  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint">${o.qbSynced?'':`<button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button> · `}<button class="del" onclick="deleteOrder('${o.id}')">Reverse</button></td></tr>`).join('');
+  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint">${(!o.qbSynced&&can('write'))?`<button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button> · `:''}${can('delete')?`<button class="del" onclick="deleteOrder('${o.id}')">Reverse</button>`:''}</td></tr>`).join('');
   $('#orderEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">📦</div>No orders yet. Add a customer and some finished goods, then create one above.</div>`;
 }
 
@@ -1669,7 +1896,7 @@ function backfillGiftOrders(){
   });
   return n;
 }
-function runBackfillGift(){
+function runBackfillGift(){ if(!requireCap('write'))return;
   const n=backfillGiftOrders();
   if(!n){ flash('All gift-shop bottlings already have an order.'); return; }
   save('Backfilled '+n+' gift-shop order(s)'); refreshAll();
@@ -1677,10 +1904,10 @@ function runBackfillGift(){
 }
 function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   const rows=[...(state.bottlings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td><button class="link" onclick="openBottlingDetail('${r.id}')">${r.barrelNo||'view ›'}</button></td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="num">${r.lossPG!=null?numf(r.lossPG):'—'}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
+  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td><button class="link" onclick="openBottlingDetail('${r.id}')">${r.barrelNo||'view ›'}</button></td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="num">${r.lossPG!=null?numf(r.lossPG):'—'}</td><td class="noprint">${can('delete')?`<button class="del" onclick="deleteBottling('${r.id}')">Del</button>`:''}</td></tr>`).join('');
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
-function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
+function deleteBottling(id){ if(!requireCap('delete'))return; if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
 function openBottlingDetail(id){
   const b=(state.bottlings||[]).find(x=>x.id===id);
   if(!b){ flash('That bottling record was removed.'); return; }
@@ -1729,6 +1956,7 @@ function backfillBottlingLoss(){
   return fixed;
 }
 function recalcLosses(){
+  if(!requireCap('write'))return;
   const n=backfillBottlingLoss();
   if(!n){ flash('All bottlings already have dump losses recorded.'); return; }
   save('Recalculated dump losses on '+n+' bottling(s)'); renderBottling();
@@ -1753,6 +1981,7 @@ function planReconcileDumps(){
   return plan;
 }
 function reconcilePastDumps(){
+  if(!requireCap('write'))return;
   const plan=planReconcileDumps();
   if(!plan.length){ flash('Every past dump already has a barrel record.'); return; }
   if(!confirm(`Create a dumped-barrel record for ${plan.length} past bottling(s)?\n\nEach becomes a searchable barrel on the Barrels page (found by the code you assigned) and links to its bottling detail. This is a tracking trail only — it does NOT change any TTB report totals. Undo anytime from Recent Activity.`)) return;
@@ -1799,9 +2028,10 @@ async function qbRefresh(){
     else { el.innerHTML='Not connected yet.'+(d.error?` <span style="color:var(--red)">(${d.error})</span>`:''); $('#qbConnect').textContent='Connect QuickBooks'; $('#qbDisconnect').style.display='none'; }
   }catch(e){ el.textContent='Could not check QuickBooks status.'; }
 }
-function qbConnect(){ location.href='/api/qb/connect?ws='+encodeURIComponent(WS); }
-async function qbDisconnect(){ if(!confirm('Disconnect QuickBooks?'))return; try{ await fetch('/api/qb/disconnect?app=1'); }catch(e){} flash('QuickBooks disconnected.'); qbRefresh(); }
+function qbConnect(){ if(!requireCap('setup'))return; location.href='/api/qb/connect?ws='+encodeURIComponent(WS); }
+async function qbDisconnect(){ if(!requireCap('setup'))return; if(!confirm('Disconnect QuickBooks?'))return; try{ await fetch('/api/qb/disconnect?app=1'); }catch(e){} flash('QuickBooks disconnected.'); qbRefresh(); }
 async function sendOrderToQB(id,silent){
+  if(!can('write')){ if(!silent) flash('Your role can’t sync to QuickBooks.'); return; }
   const o=state.orders.find(x=>x.id===id); if(!o)return;
   if(location.protocol==='file:'){ if(!silent)alert('QuickBooks works only on the hosted site.'); return; }
   const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
@@ -1818,6 +2048,7 @@ async function sendOrderToQB(id,silent){
 // auto-post an order to QB right after creation (silent — leaves it pending if QB is down)
 function autoSyncOrder(id){ if(location.protocol==='file:')return; setTimeout(()=>sendOrderToQB(id,true),100); }
 async function syncAllPendingQB(){
+  if(!requireCap('write'))return;
   const pend=state.orders.filter(o=>!o.qbSynced); if(!pend.length){ flash('All orders already synced to QuickBooks.'); return; }
   if(!confirm('Send '+pend.length+' unsynced order(s) to QuickBooks now?')) return;
   for(const o of pend){ await sendOrderToQB(o.id,true); }
@@ -1851,6 +2082,7 @@ function wireOnce(){
   $('#stxPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
+  const us=$('#userSave'); if(us) us.onclick=userSave; const uc=$('#userCancel'); if(uc) uc.onclick=cancelUser;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
 }
 let wired=false;
@@ -1863,7 +2095,8 @@ async function boot(rejoin){
   if(!state.history) state.history=[]; lastSnap=dataOnly();
   if(!wired){ wireOnce(); wired=true; }
   updateUndoBtn();
-  loadSettingsForm(); refreshAll(); qbRefresh();
+  const proceed=gateBoot();
+  loadSettingsForm(); if(proceed){ refreshAll(); qbRefresh(); maybeDailyBackup(); }
   // show sync banner if brand-new empty workspace
   $('#syncBanner').style.display = (cloudAvailable && state.entries.length===0)?'flex':'none';
 }
