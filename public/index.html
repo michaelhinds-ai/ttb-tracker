@@ -243,6 +243,7 @@
       </select></div>
       <div id="periodQuarterWrap"><label class="fld">Quarter</label><select id="rptQuarter"></select></div>
       <div id="periodMonthWrap" style="display:none"><label class="fld">Month</label><input type="month" id="rptMonth"></div>
+      <button class="btn ghost sm noprint" id="fillFed">Fill official TTB form (PDF)</button>
       <button class="btn ghost sm" id="printRpt">Print / Save PDF</button>
     </div></div>
     <div class="card rpt" id="rptOut"></div>
@@ -408,8 +409,8 @@
       <div class="row-actions" style="margin-top:6px"><button class="btn" id="bo_do" style="background:#7a5a2b">Bottle</button></div>
     </div>
     <div class="card">
-      <h3>Bottling History</h3>
-      <div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Date</th><th>Barrel #</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Bottling History</h3><button class="btn ghost sm noprint" id="recalcLoss">Recalculate dump losses</button></div>
+      <div class="tablewrap" style="border:0;box-shadow:none;margin-top:10px"><table><thead><tr><th>Date</th><th>Barrel #</th><th>Spirit</th><th>Distilled</th><th class="num">Barrels</th><th class="num">Proof</th><th class="num">Bottles</th><th class="num">Wine Gal</th><th class="num">Bottled PG</th><th class="num">Loss PG</th><th class="noprint"></th></tr></thead><tbody id="bottlingBody"></tbody></table></div>
       <div id="bottlingEmpty"></div>
     </div>
   </section>
@@ -518,8 +519,11 @@
       <div class="grid g2">
         <div><label class="fld">DSP / Business Name</label><input type="text" id="s_name" placeholder="Your Distillery LLC"></div>
         <div><label class="fld">TTB Permit / Registry No.</label><input type="text" id="s_permit" placeholder="DSP-KY-XXXXX"></div>
-        <div><label class="fld">Street Address <span style="font-weight:400;color:var(--muted)">— for KY forms</span></label><input type="text" id="s_addr1" placeholder="717 E Market St"></div>
+        <div><label class="fld">Street Address <span style="font-weight:400;color:var(--muted)">— for forms</span></label><input type="text" id="s_addr1" placeholder="717 E Market St"></div>
         <div><label class="fld">City, State ZIP</label><input type="text" id="s_addr2" placeholder="Louisville, KY 40202"></div>
+        <div><label class="fld">EIN <span style="font-weight:400;color:var(--muted)">— for TTB forms</span></label><input type="text" id="s_ein" placeholder="84-3723909"></div>
+        <div><label class="fld">Signature Name</label><input type="text" id="s_signer" placeholder="Michael Hinds"></div>
+        <div><label class="fld">Signature Title</label><input type="text" id="s_title" placeholder="Owner"></div>
         <div><label class="fld">Federal Filing Frequency</label><select id="s_freq"><option value="quarterly">Quarterly</option><option value="semimonthly">Semi-monthly</option><option value="annual">Annual</option></select></div>
         <div><label class="fld">Reporting Year (default view)</label><input type="number" id="s_year" min="2018" max="2100" step="1"></div>
         <div><label class="fld">Bottles per Case</label><input type="number" id="s_bpc" min="1" step="1" placeholder="6"></div>
@@ -830,7 +834,12 @@ function opsReport(kind){
     const wdDump=sum(wd,x=>inMo(x)&&x.kind==='dump'), wdTib=sum(wd,x=>inMo(x)&&x.kind==='tibout');
     if(depTib>0){ inc.push({label:'Received in bond — barrel register',pg:depTib}); net+=depTib; }
     if(depMake>0){ inc.push({label:'Deposited in storage — barrel fills',pg:depMake}); net+=depMake; }
-    if(wdDump>0){ dec.push({label:'Dumped for bottling — barrel register',pg:wdDump}); net-=wdDump; }
+    if(wdDump>0){
+      const bottledMo=round1((state.bottlings||[]).filter(bt=>inMo({date:bt.date})).reduce((s,bt)=>s+(+bt.pg||0),0));
+      const procPG=round1(Math.min(wdDump,bottledMo)), lossPG=round1(wdDump-procPG);
+      dec.push({label:'Transferred to processing account (bottled)',pg:procPG}); net-=procPG;
+      if(lossPG>0){ dec.push({label:'Storage losses (angels’ share)',pg:lossPG}); net-=lossPG; }
+    }
     if(wdTib>0){ dec.push({label:'Transferred out in bond — barrel register',pg:wdTib}); net-=wdTib; }
   }
   net=round1(net);const closing=round1(opening+net);
@@ -1053,8 +1062,8 @@ function sqCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
-function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
+function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
 function copyLink(){ const v=$('#syncLink').value; navigator.clipboard?.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); }
 function joinWorkspace(){ const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
@@ -1097,6 +1106,126 @@ function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLe
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
+async function fedPdf(){
+  const k=$('#rptKind').value;
+  if(k==='excise') return fillExcise();
+  if(k==='storage') return fillStorage();
+  if(k==='processing') return fillProcessing();
+  alert('The official-form fill for the Production report is being built next.');
+}
+function stCol(b){ const s=((b.spiritType||'')+' '+(b.spirit||'')).toLowerCase();
+  if(/vodka/.test(s))return 'h'; if(/agave|tequila/.test(s))return 'k'; if(/\brum\b/.test(s))return 'f';
+  if(/brandy/.test(s))return 'd'; if(/\bgin\b/.test(s))return 'g'; return 'b'; }
+function monthBounds(y,m){ const ms=`${y}-${String(m).padStart(2,'0')}-01`; const me=`${m===12?y+1:y}-${String(m===12?1:m+1).padStart(2,'0')}-01`; return [ms,me]; }
+function storageForm(y,m){
+  const [ms,me]=monthBounds(y,m);
+  const cols=['b','c','d','e','f','g','h','i','j','k','l'];
+  const C={}; cols.forEach(c=>C[c]={open:0,dep:0,proc:0,loss:0,close:0});
+  // On-hand / deposits from the barrel register (entry proof gallons)
+  (state.barrels||[]).forEach(bl=>{ const pg=barrelPG(bl); if(!(pg>0))return; const col=stCol(bl); if(!C[col])return;
+    const tib=bl.origin==='Received in bond (TIB)';
+    const dep=tib?(bl.tibInDate||bl.fillDate||bl.distillDate):(bl.fillDate||bl.distillDate);
+    const wd=bl.status==='Dumped'?bl.dumpDate:(bl.status==='Transferred out (TIB)'?bl.tibOutDate:null);
+    if(dep&&dep<ms&&(!wd||wd>=ms))C[col].open+=pg;
+    if(dep&&dep>=ms&&dep<me)C[col].dep+=pg;
+    if(dep&&dep<me&&(!wd||wd>=me))C[col].close+=pg;
+  });
+  // Withdrawals from the month's dumps: bottled PG -> processing, (entry-bottled) -> storage loss
+  (state.bottlings||[]).filter(bt=>bt.date>=ms&&bt.date<me).forEach(bt=>{
+    let col=stCol({spirit:bt.spirit||''}); if(!C[col])col='b';
+    const bottled=+bt.pg||0; const dumped=(bt.dumpPG!=null?+bt.dumpPG:bottled);
+    C[col].proc+=bottled; C[col].loss+=Math.max(0,dumped-bottled);
+  });
+  const tot={open:0,dep:0,proc:0,loss:0,close:0}; cols.forEach(c=>['open','dep','proc','loss','close'].forEach(k=>tot[k]+=C[c][k]));
+  ['open','dep','proc','loss','close'].forEach(k=>{cols.forEach(c=>C[c][k]=round1(C[c][k]));tot[k]=round1(tot[k]);});
+  C['m']=tot; return C;
+}
+async function fillStorage(){
+  const ym=$('#rptMonth').value; if(!ym){ alert('Choose a month.'); return; }
+  const [y,m]=ym.split('-').map(Number);
+  try{ await ensurePdfLib(); }catch(e){ alert('Could not load the PDF library (need internet).'); return; }
+  let bytes; try{ bytes=await loadForm('/5110_11.pdf'); }catch(e){ alert('Add the blank form to your repo at public/5110_11.pdf and redeploy.'); return; }
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc=await PDFDocument.load(bytes); const pg=doc.getPages()[0]; const H=pg.getHeight();
+  const font=await doc.embedFont(StandardFonts.Helvetica); const col=rgb(0,0,0.5);
+  const put=(x,yTop,t,size=8)=>pg.drawText(String(t),{x,y:H-yTop,size,font,color:col});
+  const s=state.settings; const f1=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+  const C=storageForm(y,m);
+  const colx={b:227,c:307,d:385,e:465,f:545,g:625,h:705,i:786,j:866,k:944,l:1025,m:1105};
+  const R={r1:238,r2:251,r6:303,r17:448,r22:513,r23:526,r24:539};
+  Object.keys(colx).forEach(c=>{ const d=C[c]; if(!d)return; if(c!=='m'&&!(d.open||d.dep||d.proc||d.loss||d.close))return;
+    put(colx[c],R.r1,f1(d.open)); put(colx[c],R.r2,f1(d.dep)); put(colx[c],R.r6,f1(round1(d.open+d.dep)));
+    if(d.proc)put(colx[c],R.r17,f1(d.proc)); if(d.loss)put(colx[c],R.r22,f1(d.loss)); put(colx[c],R.r23,f1(d.close)); put(colx[c],R.r24,f1(round1(d.proc+d.loss+d.close)));
+  });
+  if(C['k']&&(C['k'].open||C['k'].close||C['k'].dep)) put(942,268,'Agave',7);
+  put(1033,79,String(m),9); put(1074,79,String(y),9);
+  put(738,113,s.name||''); put(1018,113,s.name||'');
+  if(s.addr1)put(738,137,s.addr1);
+  const a2=(s.addr2||'').split(','); const city=(a2[0]||'').trim(); const sz=((a2[1]||'').trim()).split(/\s+/);
+  put(765,152,city); put(882,152,sz[0]||''); put(955,152,sz[1]||'');
+  put(1018,152,s.permit||'');
+  put(706,596,new Date().toLocaleDateString('en-US')); put(706,618,s.signer||''); put(952,596,s.name||''); put(1000,618,s.title||'');
+  const out=await doc.save(); const blob=new Blob([out],{type:'application/pdf'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`5110-11_${y}-${String(m).padStart(2,'0')}.pdf`; a.click();
+}
+function processingForm(y,m){
+  const [ms,me]=monthBounds(y,m);
+  const tax=e=>TXBYID[e.type]&&TXBYID[e.type].taxable;
+  const bottled=round1((state.bottlings||[]).filter(b=>b.date>=ms&&b.date<me).reduce((s,b)=>s+(+b.pg||0),0));
+  const withdrawn=round1((state.entries||[]).filter(e=>tax(e)&&e.date>=ms&&e.date<me).reduce((s,e)=>s+(+e.pg||0),0));
+  const fgAt=D=>round1((state.bottlings||[]).filter(b=>b.date<D).reduce((s,b)=>s+(+b.pg||0),0)-(state.entries||[]).filter(e=>tax(e)&&e.date<D).reduce((s,e)=>s+(+e.pg||0),0));
+  const open=fgAt(ms); const close=round1(open+bottled-withdrawn);
+  return {bottled,withdrawn,open,close};
+}
+async function fillProcessing(){
+  const ym=$('#rptMonth').value; if(!ym){ alert('Choose a month.'); return; }
+  const [y,m]=ym.split('-').map(Number);
+  try{ await ensurePdfLib(); }catch(e){ alert('Could not load the PDF library (need internet).'); return; }
+  let bytes; try{ bytes=await loadForm('/5110_28.pdf'); }catch(e){ alert('Add the blank form to your repo at public/5110_28.pdf and redeploy.'); return; }
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc=await PDFDocument.load(bytes); const pg=doc.getPages()[0]; const H=pg.getHeight();
+  const font=await doc.embedFont(StandardFonts.Helvetica); const col=rgb(0,0,0.5);
+  const put=(x,yTop,t,size=8)=>pg.drawText(String(t),{x,y:H-yTop,size,font,color:col});
+  const s=state.settings; const f2=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const P=processingForm(y,m);
+  const sx=322; // Part I spirits column
+  put(sx,189,'0.00'); put(sx,206,f2(P.bottled)); put(sx,303,f2(P.bottled)); put(sx,319,f2(P.bottled)); put(sx,557,'0.00'); put(sx,571,'0.00'); put(sx,587,f2(P.bottled));
+  const bx=624; // Part II bottled column
+  put(bx,192,f2(P.open)); put(bx,206,f2(P.bottled)); put(bx,250,f2(round1(P.open+P.bottled))); put(bx,279,f2(P.withdrawn)); put(bx,502,f2(P.close)); put(bx,518,f2(round1(P.withdrawn+P.close)));
+  put(503,47,s.permit||''); put(638,47,`${String(m).padStart(2,'0')}/${y}`);
+  put(503,89,s.name||''); put(503,109,s.name||'');
+  const loc=[s.addr1,s.addr2].filter(Boolean).join('   ');
+  put(34,134,loc); put(503,128,s.ein||'');
+  const out=await doc.save(); const blob=new Blob([out],{type:'application/pdf'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`5110-28_${y}-${String(m).padStart(2,'0')}.pdf`; a.click();
+}
+async function loadForm(path){ const r=await fetch(path); if(!r.ok) throw new Error('missing'); return r.arrayBuffer(); }
+async function fillExcise(){
+  const v=$('#rptQuarter').value; if(!v){ alert('Choose a quarter.'); return; }
+  const [y,q]=v.split('-').map(Number);
+  const inQ=e=>yearOf(e.date)===y&&quarterOf(e.date)===q;
+  const qpg=taxablePG(inQ), prior=ytdTaxableBeforeQuarter(y,q); const {tax}=cbmaTax(prior,qpg);
+  try{ await ensurePdfLib(); }catch(e){ alert('Could not load the PDF library (need internet).'); return; }
+  let bytes; try{ bytes=await loadForm('/5000_24.pdf'); }catch(e){ alert('Add the blank form to your repo at public/5000_24.pdf and redeploy, then try again.'); return; }
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc=await PDFDocument.load(bytes); const pg=doc.getPages()[0]; const H=pg.getHeight();
+  const font=await doc.embedFont(StandardFonts.Helvetica); const col=rgb(0,0,0.5);
+  const put=(x,yTop,t,size=9)=>pg.drawText(String(t),{x,y:H-yTop,size,font,color:col});
+  const s=state.settings; const fmt2=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const qm=q*3, begin=`${String((q-1)*3+1).padStart(2,'0')}/01/${y}`, endDay=new Date(y,qm,0).getDate(), end=`${String(qm).padStart(2,'0')}/${String(endDay).padStart(2,'0')}/${y}`;
+  put(408,50,`${y}-${q}`,10);
+  put(425,82,fmt2(tax),9);
+  put(192,100,'X',10);           // EFT
+  put(136,133,'X',10);           // PERIOD
+  put(304,120,begin,9); put(304,138,end,9);
+  put(42,183,s.ein||'',9); put(229,182,s.permit||'',9);
+  put(45,219,s.name||''); if(s.addr1)put(45,229,s.addr1); if(s.addr2)put(45,239,s.addr2);
+  put(360,309,fmt2(tax)); put(360,412,'0.00'); put(360,407,fmt2(tax));
+  put(360,437,'0.00'); put(360,431,fmt2(tax)); put(360,455,fmt2(tax));
+  put(103,503,s.signer||''); put(370,503,s.title||'');
+  const out=await doc.save(); const blob=new Blob([out],{type:'application/pdf'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`5000-24_${y}-Q${q}.pdf`; a.click();
+}
 function printKy(){const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
 
 /* ================= Barrels ================= */
@@ -1279,7 +1408,8 @@ function doBottle(){
   if(gift){ entryId=addRemovalEntry(date,cls,wg,proof,'Gift shop removal','giftshop'); }
   else { addToFinishedGoods(cls,b.distillDate,proof,bottles,date); }
   const barrelNo=$('#bo_barrelno').value.trim();
-  state.bottlings.push({id:uid(),date,barrelNo,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,giftShop:gift,entryId,qbInvoice:gift?'pending':null});
+  const dumpPG=round1(perBarrelPG*dumpQty); const lossPG=round1(Math.max(0,dumpPG-pg));
+  state.bottlings.push({id:uid(),date,barrelNo,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,dumpPG,lossPG,giftShop:gift,entryId,qbInvoice:gift?'pending':null});
   save('Bottled '+dumpQty+' barrel(s)'+(barrelNo?(' #'+barrelNo):'')+' → '+bottles+' bottles'+(gift?' (gift shop removal)':'')); $('#bo_bottles').value=''; $('#bo_barrelno').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
   flash(gift?`Gift shop: ${bottles} bottles removed from bond.`:`${bottles} bottles → finished goods (in bond).`);
 }
@@ -1386,10 +1516,32 @@ function renderOrders(){
 
 function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   const rows=[...(state.bottlings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.barrelNo||'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
+  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.barrelNo||'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="num">${r.lossPG!=null?numf(r.lossPG):'—'}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
 function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
+function backfillBottlingLoss(){
+  const dumped=(state.barrels||[]).filter(b=>b.status==='Dumped'||b.status==='Transferred out (TIB)');
+  const used=new Set(); let fixed=0;
+  (state.bottlings||[]).forEach(bt=>{
+    if(bt.dumpPG!=null) return;
+    const wd=b=>b.dumpDate||b.tibOutDate;
+    let cands=dumped.filter(b=>!used.has(b.id)&&wd(b)===bt.date);
+    let match=cands.filter(b=>((b.spiritType?b.spiritType+' / ':'')+(b.spirit||''))===bt.spirit&&(b.distillDate||'')===(bt.distillDate||''));
+    if(!match.length) match=cands.filter(b=>(b.spiritType?b.spiritType+' / ':'')+(b.spirit||'')===bt.spirit);
+    if(!match.length) match=cands;
+    let dumpPG = match.length ? round1(match.reduce((s,b)=>s+barrelPG(b),0)) : (+bt.pg||0);
+    match.forEach(b=>used.add(b.id));
+    bt.dumpPG=dumpPG; bt.lossPG=round1(Math.max(0,dumpPG-(+bt.pg||0))); fixed++;
+  });
+  return fixed;
+}
+function recalcLosses(){
+  const n=backfillBottlingLoss();
+  if(!n){ flash('All bottlings already have dump losses recorded.'); return; }
+  save('Recalculated dump losses on '+n+' bottling(s)'); renderBottling();
+  flash('Updated '+n+' bottling record(s) with dump loss.');
+}
 
 /* ---- QuickBooks (front-end) ---- */
 async function qbRefresh(){
@@ -1427,6 +1579,7 @@ function wireOnce(){
   $('#cancelEdit').onclick=()=>{editingId=null;$('#cancelEdit').style.display='none';$('#entryTitle').textContent='New Entry';switchView('ledger');};
   $('#ledgerSearch').oninput=renderLedger;$('#ledgerAccount').onchange=renderLedger;$('#ledgerYear').onchange=renderLedger;$('#exportCsv').onclick=exportCsv;
   $('#saveSettings').onclick=saveSettings;$('#exportJson').onclick=exportJson;$('#importBtn').onclick=()=>$('#importFile').click();
+  $('#fillFed').onclick=fedPdf;
   $('#importFile').onchange=e=>{if(e.target.files[0])importJson(e.target.files[0]);e.target.value='';};
   $('#loadSample').onclick=loadSample;$('#clearAll').onclick=clearAll;$('#printRpt').onclick=printReport;$('#printKy').onclick=printKy;
   $('#copyLink').onclick=copyLink;$('#showJoin').onclick=()=>{const w=$('#joinWrap');w.style.display=w.style.display==='none'?'block':'none';};$('#joinBtn').onclick=joinWorkspace;
@@ -1437,6 +1590,7 @@ function wireOnce(){
   document.querySelectorAll('#barrelHead th.bs').forEach(th=>th.onclick=()=>setBarrelSort(th.dataset.bsort));
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
+  $('#recalcLoss').onclick=recalcLosses;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
