@@ -57,7 +57,7 @@ async function findOrCreateDef() {
     object: {
       type: "CUSTOM_ATTRIBUTE_DEFINITION", id: "#ttb_bottle_size",
       custom_attribute_definition_data: {
-        type: "NUMBER", name: DEF_NAME,
+        type: "NUMBER", name: DEF_NAME, key: "ttb_bottle_size",
         description: "Bottle volume in mL for Kentucky Form 73A525 monthly reporting. Set 750 or 375 on each reportable distilled-spirits bottle; leave blank on non-bottles.",
         allowed_object_types: ["ITEM"],
         seller_visibility: "SELLER_VISIBILITY_READ_WRITE_VALUES",
