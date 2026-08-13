@@ -386,8 +386,8 @@
     </div>
 
     <div class="grid g2">
-      <div class="card"><h3>Aging Barrels by Spirit</h3><div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Spirit</th><th class="num">Barrels</th><th class="num">Proof Gallons</th></tr></thead><tbody id="barrelBySpirit"></tbody></table></div></div>
-      <div class="card"><h3>Aging Barrels by Fill Year</h3><div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th>Fill Year</th><th class="num">Barrels</th><th class="num">Proof Gallons</th></tr></thead><tbody id="barrelByYear"></tbody></table></div></div>
+      <div class="card"><h3>Aging Barrels by Spirit</h3><div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th class="bs" onclick="setSummSort('spirit','name')">Spirit</th><th class="bs num" onclick="setSummSort('spirit','n')">Barrels</th><th class="bs num" onclick="setSummSort('spirit','pg')">Proof Gallons</th></tr></thead><tbody id="barrelBySpirit"></tbody></table></div></div>
+      <div class="card"><h3>Aging Barrels by Fill Year</h3><div class="tablewrap" style="border:0;box-shadow:none"><table><thead><tr><th class="bs" onclick="setSummSort('year','year')">Fill Year</th><th class="bs num" onclick="setSummSort('year','n')">Barrels</th><th class="bs num" onclick="setSummSort('year','pg')">Proof Gallons</th></tr></thead><tbody id="barrelByYear"></tbody></table></div></div>
     </div>
     <div class="disclaimer">This barrel register is a management and inventory tool. The proof gallons shown are fill (entry) figures; barrel aging losses ("angels' share") are not deducted automatically — record those as storage losses in your ledger, or dump at your gauged proof/gallons. Barrels received or transferred in bond (TIB) are non-taxable movements between DSPs; make sure they're also reflected in your federal Storage report as deposits/removals.</div>
   </section>
@@ -450,7 +450,7 @@
       <h3 id="orderFormTitle">New Order</h3>
       <p class="hint">Pick a customer and add cases of finished goods (only items with stock on hand appear). Enter the case price for this customer — it can differ per account. Creating the order removes the cases from bond, records the federal excise proof gallons, and is ready to invoice in QuickBooks.</p>
       <div class="grid g3">
-        <div><label class="fld">Customer</label><select id="o_customer"></select></div>
+        <div><label class="fld">Customer</label><input type="text" id="o_customer" list="custList" placeholder="Type or pick a customer…" autocomplete="off"><datalist id="custList"></datalist></div>
         <div><label class="fld">Order Date</label><input type="date" id="o_date"></div>
         <div><label class="fld">PO / Reference</label><input type="text" id="o_ref" placeholder="Optional"></div>
       </div>
@@ -466,7 +466,7 @@
       </div>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Order History</h3><button class="btn ghost sm noprint" id="backfillGift">Backfill gift-shop orders</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Order History</h3><div class="row-actions noprint" style="margin:0"><button class="btn ghost sm" id="syncAllQB">Sync all to QuickBooks</button><button class="btn ghost sm" id="backfillGift">Backfill gift-shop orders</button></div></div>
       <div class="tablewrap" style="border:0;box-shadow:none;margin-top:10px"><table><thead><tr><th>#</th><th>Date</th><th>Customer</th><th class="num">Cases</th><th class="num">PG removed</th><th class="num">Total</th><th>QuickBooks</th><th class="noprint"></th></tr></thead><tbody id="orderBody"></tbody></table></div>
       <div id="orderEmpty"></div>
     </div>
@@ -660,11 +660,11 @@ let saveTimer=null, saving=false, pending=false;
 let lastSnap=null; const HIST_MAX=25;
 // data-only snapshot (excludes the history log itself, so snapshots never nest)
 function dataOnly(){ const c=Object.assign({},state); delete c.history; return JSON.stringify(c); }
-function save(label){
+function save(label,ref){
   if(!state.history) state.history=[];
   // record the just-completed action, storing the PRE-action state for rewind
   if(lastSnap!==null && label!==false){
-    state.history.push({id:uid(), ts:Date.now(), label:label||'Change saved', snap:lastSnap});
+    state.history.push({id:uid(), ts:Date.now(), label:label||'Change saved', snap:lastSnap, ref:ref||null});
     if(state.history.length>HIST_MAX) state.history.shift();
   }
   lastSnap=dataOnly();
@@ -705,7 +705,11 @@ function renderActivity(){
   const el=$('#recentBody'); if(!el) return;
   const hist=(state.history||[]).slice().reverse();
   if(!hist.length){ el.innerHTML=`<tr><td colspan="3" class="empty">No activity yet. Anything you save shows up here — with a Rewind button to undo it.</td></tr>`; return; }
-  el.innerHTML=hist.map(h=>`<tr><td style="white-space:nowrap;color:var(--muted)">${relTime(h.ts)}</td><td>${h.label}</td><td class="num noprint"><button class="rewind" onclick="rewindTo('${h.id}')">↶ Rewind</button></td></tr>`).join('');
+  el.innerHTML=hist.map(h=>{
+    const isBt=h.ref&&h.ref.type==='bottling'&&(state.bottlings||[]).some(b=>b.id===h.ref.id);
+    const lbl=isBt?`<button class="link" style="text-align:left" onclick="openBottlingDetail('${h.ref.id}')">${h.label}</button>`:h.label;
+    return `<tr><td style="white-space:nowrap;color:var(--muted)">${relTime(h.ts)}</td><td>${lbl}</td><td class="num noprint"><button class="rewind" onclick="rewindTo('${h.id}')">↶ Rewind</button></td></tr>`;
+  }).join('');
 }
 async function cloudSave(silent){
   if(!cloudAvailable) return;
@@ -1385,7 +1389,7 @@ function renderBarrels(){
     kpi('ky','Received in Bond',tibIn.toLocaleString(),'aging TIB barrels'),
   ].join('');
   const q=($('#barrelSearch').value||'').toLowerCase(), sf=$('#barrelStatus').value, spf=$('#barrelSpirit').value;
-  let rows=bs.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
+  let rows=bs.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.dumpNo||''} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.dumpDate||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
   rows=sortBarrels(rows); updateBarrelHeadArrows();
   $('#barrelBody').innerHTML=rows.map(b=>{
     const origin=b.origin==='Received in bond (TIB)'?`<span class="pill tibin">TIB in</span>`:'—';
@@ -1393,14 +1397,20 @@ function renderBarrels(){
       ? `<button class="link" onclick="editBarrel('${b.id}')">Edit</button> · <button class="link" onclick="dumpBarrel('${b.id}')">Dump</button> · <button class="link" onclick="tibOutBarrel('${b.id}')">TIB out</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`
       : `<button class="link" onclick="reactivateBarrel('${b.id}')">Reactivate</button> · <button class="del" onclick="deleteBarrel('${b.id}')">Del</button>`;
     const cnt=barrelCount(b);
-    return `<tr><td><b>${b.barrelNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''} ›</button></div>`:''}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${b.status==='Aging'?fmtAge(barrelAge(b)):'—'}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td>${b.warehouse||''}${b.location?' · '+b.location:''}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
-  $('#barrelBySpirit').innerHTML=Object.keys(bySpirit).sort().map(k=>`<tr><td>${k}</td><td class="num">${bySpirit[k].n}</td><td class="num">${numf(round1(bySpirit[k].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
+  const spArr=Object.keys(bySpirit).map(k=>({name:k,n:bySpirit[k].n,pg:round1(bySpirit[k].pg)}));
+  const ssS=summSort.spirit; spArr.sort((a,b)=>{const d=ssS.key==='name'?String(a.name).localeCompare(String(b.name)):(a[ssS.key]-b[ssS.key]); return d*ssS.dir;});
+  $('#barrelBySpirit').innerHTML=spArr.map(r=>`<tr><td>${r.name}</td><td class="num">${r.n}</td><td class="num">${numf(round1(r.pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
   const byYear={}; aging.forEach(b=>{const y=((b.distillDate||b.fillDate||'').slice(0,4))||'—';byYear[y]=byYear[y]||{n:0,pg:0};byYear[y].n+=barrelCount(b);byYear[y].pg+=barrelPG(b);});
-  $('#barrelByYear').innerHTML=Object.keys(byYear).sort((a,b)=>b.localeCompare(a)).map(y=>`<tr><td>${y}</td><td class="num">${byYear[y].n}</td><td class="num">${numf(round1(byYear[y].pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
+  const yrArr=Object.keys(byYear).map(k=>({year:k,n:byYear[k].n,pg:round1(byYear[k].pg)}));
+  const ssY=summSort.year; yrArr.sort((a,b)=>{const d=ssY.key==='year'?String(a.year).localeCompare(String(b.year)):(a[ssY.key]-b[ssY.key]); return d*ssY.dir;});
+  $('#barrelByYear').innerHTML=yrArr.map(r=>`<tr><td>${r.year}</td><td class="num">${r.n}</td><td class="num">${numf(round1(r.pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
 }
+let summSort={spirit:{key:'name',dir:1},year:{key:'year',dir:-1}};
+function setSummSort(which,key){ const s=summSort[which]; if(s.key===key)s.dir*=-1; else{s.key=key; s.dir=(key==='name'||key==='year')?1:-1;} renderBarrels(); }
 function exportBarrelsCsv(){
   const head=['BarrelNo','Spirit','Mashbill','DistillationDate','FillDate','EntryProof','FillWineGal','ProofGallons','Size','Char','Cooperage','Warehouse','Location','Origin','SourceDSP','SourcePermit','TIBInDate','Status','DumpDate','DestDSP','TIBOutDate','Notes'];
   const rows=(state.barrels||[]).map(b=>[b.barrelNo,b.spirit,b.mashbill||'',b.distillDate||'',b.fillDate,b.entryProof,b.fillWG,barrelPG(b),b.size,b.char,b.cooperage,b.warehouse,b.location,b.origin,b.sourceDSP||'',b.sourcePermit||'',b.tibInDate||'',b.status,b.dumpDate||'',b.destDSP||'',b.tibOutDate||'',b.notes||''].map(csv).join(','));
@@ -1493,18 +1503,21 @@ function doBottle(){
   else { b.qty=barrelCount(b)-dumpQty; if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') b.pgTotal=round1(+b.pgTotal-perBarrelPG*dumpQty); }
   const date=$('#bo_date').value; let entryId=null, giftOrderId=null;
   const barrelNo=$('#bo_barrelno').value.trim();
+  const btId=uid();
+  if(b.status==='Dumped'){ b.dumpNo=barrelNo||b.dumpNo||''; b.dumpBottlingId=btId; }
   if(gift){
     entryId=addRemovalEntry(date,cls,wg,proof,'Gift shop removal','giftshop');
     // leave a trail in Orders: a $0 removal order to the GiftShop customer
     const num=(state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1;
     const sku=skuFor(cls,b.distillDate); const cases=Math.floor(bottles/bpc());
-    giftOrderId=uid();
-    state.orders.push({id:giftOrderId,num,date,ref:'Gift shop'+(barrelNo?(' · '+barrelNo):''),customerId:null,customerName:'GiftShop',lines:[{sku,proof,cases,price:0,bottles,pg:round1(pg),lineTotal:0}],total:0,removedPG:round1(pg),cases,bottles,entryIds:[entryId],status:'Gift shop',giftShop:true,qbSynced:false,qbInvoiceId:null,qbInvoice:'pending'});
+    const gc=findOrCreateCustomer('GiftShop'); giftOrderId=uid();
+    state.orders.push({id:giftOrderId,num,date,ref:'Gift shop'+(barrelNo?(' · '+barrelNo):''),customerId:gc?gc.id:null,customerName:'GiftShop',lines:[{sku,proof,cases,price:0,bottles,pg:round1(pg),lineTotal:0}],total:0,removedPG:round1(pg),cases,bottles,entryIds:[entryId],status:'Gift shop',giftShop:true,qbSynced:false,qbInvoiceId:null,qbInvoice:'pending'});
   }
   else { addToFinishedGoods(cls,b.distillDate,proof,bottles,date); }
   const dumpPG=round1(perBarrelPG*dumpQty); const lossPG=round1(Math.max(0,dumpPG-pg));
-  state.bottlings.push({id:uid(),date,barrelNo,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,dumpPG,lossPG,dumpExact:true,giftShop:gift,entryId,orderId:giftOrderId,qbInvoice:gift?'pending':null});
-  save('Bottled '+dumpQty+' barrel(s)'+(barrelNo?(' #'+barrelNo):'')+' → '+bottles+' bottles'+(gift?' (gift shop removal)':'')); $('#bo_bottles').value=''; $('#bo_barrelno').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
+  state.bottlings.push({id:btId,date,barrelNo,barrelId:b.id,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,dumpPG,lossPG,dumpExact:true,giftShop:gift,entryId,orderId:giftOrderId,qbInvoice:gift?'pending':null});
+  save('Bottled '+dumpQty+' barrel(s)'+(barrelNo?(' #'+barrelNo):'')+' → '+bottles+' bottles'+(gift?' (gift shop removal)':''),{type:'bottling',id:btId}); $('#bo_bottles').value=''; $('#bo_barrelno').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
+  if(giftOrderId) autoSyncOrder(giftOrderId);
   flash(gift?`Gift shop: ${bottles} bottles removed from bond.`:`${bottles} bottles → finished goods (in bond).`);
 }
 
@@ -1577,9 +1590,15 @@ function renderOrderLines(){
 }
 function updateOrderTotal(){ const t=orderLines.reduce((s,l)=>s+(+l.cases||0)*(+l.price||0),0); const cs=orderLines.reduce((s,l)=>s+(+l.cases||0),0); $('#orderTotal').textContent=cs?`${cs} cases · ${money(t)}`:''; }
 function orderAddLine(){ orderLines.push(orderNewLine()); renderOrderLines(); }
+function findOrCreateCustomer(name){
+  name=(name||'').trim(); if(!name) return null;
+  let c=state.customers.find(x=>(x.name||'').trim().toLowerCase()===name.toLowerCase());
+  if(!c){ c={id:uid(),qbId:null,name}; state.customers.push(c); }
+  return c;
+}
 function orderCreate(){
-  const cust=state.customers.find(c=>c.id===$('#o_customer').value);
-  if(!cust){ alert('Choose a customer (add one on the Customers tab first).'); return; }
+  const cust=findOrCreateCustomer($('#o_customer').value);
+  if(!cust){ alert('Enter a customer name.'); return; }
   const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
   if(!valid.length){ alert('Add at least one line with a product and case count.'); return; }
   for(const l of valid){ if(l.cases>fgCases(l.fg)){ alert(`Only ${fgCases(l.fg)} cases of ${l.fg.sku} on hand.`); return; } }
@@ -1590,9 +1609,11 @@ function orderCreate(){
     entryIds.push(addRemovalEntry(date,l.fg.spirit,wg,l.fg.proof,`Order #${num} · ${cust.name}`,'order:'+num));
     lines.push({fgId:l.fg.id,sku:l.fg.sku,proof:l.fg.proof,cases:l.cases,price:l.price,bottles,pg,lineTotal:round2(l.cases*l.price)});
     total+=l.cases*l.price; pgTotal+=pg; casesTotal+=l.cases; });
-  state.orders.push({id:uid(),num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
-  orderLines=[orderNewLine()]; $('#o_ref').value='';
+  const oid=uid();
+  state.orders.push({id:oid,num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
+  orderLines=[orderNewLine()]; $('#o_ref').value=''; $('#o_customer').value='';
   save('Created order #'+num+' — '+casesTotal+' cases · '+cust.name); refreshAll(); switchView('orders');
+  autoSyncOrder(oid);
   flash(`Order #${num} created — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
 }
 function deleteOrder(id){ const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
@@ -1600,8 +1621,8 @@ function deleteOrder(id){ const o=state.orders.find(x=>x.id===id); if(!o)return;
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
   state.orders=state.orders.filter(x=>x.id!==id); save('Reversed order #'+o.num); refreshAll(); flash('Order #'+o.num+' reversed.'); }
 function renderOrders(){
-  const cs=[...state.customers].sort((a,b)=>(a.name||'').localeCompare(b.name||'')); const cur=$('#o_customer').value;
-  $('#o_customer').innerHTML=`<option value="">— choose customer —</option>`+cs.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${c.name}</option>`).join('');
+  const cs=[...state.customers].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const dl=$('#custList'); if(dl) dl.innerHTML=cs.map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}"></option>`).join('');
   renderOrderLines();
   const rows=[...state.orders].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||0)-(a.num||0));
   $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint">${o.qbSynced?'':`<button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button> · `}<button class="del" onclick="deleteOrder('${o.id}')">Reverse</button></td></tr>`).join('');
@@ -1610,6 +1631,7 @@ function renderOrders(){
 
 function backfillGiftOrders(){
   let n=0;
+  const gc=findOrCreateCustomer('GiftShop');
   (state.bottlings||[]).forEach(bt=>{
     if(!bt.giftShop) return;
     if(bt.orderId && state.orders.some(o=>o.id===bt.orderId)) return; // already has a trail
@@ -1617,7 +1639,7 @@ function backfillGiftOrders(){
     const cls=(bt.spirit||'').split(' / ').pop()||bt.spirit;
     const sku=skuFor(cls,bt.distillDate); const bottles=+bt.bottles||0; const cases=Math.floor(bottles/bpc());
     const oid=uid();
-    state.orders.push({id:oid,num,date:bt.date,ref:'Gift shop'+(bt.barrelNo?(' · '+bt.barrelNo):''),customerId:null,customerName:'GiftShop',lines:[{sku,proof:bt.proof,cases,price:0,bottles,pg:round1(+bt.pg||0),lineTotal:0}],total:0,removedPG:round1(+bt.pg||0),cases,bottles,entryIds:bt.entryId?[bt.entryId]:[],status:'Gift shop',giftShop:true,qbSynced:false,qbInvoiceId:null,qbInvoice:'pending'});
+    state.orders.push({id:oid,num,date:bt.date,ref:'Gift shop'+(bt.barrelNo?(' · '+bt.barrelNo):''),customerId:gc?gc.id:null,customerName:'GiftShop',lines:[{sku,proof:bt.proof,cases,price:0,bottles,pg:round1(+bt.pg||0),lineTotal:0}],total:0,removedPG:round1(+bt.pg||0),cases,bottles,entryIds:bt.entryId?[bt.entryId]:[],status:'Gift shop',giftShop:true,qbSynced:false,qbInvoiceId:null,qbInvoice:'pending'});
     bt.orderId=oid; n++;
   });
   return n;
@@ -1630,10 +1652,40 @@ function runBackfillGift(){
 }
 function renderBottling(){ renderBottleSelect(); updateBottleCalc();
   const rows=[...(state.bottlings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td>${r.barrelNo||'—'}</td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="num">${r.lossPG!=null?numf(r.lossPG):'—'}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
+  $('#bottlingBody').innerHTML=rows.map(r=>`<tr><td>${r.date?fmtDate(r.date):'—'}</td><td><button class="link" onclick="openBottlingDetail('${r.id}')">${r.barrelNo||'view ›'}</button></td><td>${r.spirit}</td><td>${r.distillDate?fmtDate(r.distillDate):'—'}</td><td class="num">${r.barrels}</td><td class="num">${numf(r.proof,1)}</td><td class="num">${r.bottles}</td><td class="num">${numf(r.wineGal,2)}</td><td class="num">${numf(r.pg)}</td><td class="num">${r.lossPG!=null?numf(r.lossPG):'—'}</td><td class="noprint"><button class="del" onclick="deleteBottling('${r.id}')">Del</button></td></tr>`).join('');
   $('#bottlingEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No bottlings recorded yet.</div>`;
 }
 function deleteBottling(id){ if(!confirm('Delete this bottling record? (This does not restore barrels to inventory.)'))return; state.bottlings=state.bottlings.filter(x=>x.id!==id); save('Deleted a bottling record'); renderBottling(); }
+function openBottlingDetail(id){
+  const b=(state.bottlings||[]).find(x=>x.id===id);
+  if(!b){ flash('That bottling record was removed.'); return; }
+  const src=(state.barrels||[]).find(x=>x.id===b.barrelId);
+  const cases=Math.floor((+b.bottles||0)/bpc()), singles=(+b.bottles||0)%bpc();
+  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:18px;padding:7px 0;border-bottom:1px solid #eee2d0"><span style="color:var(--muted)">${k}</span><b style="text-align:right">${v}</b></div>`;
+  const body=[
+    row('Bottled on', b.date?fmtDate(b.date):'—'),
+    row('Barrel # assigned', b.barrelNo||'—'),
+    row('Spirit', b.spirit||'—'),
+    row('Distilled', b.distillDate?fmtDate(b.distillDate):'—'),
+    row('Barrels dumped', b.barrels||0),
+    row('Proof', numf(b.proof,1)+'°'),
+    row('Bottles', (+b.bottles||0).toLocaleString()+`  (${cases} case${cases===1?'':'s'}${singles?' + '+singles+' singles':''})`),
+    row('Wine gallons', numf(b.wineGal,2)),
+    row('Bottled proof gallons', numf(b.pg)),
+    row('Dumped proof gallons', b.dumpPG!=null?numf(b.dumpPG):'—'),
+    row('Loss (angel\'s share on dump)', b.lossPG!=null?numf(b.lossPG)+' PG':'—'),
+    row('Channel', b.giftShop?'Gift shop removal (tax-paid)':'Finished goods (in bond)'),
+    src?row('Source lot', (src.barrelNo||src.dumpNo||'Lot')+' · '+(src.spirit||'')):'',
+  ].join('');
+  let ov=$('#btDetail'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='btDetail';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(20,12,6,.55);z-index:300;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div style="background:#fbf6ec;max-width:440px;width:100%;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden;font-family:-apple-system,Segoe UI,sans-serif">
+    <div style="background:#241812;color:#f4e9d6;padding:14px 18px;display:flex;justify-content:space-between;align-items:center"><b>Bottling detail${b.barrelNo?(' · #'+b.barrelNo):''}</b><button class="link" style="color:#f4e9d6" onclick="document.getElementById('btDetail').remove()">Close ✕</button></div>
+    <div style="padding:14px 18px 18px">${body}</div></div>`;
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
 function backfillBottlingLoss(){
   let fixed=0;
   const sp=b=>((b.spiritType?b.spiritType+' / ':'')+(b.spirit||''));
@@ -1672,19 +1724,27 @@ async function qbRefresh(){
 }
 function qbConnect(){ location.href='/api/qb/connect?ws='+encodeURIComponent(WS); }
 async function qbDisconnect(){ if(!confirm('Disconnect QuickBooks?'))return; try{ await fetch('/api/qb/disconnect?app=1'); }catch(e){} flash('QuickBooks disconnected.'); qbRefresh(); }
-async function sendOrderToQB(id){
+async function sendOrderToQB(id,silent){
   const o=state.orders.find(x=>x.id===id); if(!o)return;
-  if(location.protocol==='file:'){ alert('QuickBooks works only on the hosted site.'); return; }
+  if(location.protocol==='file:'){ if(!silent)alert('QuickBooks works only on the hosted site.'); return; }
   const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
   const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku,qty:l.cases,unitPrice:l.price}));
-  flash('Sending order #'+o.num+' to QuickBooks…');
+  if(!silent) flash('Sending order #'+o.num+' to QuickBooks…');
   try{
     const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:cust.email,phone:cust.phone},lines,docNumber:o.num,txnDate:o.date,privateNote:'TTB Tracker order #'+o.num})});
     const d=await r.json();
-    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash('Invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
-    else if(d.error==='not_connected'){ alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
-    else { alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
-  }catch(e){ alert('Could not reach QuickBooks: '+e.message); }
+    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash((o.giftShop?'Gift shop order #':'Order #')+o.num+' invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
+    else if(d.error==='not_connected'){ if(!silent)alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
+    else { if(!silent)alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
+  }catch(e){ if(!silent)alert('Could not reach QuickBooks: '+e.message); }
+}
+// auto-post an order to QB right after creation (silent — leaves it pending if QB is down)
+function autoSyncOrder(id){ if(location.protocol==='file:')return; setTimeout(()=>sendOrderToQB(id,true),100); }
+async function syncAllPendingQB(){
+  const pend=state.orders.filter(o=>!o.qbSynced); if(!pend.length){ flash('All orders already synced to QuickBooks.'); return; }
+  if(!confirm('Send '+pend.length+' unsynced order(s) to QuickBooks now?')) return;
+  for(const o of pend){ await sendOrderToQB(o.id,true); }
+  renderOrders();
 }
 
 /* ================= Boot ================= */
@@ -1705,7 +1765,7 @@ function wireOnce(){
   document.querySelectorAll('#barrelHead th.bs').forEach(th=>th.onclick=()=>setBarrelSort(th.dataset.bsort));
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
-  $('#recalcLoss').onclick=recalcLosses; $('#backfillGift').onclick=runBackfillGift;
+  $('#recalcLoss').onclick=recalcLosses; $('#backfillGift').onclick=runBackfillGift; $('#syncAllQB').onclick=syncAllPendingQB;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
