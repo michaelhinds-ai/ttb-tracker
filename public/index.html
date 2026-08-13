@@ -256,6 +256,7 @@
         <div><label class="fld">Report</label><select id="kyKind">
           <option value="monthly">Monthly Distilled Spirits Return</option>
           <option value="barrel">Annual Barrel (Ad Valorem) Tax</option>
+          <option value="73a525">Form 73A525 — Retail / Gift Shop (from Square)</option>
         </select></div>
         <div id="kyMonthWrap"><label class="fld">Month</label><input type="month" id="kyMonth"></div>
         <div id="kyYearWrap" style="display:none"><label class="fld">Assessment Year (Jan 1)</label><select id="kyYear"></select></div>
@@ -263,6 +264,19 @@
       </div>
     </div>
     <div class="card rpt" id="kyOut"></div>
+    <div class="card" id="kySqCard" style="display:none">
+      <h3>Form 73A525 — Monthly Retail / Gift Shop (from Square)</h3>
+      <p class="hint">Distilled-spirits excise + 11% wholesale sales tax on gift-shop and bar bottle sales, pulled straight from Square. Bottles are identified by the <b>TTB Bottle Size (mL)</b> tag on each Square item — samples (rung at 100% off, $0) are counted automatically.</p>
+      <div id="sqStatus" class="note" style="margin-bottom:12px">Checking Square connection…</div>
+      <div class="toolbar">
+        <div><label class="fld">Reporting month</label><input type="month" id="sqMonth"></div>
+        <button class="btn ky sm" id="sqRun">Run 73A525</button>
+        <button class="btn ghost sm" id="sqSetup">Set up bottle tags</button>
+        <button class="btn ghost sm noprint" id="sqCsv" style="display:none">Export CSV</button>
+        <button class="btn ghost sm noprint" id="sqPrint" style="display:none">Print / Save PDF</button>
+      </div>
+      <div id="sqOut" style="margin-top:8px"></div>
+    </div>
   </section>
 
   <!-- BARRELS -->
@@ -864,7 +878,8 @@ function kyMonthlyCalc(rec){
 function initKyControls(){
   $('#kyMonth').value=new Date().toISOString().slice(0,7);
   const sel=$('#kyYear');const yr=state.settings.year;let o='';for(let y=yr+1;y>=2025;y--)o+=`<option ${y===yr?'selected':''}>${y}</option>`;sel.innerHTML=o;
-  $('#kyKind').onchange=()=>{const k=$('#kyKind').value;$('#kyMonthWrap').style.display=k==='monthly'?'block':'none';$('#kyYearWrap').style.display=k==='barrel'?'block':'none';renderKy();};
+  if(!$('#sqMonth').value){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); $('#sqMonth').value=d.toISOString().slice(0,7); }
+  $('#kyKind').onchange=()=>{const k=$('#kyKind').value;const sq=k==='73a525';$('#kyMonthWrap').style.display=(k==='monthly')?'block':'none';$('#kyYearWrap').style.display=k==='barrel'?'block':'none';$('#kySqCard').style.display=sq?'block':'none';$('#kyOut').style.display=sq?'none':'block';$('#printKy').style.display=sq?'none':'inline-flex';if(sq)sqStatus();else renderKy();};
   $('#kyMonth').onchange=renderKy; $('#kyYear').onchange=renderKy;
 }
 function renderKy(){ $('#kyOut').innerHTML=$('#kyKind').value==='monthly'?kyMonthlyReport():kyBarrelReport(); }
@@ -927,6 +942,82 @@ function kyBarrelReport(){
     <div class="disclaimer">Barrel-tax rates are set locally and vary by county, city, school, and fire district — enter your combined rate per $100 of assessed value. This worksheet applies the statewide HB 5 phase-out percentage to your full computed tax. Assessment, valuation, and filing are handled through your county PVA and the Kentucky DOR; confirm your value, rate, and any available credits with them.</div>`;
 }
 function kySaveBarrel(){ const y=+$('#kyYear').value; state.ky.barrel[y]={value:$('#kb_value').value===''?'':+$('#kb_value').value,rate:$('#kb_rate').value===''?'':+$('#kb_rate').value}; save('Saved KY barrel-tax worksheet'); renderKy(); flash('Barrel-tax worksheet saved.'); }
+
+/* ---- Form 73A525 from Square ---- */
+let sqLast=null;
+async function sqStatus(){
+  const el=$('#sqStatus'); if(!el)return;
+  if(location.protocol==='file:'){ el.innerHTML='The Square report runs only on the hosted site.'; $('#sqRun').disabled=true; $('#sqSetup').disabled=true; return; }
+  el.textContent='Checking Square connection…';
+  try{
+    const r=await fetch('/api/square/status',{cache:'no-store'}); const d=await r.json();
+    if(!d.configured){ el.innerHTML='⚠️ Square isn’t connected yet. Add your <b>SQUARE_ACCESS_TOKEN</b> (Items read+write, Orders read) in Netlify, then reload.'; $('#sqRun').disabled=true; return; }
+    if(!d.connected){ el.innerHTML='⚠️ Square token set but the connection failed'+(d.error?(' ('+d.error+')'):'')+'. Check the token and its scopes.'; $('#sqRun').disabled=true; return; }
+    $('#sqRun').disabled=false; $('#sqSetup').disabled=false;
+    const who=(d.merchant||'')+(d.locationName?(' · '+d.locationName):'');
+    const tag=d.attribute?(`<b>${d.taggedBottles}</b> bottle(s) tagged`):'no bottle tags yet — click <b>Set up bottle tags</b>';
+    el.innerHTML=`✅ Connected: ${who} <span style="color:var(--muted)">(${d.environment})</span><br>Bottle size attribute: ${d.attribute?'set up':'not set up'} — ${tag}.`;
+  }catch(e){ el.textContent='Could not reach the Square status endpoint.'; }
+}
+async function sqSetup(){
+  if(!confirm('Set up the TTB Bottle Size attribute in Square and tag your bottle items (750/375)? This adds a tag to bottle products in your Square catalog — it does not change prices, names, or anything else.')) return;
+  const el=$('#sqStatus'); el.textContent='Setting up bottle tags in Square…'; $('#sqSetup').disabled=true;
+  try{
+    const r=await fetch('/api/square/setup-tags',{method:'POST'}); const d=await r.json();
+    if(d.error){ el.innerHTML='⚠️ '+(d.detail||d.error); $('#sqSetup').disabled=false; return; }
+    const list=(d.tagged||[]).concat(d.skipped||[]).sort((a,b)=>a.name.localeCompare(b.name));
+    $('#sqOut').innerHTML=`<div class="note ky">Tagged <b>${d.totalBottles}</b> bottle item(s) in Square${d.definitionCreated?' and created the size attribute':''}. ${(d.tagged||[]).length} updated, ${(d.skipped||[]).length} already set.</div>`+
+      `<div class="tablewrap"><table><thead><tr><th>Bottle</th><th class="num">Size (mL)</th></tr></thead><tbody>`+
+      list.map(x=>`<tr><td>${x.name}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`;
+    sqStatus();
+  }catch(e){ el.textContent='Setup failed to reach Square.'; $('#sqSetup').disabled=false; }
+}
+async function sqRun(){
+  const ym=$('#sqMonth').value; if(!ym){ alert('Choose a reporting month.'); return; }
+  const [y,m]=ym.split('-').map(Number);
+  $('#sqOut').innerHTML='<div class="empty">Pulling Square sales for '+ym+'…</div>'; $('#sqCsv').style.display='none'; $('#sqPrint').style.display='none';
+  try{
+    const r=await fetch('/api/square/report',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({year:y,month:m})});
+    const d=await r.json();
+    if(d.error){ $('#sqOut').innerHTML='<div class="note">⚠️ '+(d.detail||d.error)+'</div>'; return; }
+    sqLast=d; renderSqReport(d);
+    $('#sqCsv').style.display='inline-flex'; $('#sqPrint').style.display='inline-flex';
+  }catch(e){ $('#sqOut').innerHTML='<div class="note">Could not reach the Square report endpoint.</div>'; }
+}
+function renderSqReport(d){
+  const f=d.form; const mName=new Date(d.year,d.month-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const due=new Date(d.year,d.month,20).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const rows=d.products.map(p=>`<tr><td>${p.name}</td><td class="num">${p.ml}</td><td class="num">${money(p.retail)}</td><td class="num">${p.sold}</td><td class="num">${p.samp}</td><td class="num">${p.total}</td><td class="num">${money(p.fobPerBottle)}</td><td class="num">${money(p.wholesaleBase)}</td><td class="num">${numf(p.sold9L,2)}</td><td class="num">${numf(p.samp9L,2)}</td></tr>`).join('');
+  $('#sqOut').innerHTML=reportHeader('Kentucky Form 73A525 — Retail / Gift Shop','Distilled spirits excise (Part I) + 11% wholesale sales tax (Part II)',mName)+`
+    <div class="note ky">Pulled from Square (${d.orderCount} completed orders, main location). <b>${d.bottlesSold}</b> bottles sold + <b>${d.bottlesSampled}</b> samples. Reconcile against your gauge/records before filing.</div>
+    <div class="tablewrap"><table><thead><tr><th>Product</th><th class="num">mL</th><th class="num">Retail</th><th class="num">Sold</th><th class="num">Samp</th><th class="num">Total</th><th class="num">FOB/btl</th><th class="num">Wholesale base</th><th class="num">Sold 9L</th><th class="num">Samp 9L</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <h4>Part I — Distilled Spirits Excise (9-liter cases)</h4>
+    <table><tbody>
+      <tr><td>Line 1 — Gift-shop retail (9L cases)</td><td class="num">${numf(f.line1,2)}</td></tr>
+      <tr><td>Line 2 — Samples / bar (9L cases)</td><td class="num">${numf(f.line2,2)}</td></tr>
+      <tr><td>Line 4 / 6 — Total taxable cases</td><td class="num">${numf(f.line6,2)}</td></tr>
+      <tr><td>Line 7 — Rate per 9L case</td><td class="num">${money(f.line7rate)}</td></tr>
+      <tr class="total"><td>Line 11 — Excise tax due</td><td class="num">${money(f.line11)}</td></tr>
+    </tbody></table>
+    <h4>Part II — Wholesale Sales Tax</h4>
+    <table><tbody>
+      <tr><td>Line 12 — Gross wholesale receipts (FOB = 40% of retail)</td><td class="num">${money(f.line12)}</td></tr>
+      <tr class="total"><td>Line 15 — Wholesale sales tax due (11%)</td><td class="num">${money(f.line15)}</td></tr>
+    </tbody></table>
+    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total 73A525 Due (Line 16)</div><div class="due">${money(f.line16)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">Due by the 20th of next month (by <b>${due}</b>). Check payable to Kentucky State Treasurer, Excise Tax Section, Frankfort, KY 40619.</div></div>
+    <div class="disclaimer">Excludes Back Office / distributor invoices (those belong on a separate self-distribution filing). Assumes zero returns. "Fill Your Own Bottle" is treated as a 750 ml bottle. Reconcile with your records and confirm rates with the Kentucky DOR before filing.</div>`;
+}
+function sqCsv(){
+  if(!sqLast)return; const p=sqLast.products;
+  const head=['Product','mL','Retail','Sold','Samples','Total','FOB per bottle','Wholesale base','Sold 9L','Sample 9L'];
+  const lines=[head.join(',')].concat(p.map(x=>[x.name,x.ml,x.retail,x.sold,x.samp,x.total,x.fobPerBottle,x.wholesaleBase,round2(x.sold9L),round2(x.samp9L)].map(csv).join(',')));
+  const f=sqLast.form;
+  lines.push(''); lines.push(['','','','','','','','','','' ].join(','));
+  lines.push(['73A525 Line','Value'].join(','));
+  [['Line 1 gift-shop 9L cases',f.line1],['Line 2 sample 9L cases',f.line2],['Line 6 total cases',f.line6],['Line 7 rate',f.line7rate],['Line 11 excise due',f.line11],['Line 12 wholesale base',f.line12],['Line 15 wholesale tax due',f.line15],['Line 16 TOTAL DUE',f.line16]].forEach(r=>lines.push(r.map(csv).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`73A525_${sqLast.year}-${String(sqLast.month).padStart(2,'0')}.csv`; a.click();
+}
 
 /* ================= Setup / sync / data ================= */
 function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
@@ -1316,6 +1407,8 @@ function wireOnce(){
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
+  $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv;
+  $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
 }
