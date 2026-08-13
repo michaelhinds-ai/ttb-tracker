@@ -272,6 +272,7 @@
         <div><label class="fld">Reporting month</label><input type="month" id="sqMonth"></div>
         <button class="btn ky sm" id="sqRun">Run 73A525</button>
         <button class="btn ghost sm" id="sqSetup">Set up bottle tags</button>
+        <button class="btn ghost sm noprint" id="sqPdf" style="display:none">Fill 73A525 (PDF)</button>
         <button class="btn ghost sm noprint" id="sqCsv" style="display:none">Export CSV</button>
         <button class="btn ghost sm noprint" id="sqPrint" style="display:none">Print / Save PDF</button>
       </div>
@@ -517,6 +518,8 @@
       <div class="grid g2">
         <div><label class="fld">DSP / Business Name</label><input type="text" id="s_name" placeholder="Your Distillery LLC"></div>
         <div><label class="fld">TTB Permit / Registry No.</label><input type="text" id="s_permit" placeholder="DSP-KY-XXXXX"></div>
+        <div><label class="fld">Street Address <span style="font-weight:400;color:var(--muted)">— for KY forms</span></label><input type="text" id="s_addr1" placeholder="717 E Market St"></div>
+        <div><label class="fld">City, State ZIP</label><input type="text" id="s_addr2" placeholder="Louisville, KY 40202"></div>
         <div><label class="fld">Federal Filing Frequency</label><select id="s_freq"><option value="quarterly">Quarterly</option><option value="semimonthly">Semi-monthly</option><option value="annual">Annual</option></select></div>
         <div><label class="fld">Reporting Year (default view)</label><input type="number" id="s_year" min="2018" max="2100" step="1"></div>
         <div><label class="fld">Bottles per Case</label><input type="number" id="s_bpc" min="1" step="1" placeholder="6"></div>
@@ -983,7 +986,7 @@ async function sqRun(){
     const d=await r.json();
     if(d.error){ $('#sqOut').innerHTML='<div class="note">⚠️ '+(d.detail||d.error)+'</div>'; return; }
     sqLast=d; renderSqReport(d);
-    $('#sqCsv').style.display='inline-flex'; $('#sqPrint').style.display='inline-flex';
+    $('#sqPdf').style.display='inline-flex'; $('#sqCsv').style.display='inline-flex'; $('#sqPrint').style.display='inline-flex';
   }catch(e){ $('#sqOut').innerHTML='<div class="note">Could not reach the Square report endpoint.</div>'; }
 }
 function renderSqReport(d){
@@ -1009,6 +1012,34 @@ function renderSqReport(d){
     <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total 73A525 Due (Line 16)</div><div class="due">${money(f.line16)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">Due by the 20th of next month (by <b>${due}</b>). Check payable to Kentucky State Treasurer, Excise Tax Section, Frankfort, KY 40619.</div></div>
     <div class="disclaimer">Excludes Back Office / distributor invoices (those belong on a separate self-distribution filing). Assumes zero returns. "Fill Your Own Bottle" is treated as a 750 ml bottle. Reconcile with your records and confirm rates with the Kentucky DOR before filing.</div>`;
 }
+function ensurePdfLib(){ return new Promise((res,rej)=>{ if(window.PDFLib)return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('pdf-lib failed to load')); document.head.appendChild(s); }); }
+async function sqPdf(){
+  if(!sqLast){ return; }
+  const fmt2=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  try{ await ensurePdfLib(); }catch(e){ alert('Could not load the PDF library (need internet).'); return; }
+  let bytes;
+  try{ const r=await fetch('/73A525.pdf'); if(!r.ok) throw 0; bytes=await r.arrayBuffer(); }
+  catch(e){ alert('Put the blank form in your repo at public/73A525.pdf and redeploy, then try again.'); return; }
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc=await PDFDocument.load(bytes);
+  const pg=doc.getPages()[0]; const H=pg.getHeight();
+  const font=await doc.embedFont(StandardFonts.Helvetica);
+  const col=rgb(0,0,0.5);
+  const put=(x,yTop,t,size=9)=>pg.drawText(String(t),{x,y:H-yTop,size,font,color:col});
+  const s=state.settings, f=sqLast.form;
+  const mName=new Date(sqLast.year,sqLast.month-1,1).toLocaleDateString('en-US',{month:'long'});
+  put(30,124,s.name||''); if(s.addr1)put(30,136,s.addr1); if(s.addr2)put(30,148,s.addr2);
+  put(400,168,mName,10); put(556,181,String(sqLast.year).slice(2),10);
+  put(420,236,fmt2(f.line1)); put(420,267,fmt2(f.line2));
+  put(420,314,fmt2(f.line4)); put(420,369,fmt2(f.line6));
+  put(421,428,fmt2(f.line8));
+  put(486,448,fmt2(f.line9)); put(486,479,fmt2(f.line11));
+  put(486,532,fmt2(f.line12)); put(486,548,fmt2(f.line13));
+  put(486,579,fmt2(f.line15)); put(486,631,fmt2(f.line16));
+  const outBytes=await doc.save();
+  const blob=new Blob([outBytes],{type:'application/pdf'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`73A525_${sqLast.year}-${String(sqLast.month).padStart(2,'0')}.pdf`; a.click();
+}
 function sqCsv(){
   if(!sqLast)return; const p=sqLast.products;
   const head=['Product','mL','Retail','Sold','Samples','Total','FOB per bottle','Wholesale base','Sold 9L','Sample 9L'];
@@ -1022,8 +1053,8 @@ function sqCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
-function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
+function saveSettings(){const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
 function copyLink(){ const v=$('#syncLink').value; navigator.clipboard?.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); }
 function joinWorkspace(){ const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
@@ -1409,7 +1440,7 @@ function wireOnce(){
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
-  $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv;
+  $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv; $('#sqPdf').onclick=sqPdf;
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
