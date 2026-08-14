@@ -157,6 +157,7 @@
   <button data-view="ledger">Ledger</button>
   <button data-view="reports">Federal Reports</button>
   <button data-view="kentucky">Kentucky</button>
+  <button data-view="retail">Retail Sales</button>
   <button data-view="barrels">Barrels</button>
   <button data-view="bottling">Bottling</button>
   <button data-view="finished">Finished Goods</button>
@@ -311,6 +312,25 @@
       </div>
       <div id="stxOut" style="margin-top:8px"></div>
     </div>
+  </section>
+
+  <!-- RETAIL SALES -->
+  <section class="view" id="view-retail">
+    <h2 class="section">Retail Sales</h2>
+    <div class="card noprint">
+      <p class="hint">A single day of retail activity across <b>all of your Square accounts</b> — each account on its own, plus a combined total. Sales are shown net of discounts and exclude tax and tips; refunds recorded that day are netted out separately.</p>
+      <div id="rtlStatus" class="note" style="margin-bottom:12px">Checking Square connections…</div>
+      <div class="toolbar">
+        <div><label class="fld">Day</label><input type="date" id="rtlDate"></div>
+        <button class="btn ghost sm" id="rtlPrev" title="Previous day">◀</button>
+        <button class="btn ghost sm" id="rtlToday">Today</button>
+        <button class="btn ghost sm" id="rtlNext" title="Next day">▶</button>
+        <button class="btn ky sm cap-reports" id="rtlRun">Pull the day</button>
+        <button class="btn ghost sm noprint" id="rtlCsv" style="display:none">Export CSV</button>
+        <button class="btn ghost sm noprint" id="rtlPrint" style="display:none">Print / Save PDF</button>
+      </div>
+    </div>
+    <div class="card rpt" id="rtlOut"><div class="empty">Pick a day and pull the numbers.</div></div>
   </section>
 
   <!-- BARRELS -->
@@ -961,6 +981,7 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 const round1=n=>Math.round((Number(n)||0)*10)/10;
 const round2=n=>Math.round((Number(n)||0)*100)/100;
 const money=n=>'$'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 const numf=(n,d=1)=>(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pgCalc=(wg,proof)=>round1((Number(wg)||0)*(Number(proof)||0)/100);
 function uid(){ return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -1391,6 +1412,122 @@ function stxCsv(){
   a.href=URL.createObjectURL(blob); a.download=`KY-salestax_${d.year}-${String(d.month).padStart(2,'0')}.csv`; a.click();
 }
 
+/* ---- Retail Sales — one day across every Square account ---- */
+let rtlLast=null, rtlAccts=null;
+const rtlTodayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+function renderRetail(){
+  if(!$('#rtlDate').value) $('#rtlDate').value=rtlTodayStr();
+  rtlStatus();
+}
+async function rtlStatus(){
+  const el=$('#rtlStatus'); if(!el)return;
+  if(location.protocol==='file:'){ el.innerHTML='Retail Sales runs only on the hosted site.'; $('#rtlRun').disabled=true; return; }
+  el.textContent='Checking Square connections…';
+  try{
+    const r=await fetch('/api/square/accounts',{cache:'no-store'}); const d=await r.json();
+    rtlAccts=d;
+    if(!d.configured||!d.accounts.length){ el.innerHTML='⚠️ No Square account is connected yet. Add <b>SQUARE_ACCESS_TOKEN</b> (and <b>SQUARE_ACCESS_TOKEN_2</b> for your second account) in Netlify, then redeploy.'; $('#rtlRun').disabled=true; return; }
+    $('#rtlRun').disabled=false;
+    const bits=d.accounts.map(a=>{
+      const name=a.merchant||a.label;
+      return a.connected
+        ? `✅ <b>${esc(name)}</b> <span style="color:var(--muted)">(${a.locations.length} location${a.locations.length===1?'':'s'})</span>`
+        : `⚠️ <b>${esc(a.label)}</b> — connection failed${a.error?` (${esc(a.error)})`:''}`;
+    });
+    if(d.accounts.length===1) bits.push('<span style="color:var(--muted)">Only one account connected — add <b>SQUARE_ACCESS_TOKEN_2</b> in Netlify to see both here.</span>');
+    el.innerHTML=bits.join(' &nbsp;·&nbsp; ');
+  }catch(e){ el.textContent='Could not reach the Square accounts endpoint.'; }
+}
+function rtlShift(days){
+  const v=$('#rtlDate').value||rtlTodayStr(); const [y,m,d]=v.split('-').map(Number);
+  const dt=new Date(y,m-1,d+days);
+  $('#rtlDate').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  rtlRun();
+}
+async function rtlRun(){
+  if(!requireCap('reports'))return;
+  const date=$('#rtlDate').value; if(!date){ alert('Pick a day.'); return; }
+  $('#rtlOut').innerHTML='<div class="empty">Pulling Square sales for '+date+'…</div>';
+  $('#rtlCsv').style.display='none'; $('#rtlPrint').style.display='none';
+  try{
+    const r=await fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date})});
+    const d=await r.json();
+    if(d.error){ $('#rtlOut').innerHTML='<div class="note">⚠️ '+esc(d.detail||d.error)+'</div>'; return; }
+    rtlLast=d; renderRetailOut(d);
+    $('#rtlCsv').style.display='inline-flex'; $('#rtlPrint').style.display='inline-flex';
+  }catch(e){ $('#rtlOut').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
+}
+function renderRetailOut(d){
+  const c=d.combined, [y,m,dd]=d.date.split('-').map(Number);
+  const dayName=new Date(y,m-1,dd).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const ok=d.accounts.filter(a=>a.ok), bad=d.accounts.filter(a=>!a.ok);
+
+  const kpis=`<div class="kpis" style="margin:14px 0">`+[
+    kpi('copper','Net Sales',money(c.netSales),`${c.orderCount} order${c.orderCount===1?'':'s'} · avg ${money(c.avgOrder)}`),
+    kpi('ky','Sales Tax',money(c.tax),c.refundedTax?`${money(c.netTax)} net of refunds`:'collected at retail'),
+    kpi('barrel','Units Sold',numf(c.units,0),c.bottles!=null?`${numf(c.bottles,0)} tagged bottles`:'line-item quantity'),
+    kpi('green','Tips',money(c.tips),c.discounts?`${money(c.discounts)} in discounts`:'no discounts today'),
+  ].join('')+`</div>`;
+
+  // Per-account comparison
+  const acctRows=ok.map(a=>`<tr>
+    <td><b>${esc(a.merchant||a.label)}</b><div style="color:var(--muted);font-size:12px">${esc(a.label)}${a.locations>1?` · ${a.locations} locations`:''}</div></td>
+    <td class="num">${a.orderCount}</td>
+    <td class="num">${money(a.netSales)}</td>
+    <td class="num">${money(a.tax)}</td>
+    <td class="num">${money(a.tips)}</td>
+    <td class="num">${money(a.discounts)}</td>
+    <td class="num">${numf(a.units,0)}</td>
+    <td class="num">${a.bottles!=null?numf(a.bottles,0):'—'}</td>
+    <td class="num">${a.refundCount?`(${money(a.refunded)})`:'—'}</td>
+  </tr>`).join('');
+  const totalRow=`<tr class="total" style="font-weight:700">
+    <td>Combined</td><td class="num">${c.orderCount}</td><td class="num">${money(c.netSales)}</td>
+    <td class="num">${money(c.tax)}</td><td class="num">${money(c.tips)}</td><td class="num">${money(c.discounts)}</td>
+    <td class="num">${numf(c.units,0)}</td><td class="num">${c.bottles!=null?numf(c.bottles,0):'—'}</td>
+    <td class="num">${c.refundCount?`(${money(c.refunded)})`:'—'}</td></tr>`;
+
+  const topRows=c.topItems.length
+    ? c.topItems.map(i=>{
+        const per=ok.map(a=>{const hit=(a.topItems||[]).find(x=>x.name===i.name);return `<td class="num">${hit?numf(hit.qty,0):'—'}</td>`;}).join('');
+        return `<tr><td>${esc(i.name)}</td>${per}<td class="num">${numf(i.qty,0)}</td><td class="num">${money(i.net)}</td></tr>`;
+      }).join('')
+    : `<tr><td colspan="${ok.length+3}" style="color:var(--muted)">No items sold on this day.</td></tr>`;
+  const topHead=`<tr><th>Item</th>${ok.map(a=>`<th class="num">${esc(a.merchant||a.label)}</th>`).join('')}<th class="num">Qty</th><th class="num">Net Sales</th></tr>`;
+
+  const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(a.label)).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. The totals below cover the remaining account${ok.length===1?'':'s'} only.</div>`:'';
+  const locSection=ok.filter(a=>a.byLocation.length>1).map(a=>`
+    <h4>${esc(a.merchant||a.label)} — by location</h4>
+    <div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Tax</th><th class="num">Units</th></tr></thead>
+    <tbody>${a.byLocation.map(l=>`<tr><td>${esc(l.name)}</td><td class="num">${l.orders}</td><td class="num">${money(l.net)}</td><td class="num">${money(l.tax)}</td><td class="num">${numf(l.units,0)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+
+  $('#rtlOut').innerHTML=reportHeader('Retail Sales — Daily Summary','All Square accounts, combined',dayName)+failNote+kpis+`
+    <h4>By account</h4>
+    <div class="tablewrap"><table><thead><tr>
+      <th>Account</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Tax</th>
+      <th class="num">Tips</th><th class="num">Discounts</th><th class="num">Units</th><th class="num">Bottles</th><th class="num">Refunds</th>
+    </tr></thead><tbody>${acctRows}${ok.length>1?totalRow:''}</tbody></table></div>
+    <h4>Top items</h4>
+    <div class="tablewrap"><table><thead>${topHead}</thead><tbody>${topRows}</tbody></table></div>
+    ${locSection}
+    <div class="taxbox"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Collected — ${esc(dayName)}</div>
+      <div class="due">${money(c.collected)}</div>
+      <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(c.netSales)} in sales + ${money(c.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}.</div></div>
+    <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — untagged accounts show a dash. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
+}
+function rtlCsv(){
+  if(!rtlLast)return; const d=rtlLast, ok=d.accounts.filter(a=>a.ok);
+  const L=[['Retail Sales — Daily Summary',d.date].join(',')];
+  L.push(''); L.push(['Account','Orders','Net Sales','Tax','Tips','Discounts','Units','Bottles','Refunded','Refunded Tax'].join(','));
+  ok.forEach(a=>L.push([csv(a.merchant||a.label),a.orderCount,a.netSales,a.tax,a.tips,a.discounts,a.units,a.bottles==null?'':a.bottles,a.refunded,a.refundedTax].join(',')));
+  const c=d.combined;
+  L.push(['Combined',c.orderCount,c.netSales,c.tax,c.tips,c.discounts,c.units,c.bottles==null?'':c.bottles,c.refunded,c.refundedTax].join(','));
+  L.push(''); L.push(['Top item','Qty','Net Sales'].join(','));
+  c.topItems.forEach(i=>L.push([csv(i.name),i.qty,i.net].join(',')));
+  const blob=new Blob([L.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`retail-sales_${d.date}.csv`; a.click();
+}
+
 /* ================= Setup / sync / data ================= */
 function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;}
 function saveSettings(){if(!requireCap('setup'))return;const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
@@ -1430,7 +1567,7 @@ function loadSample(){
 }
 
 /* ================= UI plumbing ================= */
-function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
+function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
 function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
@@ -2081,6 +2218,11 @@ function wireOnce(){
   $('#stxRun').onclick=stxRun; $('#stxCsv').onclick=stxCsv;
   $('#stxPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
+  $('#rtlRun').onclick=rtlRun; $('#rtlCsv').onclick=rtlCsv;
+  $('#rtlToday').onclick=()=>{$('#rtlDate').value=rtlTodayStr();rtlRun();};
+  $('#rtlPrev').onclick=()=>rtlShift(-1); $('#rtlNext').onclick=()=>rtlShift(1);
+  $('#rtlDate').onchange=rtlRun;
+  $('#rtlPrint').onclick=()=>{const o=$('#view-retail');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
   const us=$('#userSave'); if(us) us.onclick=userSave; const uc=$('#userCancel'); if(uc) uc.onclick=cancelUser;
   initEntryForm(); initBarrelForm(); initTib(); initBottling(); initOrders();
