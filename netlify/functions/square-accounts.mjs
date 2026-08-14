@@ -7,7 +7,7 @@ export default async () => {
   if (!accts.length) return json({ configured: false, accounts: [] });
 
   const rows = await Promise.all(accts.map(async (a) => {
-    const base = { key: a.key, label: a.label, environment: a.environment, tz: a.tz, today: todayInTz(a.tz) };
+    const base = { key: a.key, label: a.label || null, environment: a.environment, tz: a.tz, today: todayInTz(a.tz) };
     try {
       const r = await sqFor(a, "/v2/locations");
       const locs = (r.locations || []).filter((l) => l.status === "ACTIVE");

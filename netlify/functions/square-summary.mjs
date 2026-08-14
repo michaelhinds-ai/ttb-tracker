@@ -1,9 +1,14 @@
-// Daily retail sales summary across ALL configured Square accounts.
+// Daily retail sales summary, broken out by LOCATION, across every configured
+// Square account.
 // POST { date: "YYYY-MM-DD" }  (or { startISO, endISO } for a custom window)
-// Returns per-account figures plus a combined total. Money is returned in dollars.
+// Each active location gets its own figures and its own top-item list; those
+// roll up to per-account totals and one grand combined total.
+// Money is returned in dollars.
 import { accounts, sqFor, dayRange, todayInTz, json } from "./lib/square.mjs";
 
 const DEF_NAME = "TTB Bottle Size (mL)";
+const TOP_N_LOCATION = 10;
+const TOP_N_ROLLUP = 15;
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -14,17 +19,17 @@ export default async (req) => {
   const customWindow = p.startISO && p.endISO ? { startISO: p.startISO, endISO: p.endISO } : null;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || "") ? p.date : todayInTz(accts[0].tz);
 
-  // Each account runs independently — one failing account must not blank the page.
+  // Accounts run independently — one failing account must not blank the page.
   const results = await Promise.all(accts.map(async (a) => {
     const win = customWindow || dayRange(date, a.tz);
+    const head = { key: a.key, label: a.label || null, tz: a.tz, startISO: win.startISO, endISO: win.endISO };
     try {
       const data = await accountSummary(a, win.startISO, win.endISO);
-      return { key: a.key, label: a.label, tz: a.tz, ok: true, startISO: win.startISO, endISO: win.endISO, ...data };
+      return { ...head, ok: true, ...data };
     } catch (e) {
       const status = (e && e.status) || null;
       return {
-        key: a.key, label: a.label, tz: a.tz, ok: false,
-        startISO: win.startISO, endISO: win.endISO,
+        ...head, ok: false, locations: [], totals: zero(),
         error: status === 401 ? "unauthorized" : "square_error",
         detail: safe(e && (e.detail || e.message)) || "unknown error",
       };
@@ -32,28 +37,10 @@ export default async (req) => {
   }));
 
   const good = results.filter((r) => r.ok);
-  const sum = (f) => r2(good.reduce((s, r) => s + (f(r) || 0), 0));
-  const combined = {
-    accounts: good.length,
-    orderCount: good.reduce((s, r) => s + r.orderCount, 0),
-    refundCount: good.reduce((s, r) => s + r.refundCount, 0),
-    grossSales: sum((r) => r.grossSales),
-    discounts: sum((r) => r.discounts),
-    netSales: sum((r) => r.netSales),
-    tax: sum((r) => r.tax),
-    tips: sum((r) => r.tips),
-    serviceCharges: sum((r) => r.serviceCharges),
-    collected: sum((r) => r.collected),
-    refunded: sum((r) => r.refunded),
-    refundedTax: sum((r) => r.refundedTax),
-    netSalesAfterRefunds: sum((r) => r.netSalesAfterRefunds),
-    netTax: sum((r) => r.netTax),
-    units: good.reduce((s, r) => s + r.units, 0),
-    bottles: good.reduce((s, r) => s + (r.bottles || 0), 0),
-    avgOrder: 0,
-    topItems: mergeTopItems(good),
-  };
-  combined.avgOrder = combined.orderCount ? r2(combined.netSales / combined.orderCount) : 0;
+  const combined = rollup(good.map((r) => r.totals));
+  combined.accounts = good.length;
+  combined.locations = good.reduce((s, r) => s + r.locations.length, 0);
+  combined.topItems = mergeItems(good.flatMap((r) => r.totals.topItems || []), TOP_N_ROLLUP);
 
   return json({
     configured: true,
@@ -70,9 +57,12 @@ async function accountSummary(acct, startISO, endISO) {
   const bottlePromise = bottleVariations(acct).catch(() => null);
 
   const locs = ((await sqFor(acct, "/v2/locations")).locations || []).filter((l) => l.status === "ACTIVE");
-  const locName = {}; locs.forEach((l) => { locName[l.id] = l.name || l.id; });
+  const merchant = (locs[0] && locs[0].business_name) || null;
   const locIds = locs.map((l) => l.id);
-  if (!locIds.length) return emptyAccount(locs);
+  if (!locIds.length) {
+    await bottlePromise;
+    return { merchant, locations: [], totals: zero() };
+  }
 
   const [orders, refunds, bottleVars] = await Promise.all([
     allOrders(acct, locIds, startISO, endISO),
@@ -80,11 +70,14 @@ async function accountSummary(acct, startISO, endISO) {
     bottlePromise,
   ]);
 
-  let grossC = 0, discountC = 0, taxC = 0, tipC = 0, svcC = 0, collectedC = 0;
-  let units = 0, bottles = 0;
-  const byLoc = {}, items = {};
+  // Seed a bucket for every active location so quiet ones still show up as zero
+  // rather than silently vanishing from the day.
+  const buckets = {};
+  for (const l of locs) buckets[l.id] = bucket(l.id, l.name || l.id);
+  const bucketFor = (id) => buckets[id] || (buckets[id || "?"] = bucket(id || "?", "Unassigned"));
 
   for (const o of orders) {
+    const b = bucketFor(o.location_id);
     const tax = money(o.total_tax_money);
     const tip = money(o.total_tip_money);
     const svc = money(o.total_service_charge_money);
@@ -93,89 +86,124 @@ async function accountSummary(acct, startISO, endISO) {
     // Gross = merchandise before discounts, tax, tips and service charges.
     const gross = total - tax - tip - svc + disc;
 
-    grossC += gross; discountC += disc; taxC += tax; tipC += tip; svcC += svc; collectedC += total;
-
-    const L = o.location_id || "?";
-    const b = byLoc[L] || (byLoc[L] = { name: locName[L] || L, orders: 0, net: 0, tax: 0, units: 0 });
-    b.orders++; b.net += gross - disc; b.tax += tax;
+    b.orderCount++;
+    b.grossC += gross; b.discountC += disc; b.taxC += tax;
+    b.tipC += tip; b.svcC += svc; b.collectedC += total;
 
     for (const li of (o.line_items || [])) {
       const qty = parseFloat(li.quantity || "0") || 0;
       const net = money(li.gross_sales_money) - money(li.total_discount_money);
-      units += qty; b.units += qty;
-      if (bottleVars && bottleVars.var2ml[li.catalog_object_id]) bottles += qty;
-      const name = li.name || (li.variation_name ? li.variation_name : "Item");
+      b.units += qty;
+      if (bottleVars && bottleVars.var2ml[li.catalog_object_id]) b.bottles += qty;
+      const name = li.name || li.variation_name || "Item";
       const key = name + (li.variation_name && li.variation_name !== name ? ` — ${li.variation_name}` : "");
-      const it = items[key] || (items[key] = { name: key, qty: 0, net: 0 });
-      it.qty += qty; it.net += net;
+      const it = b.items[key] || (b.items[key] = { name: key, qty: 0, netC: 0 });
+      it.qty += qty; it.netC += net;
     }
   }
 
-  // Refunds recorded during the window, with the tax portion apportioned out of
-  // each refund using its original order's tax-to-total ratio.
-  let refundedC = 0, refundedTaxC = 0, refundCount = 0;
+  // Refunds recorded during the window, attributed to the location that issued
+  // them, with the tax portion apportioned out using the original order's
+  // tax-to-total ratio.
   const orderIds = [...new Set(refunds.map((r) => r.order_id).filter(Boolean))];
   const ordMap = await orderTaxMap(acct, orderIds);
   for (const rf of refunds) {
     const amt = money(rf.amount_money); if (amt <= 0) continue;
-    refundCount++;
+    const b = bucketFor(rf.location_id);
     const om = ordMap[rf.order_id];
     const taxPortion = om && om.total > 0 ? amt * (om.tax / om.total) : 0;
-    refundedC += amt; refundedTaxC += taxPortion;
+    b.refundCount++; b.refundedC += amt; b.refundedTaxC += taxPortion;
   }
 
-  const netC = grossC - discountC;
-  const topItems = Object.values(items)
-    .map((i) => ({ name: i.name, qty: r2(i.qty), net: c2(i.net) }))
-    .sort((a, b) => b.net - a.net || b.qty - a.qty)
-    .slice(0, 15);
+  const tagged = !!bottleVars;
+  const locations = Object.values(buckets)
+    .map((b) => finalize(b, tagged))
+    .sort((a, b) => b.netSales - a.netSales || a.name.localeCompare(b.name));
 
+  const totals = rollup(locations);
+  totals.topItems = mergeItems(locations.flatMap((l) => l.topItems), TOP_N_ROLLUP);
+  totals.bottlesTagged = tagged;
+  if (!tagged) totals.bottles = null;
+
+  return { merchant, locations, totals };
+}
+
+function bucket(id, name) {
   return {
-    merchant: (locs[0] && locs[0].business_name) || null,
-    locations: locs.length,
-    orderCount: orders.length,
-    refundCount,
-    grossSales: c2(grossC),
-    discounts: c2(discountC),
+    id, name, orderCount: 0, refundCount: 0,
+    grossC: 0, discountC: 0, taxC: 0, tipC: 0, svcC: 0, collectedC: 0,
+    refundedC: 0, refundedTaxC: 0, units: 0, bottles: 0, items: {},
+  };
+}
+
+function finalize(b, tagged) {
+  const netC = b.grossC - b.discountC;
+  return {
+    id: b.id,
+    name: b.name,
+    orderCount: b.orderCount,
+    refundCount: b.refundCount,
+    grossSales: c2(b.grossC),
+    discounts: c2(b.discountC),
     netSales: c2(netC),
-    tax: c2(taxC),
-    tips: c2(tipC),
-    serviceCharges: c2(svcC),
-    collected: c2(collectedC),
-    refunded: c2(refundedC),
-    refundedTax: c2(refundedTaxC),
-    netSalesAfterRefunds: c2(netC - (refundedC - refundedTaxC)),
-    netTax: c2(taxC - refundedTaxC),
-    avgOrder: orders.length ? c2(netC / orders.length) : 0,
-    units: r2(units),
-    bottles: bottleVars ? r2(bottles) : null,
-    bottlesTagged: !!bottleVars,
-    byLocation: Object.values(byLoc)
-      .map((b) => ({ name: b.name, orders: b.orders, net: c2(b.net), tax: c2(b.tax), units: r2(b.units) }))
-      .sort((a, b) => b.net - a.net),
-    topItems,
+    tax: c2(b.taxC),
+    tips: c2(b.tipC),
+    serviceCharges: c2(b.svcC),
+    collected: c2(b.collectedC),
+    refunded: c2(b.refundedC),
+    refundedTax: c2(b.refundedTaxC),
+    netSalesAfterRefunds: c2(netC - (b.refundedC - b.refundedTaxC)),
+    netTax: c2(b.taxC - b.refundedTaxC),
+    avgTicket: b.orderCount ? c2(netC / b.orderCount) : 0,
+    tipPct: netC > 0 ? r2((b.tipC / netC) * 100) : 0,
+    units: r2(b.units),
+    bottles: tagged ? r2(b.bottles) : null,
+    topItems: Object.values(b.items)
+      .map((i) => ({ name: i.name, qty: r2(i.qty), net: c2(i.netC) }))
+      .sort((a, b2) => b2.net - a.net || b2.qty - a.qty)
+      .slice(0, TOP_N_LOCATION),
   };
 }
 
-function emptyAccount(locs) {
-  return {
-    merchant: null, locations: (locs || []).length, orderCount: 0, refundCount: 0,
-    grossSales: 0, discounts: 0, netSales: 0, tax: 0, tips: 0, serviceCharges: 0,
-    collected: 0, refunded: 0, refundedTax: 0, netSalesAfterRefunds: 0, netTax: 0,
-    avgOrder: 0, units: 0, bottles: null, bottlesTagged: false, byLocation: [], topItems: [],
-  };
+const SUM_FIELDS = [
+  "grossSales", "discounts", "netSales", "tax", "tips", "serviceCharges",
+  "collected", "refunded", "refundedTax", "netSalesAfterRefunds", "netTax", "units",
+];
+
+function zero() {
+  const t = { orderCount: 0, refundCount: 0, bottles: 0, avgTicket: 0, tipPct: 0, topItems: [] };
+  for (const f of SUM_FIELDS) t[f] = 0;
+  return t;
 }
 
-function mergeTopItems(rows) {
+// Sum a set of location (or account) rows into one total.
+function rollup(rows) {
+  const t = zero();
+  let anyBottles = false;
+  for (const r of rows) {
+    if (!r) continue;
+    t.orderCount += r.orderCount || 0;
+    t.refundCount += r.refundCount || 0;
+    for (const f of SUM_FIELDS) t[f] = r2((t[f] || 0) + (r[f] || 0));
+    if (r.bottles != null) { t.bottles += r.bottles; anyBottles = true; }
+  }
+  t.bottles = anyBottles ? r2(t.bottles) : null;
+  t.units = r2(t.units);
+  t.avgTicket = t.orderCount ? r2(t.netSales / t.orderCount) : 0;
+  t.tipPct = t.netSales > 0 ? r2((t.tips / t.netSales) * 100) : 0;
+  return t;
+}
+
+function mergeItems(items, limit) {
   const m = {};
-  for (const r of rows) for (const it of (r.topItems || [])) {
+  for (const it of items) {
     const e = m[it.name] || (m[it.name] = { name: it.name, qty: 0, net: 0 });
     e.qty += it.qty; e.net += it.net;
   }
   return Object.values(m)
     .map((e) => ({ name: e.name, qty: r2(e.qty), net: r2(e.net) }))
     .sort((a, b) => b.net - a.net || b.qty - a.qty)
-    .slice(0, 15);
+    .slice(0, limit);
 }
 
 // variation id -> bottle size (mL), for the "units vs bottles" split
