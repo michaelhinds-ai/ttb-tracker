@@ -1489,16 +1489,20 @@ function renderRetailOut(d){
   });
   if(ok.length>1||ok.some(a=>shownLocs(a).length>1)) rows+=`<tr class="total" style="font-weight:700"><td>All locations</td>${cols(c)}</tr>`;
 
-  // Per-account summary block (Louisville Rickhouse, NBC, …) — a birds-eye between the combined KPIs and the table.
-  const acctSummary=a=>{ const t=a.totals, an=rtlAcctName(a), lc=shownLocs(a).length; return `<h4 style="margin-top:20px">${esc(an)} — summary</h4>`+
-    `<div class="kpis" style="margin:8px 0 4px">`+[
+  // Full per-account summary block (same letterhead + KPI tiles as the combined one at top),
+  // shown after the combined summary and broken out by account (Louisville Rickhouse, NBC, …).
+  const acctBlock=a=>{ const t=a.totals, an=rtlAcctName(a), lc=shownLocs(a).length;
+    const header=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid var(--copper);padding-bottom:12px;margin:30px 0 6px">`+
+      `<div><div style="font-size:20px;font-weight:800">${esc(an)}</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${lc} location${lc===1?'':'s'}</div></div>`+
+      `<div style="text-align:right"><div style="font-weight:700">Retail Sales — Daily Summary</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${esc(dayName)}</div></div></div>`;
+    return header+`<div class="kpis" style="margin:14px 0">`+[
       kpi('copper','Net Sales',money(t.netSales),`${t.orderCount} order${t.orderCount===1?'':'s'} · ${lc} location${lc===1?'':'s'}`),
       kpi('blue','Avg Ticket',money(t.avgTicket),'net sales per order'),
       kpi('ky','Sales Tax',money(t.tax),t.refundedTax?`${money(t.netTax)} net of refunds`:'collected at retail'),
       kpi('green','Tips',money(t.tips),t.tipPct?`${numf(t.tipPct,1)}% of net sales`:'none recorded'),
       kpi('barrel','Units Sold',numf(t.units,0),t.bottles!=null?`${numf(t.bottles,0)} tagged bottles`:'line-item quantity'),
     ].join('')+`</div>`; };
-  const acctBlocks=ok.length>1?ok.map(acctSummary).join(''):'';
+  const acctBlocks=ok.length>1?ok.map(acctBlock).join(''):'';
 
   // Per-location detail, each with its own top sellers.
   const detail=ok.map(a=>{
