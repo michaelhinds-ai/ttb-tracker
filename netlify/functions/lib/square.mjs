@@ -27,7 +27,7 @@ export function accounts() {
   const list = [
     {
       key: "a1",
-      label: g("SQUARE_LABEL_1") || "Account 1",
+      label: g("SQUARE_LABEL_1") || "",   // empty => callers fall back to the Square business name
       token: g("SQUARE_ACCESS_TOKEN"),
       environment: baseEnv,
       version: baseVersion,
@@ -35,7 +35,7 @@ export function accounts() {
     },
     {
       key: "a2",
-      label: g("SQUARE_LABEL_2") || "Account 2",
+      label: g("SQUARE_LABEL_2") || "",
       token: g("SQUARE_ACCESS_TOKEN_2"),
       environment: (g("SQUARE_ENVIRONMENT_2") || baseEnv).toLowerCase(),
       version: g("SQUARE_VERSION_2") || baseVersion,
