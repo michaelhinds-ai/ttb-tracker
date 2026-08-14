@@ -1412,9 +1412,11 @@ function stxCsv(){
   a.href=URL.createObjectURL(blob); a.download=`KY-salestax_${d.year}-${String(d.month).padStart(2,'0')}.csv`; a.click();
 }
 
-/* ---- Retail Sales — one day across every Square account ---- */
+/* ---- Retail Sales — one day, every location, every Square account ---- */
 let rtlLast=null, rtlAccts=null;
 const rtlTodayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// The name you set in SQUARE_LABEL_n wins; then Square's business name; then a plain fallback.
+const rtlAcctName=a=>a.label||a.merchant||('Account '+(a.key==='a2'?2:1));
 function renderRetail(){
   if(!$('#rtlDate').value) $('#rtlDate').value=rtlTodayStr();
   rtlStatus();
@@ -1429,10 +1431,10 @@ async function rtlStatus(){
     if(!d.configured||!d.accounts.length){ el.innerHTML='⚠️ No Square account is connected yet. Add <b>SQUARE_ACCESS_TOKEN</b> (and <b>SQUARE_ACCESS_TOKEN_2</b> for your second account) in Netlify, then redeploy.'; $('#rtlRun').disabled=true; return; }
     $('#rtlRun').disabled=false;
     const bits=d.accounts.map(a=>{
-      const name=a.merchant||a.label;
+      const n=a.locations?a.locations.length:0;
       return a.connected
-        ? `✅ <b>${esc(name)}</b> <span style="color:var(--muted)">(${a.locations.length} location${a.locations.length===1?'':'s'})</span>`
-        : `⚠️ <b>${esc(a.label)}</b> — connection failed${a.error?` (${esc(a.error)})`:''}`;
+        ? `✅ <b>${esc(rtlAcctName(a))}</b> <span style="color:var(--muted)">(${n} location${n===1?'':'s'})</span>`
+        : `⚠️ <b>${esc(rtlAcctName(a))}</b> — connection failed${a.error?` (${esc(a.error)})`:''}`;
     });
     if(d.accounts.length===1) bits.push('<span style="color:var(--muted)">Only one account connected — add <b>SQUARE_ACCESS_TOKEN_2</b> in Netlify to see both here.</span>');
     el.innerHTML=bits.join(' &nbsp;·&nbsp; ');
@@ -1457,73 +1459,86 @@ async function rtlRun(){
     $('#rtlCsv').style.display='inline-flex'; $('#rtlPrint').style.display='inline-flex';
   }catch(e){ $('#rtlOut').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
 }
+function rtlStat(l,v){return `<span style="display:inline-block;margin:0 20px 8px 0"><span style="font-family:-apple-system,Segoe UI,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block">${l}</span><b style="font-variant-numeric:tabular-nums;font-size:15px">${v}</b></span>`;}
 function renderRetailOut(d){
   const c=d.combined, [y,m,dd]=d.date.split('-').map(Number);
   const dayName=new Date(y,m-1,dd).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const ok=d.accounts.filter(a=>a.ok), bad=d.accounts.filter(a=>!a.ok);
 
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
-    kpi('copper','Net Sales',money(c.netSales),`${c.orderCount} order${c.orderCount===1?'':'s'} · avg ${money(c.avgOrder)}`),
+    kpi('copper','Net Sales',money(c.netSales),`${c.orderCount} order${c.orderCount===1?'':'s'} · ${c.locations} location${c.locations===1?'':'s'}`),
+    kpi('blue','Avg Ticket',money(c.avgTicket),'net sales per order'),
     kpi('ky','Sales Tax',money(c.tax),c.refundedTax?`${money(c.netTax)} net of refunds`:'collected at retail'),
+    kpi('green','Tips',money(c.tips),c.tipPct?`${numf(c.tipPct,1)}% of net sales`:'none recorded'),
     kpi('barrel','Units Sold',numf(c.units,0),c.bottles!=null?`${numf(c.bottles,0)} tagged bottles`:'line-item quantity'),
-    kpi('green','Tips',money(c.tips),c.discounts?`${money(c.discounts)} in discounts`:'no discounts today'),
   ].join('')+`</div>`;
 
-  // Per-account comparison
-  const acctRows=ok.map(a=>`<tr>
-    <td><b>${esc(a.merchant||a.label)}</b><div style="color:var(--muted);font-size:12px">${esc(a.label)}${a.locations>1?` · ${a.locations} locations`:''}</div></td>
-    <td class="num">${a.orderCount}</td>
-    <td class="num">${money(a.netSales)}</td>
-    <td class="num">${money(a.tax)}</td>
-    <td class="num">${money(a.tips)}</td>
-    <td class="num">${money(a.discounts)}</td>
-    <td class="num">${numf(a.units,0)}</td>
-    <td class="num">${a.bottles!=null?numf(a.bottles,0):'—'}</td>
-    <td class="num">${a.refundCount?`(${money(a.refunded)})`:'—'}</td>
-  </tr>`).join('');
-  const totalRow=`<tr class="total" style="font-weight:700">
-    <td>Combined</td><td class="num">${c.orderCount}</td><td class="num">${money(c.netSales)}</td>
-    <td class="num">${money(c.tax)}</td><td class="num">${money(c.tips)}</td><td class="num">${money(c.discounts)}</td>
-    <td class="num">${numf(c.units,0)}</td><td class="num">${c.bottles!=null?numf(c.bottles,0):'—'}</td>
-    <td class="num">${c.refundCount?`(${money(c.refunded)})`:'—'}</td></tr>`;
+  const cols=(x)=>`<td class="num">${x.orderCount}</td><td class="num">${money(x.netSales)}</td><td class="num">${money(x.avgTicket)}</td><td class="num">${money(x.tax)}</td><td class="num">${money(x.tips)}</td><td class="num">${money(x.discounts)}</td><td class="num">${numf(x.units,0)}</td><td class="num">${x.bottles!=null?numf(x.bottles,0):'—'}</td><td class="num">${x.refundCount?`(${money(x.refunded)})`:'—'}</td>`;
 
-  const topRows=c.topItems.length
-    ? c.topItems.map(i=>{
-        const per=ok.map(a=>{const hit=(a.topItems||[]).find(x=>x.name===i.name);return `<td class="num">${hit?numf(hit.qty,0):'—'}</td>`;}).join('');
-        return `<tr><td>${esc(i.name)}</td>${per}<td class="num">${numf(i.qty,0)}</td><td class="num">${money(i.net)}</td></tr>`;
-      }).join('')
-    : `<tr><td colspan="${ok.length+3}" style="color:var(--muted)">No items sold on this day.</td></tr>`;
-  const topHead=`<tr><th>Item</th>${ok.map(a=>`<th class="num">${esc(a.merchant||a.label)}</th>`).join('')}<th class="num">Qty</th><th class="num">Net Sales</th></tr>`;
+  // One row per location, grouped under its account, with a subtotal per account.
+  let rows='';
+  ok.forEach(a=>{
+    const an=rtlAcctName(a);
+    if(ok.length>1) rows+=`<tr class="sub"><td colspan="10" style="font-weight:700;color:var(--copper)">${esc(an)}</td></tr>`;
+    rows+=a.locations.map(l=>`<tr><td style="padding-left:${ok.length>1?'18px':'0'}">${esc(l.name)}</td>${cols(l)}</tr>`).join('');
+    if(a.locations.length>1) rows+=`<tr class="sub"><td style="padding-left:${ok.length>1?'18px':'0'}"><i>${esc(an)} total</i></td>${cols(a.totals)}</tr>`;
+  });
+  if(ok.length>1||ok.some(a=>a.locations.length>1)) rows+=`<tr class="total" style="font-weight:700"><td>All locations</td>${cols(c)}</tr>`;
 
-  const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(a.label)).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. The totals below cover the remaining account${ok.length===1?'':'s'} only.</div>`:'';
-  const locSection=ok.filter(a=>a.byLocation.length>1).map(a=>`
-    <h4>${esc(a.merchant||a.label)} — by location</h4>
-    <div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Tax</th><th class="num">Units</th></tr></thead>
-    <tbody>${a.byLocation.map(l=>`<tr><td>${esc(l.name)}</td><td class="num">${l.orders}</td><td class="num">${money(l.net)}</td><td class="num">${money(l.tax)}</td><td class="num">${numf(l.units,0)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+  // Per-location detail, each with its own top sellers.
+  const detail=ok.map(a=>{
+    const an=rtlAcctName(a);
+    return a.locations.map(l=>{
+      const head=`<h4 style="margin-top:22px">${esc(l.name)} <span style="color:var(--muted);font-weight:400;font-size:13px">— ${esc(an)}</span></h4>`;
+      // Quiet locations collapse to one line instead of a wall of zeros.
+      if(!l.orderCount&&!l.refundCount) return head+`<div style="color:var(--muted);font-size:13px;margin-top:6px">No sales on this day.</div>`;
+      const stats=[rtlStat('Net sales',money(l.netSales)),rtlStat('Orders',l.orderCount),rtlStat('Avg ticket',money(l.avgTicket)),
+        rtlStat('Tax',money(l.tax)),rtlStat('Tips',money(l.tips)+(l.tipPct?` <span style="color:var(--muted);font-weight:400;font-size:12px">${numf(l.tipPct,1)}%</span>`:'')),
+        rtlStat('Discounts',money(l.discounts)),rtlStat('Units',numf(l.units,0)),
+        l.bottles!=null?rtlStat('Bottles',numf(l.bottles,0)):'',
+        l.refundCount?rtlStat('Refunded',money(l.refunded)+` <span style="color:var(--muted);font-weight:400;font-size:12px">${l.refundCount}</span>`):''].join('');
+      const items=l.topItems.length
+        ? `<div class="tablewrap"><table><thead><tr><th>Top sellers</th><th class="num">Qty</th><th class="num">Net Sales</th></tr></thead><tbody>`
+          +l.topItems.map(it=>`<tr><td>${esc(it.name)}</td><td class="num">${numf(it.qty,0)}</td><td class="num">${money(it.net)}</td></tr>`).join('')
+          +`</tbody></table></div>`
+        : `<div style="color:var(--muted);font-size:13px">Orders ran here, but no item lines came back.</div>`;
+      return head+`<div style="margin:8px 0 12px">${stats}</div>${items}`;
+    }).join('');
+  }).join('');
 
-  $('#rtlOut').innerHTML=reportHeader('Retail Sales — Daily Summary','All Square accounts, combined',dayName)+failNote+kpis+`
-    <h4>By account</h4>
+  const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(rtlAcctName(a))).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. Everything below covers the remaining account${ok.length===1?'':'s'} only.</div>`:'';
+
+  $('#rtlOut').innerHTML=reportHeader('Retail Sales — Daily Summary','Every location, every Square account',dayName)+failNote+kpis+`
+    <h4>All locations</h4>
     <div class="tablewrap"><table><thead><tr>
-      <th>Account</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Tax</th>
-      <th class="num">Tips</th><th class="num">Discounts</th><th class="num">Units</th><th class="num">Bottles</th><th class="num">Refunds</th>
-    </tr></thead><tbody>${acctRows}${ok.length>1?totalRow:''}</tbody></table></div>
-    <h4>Top items</h4>
-    <div class="tablewrap"><table><thead>${topHead}</thead><tbody>${topRows}</tbody></table></div>
-    ${locSection}
+      <th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th>
+      <th class="num">Tax</th><th class="num">Tips</th><th class="num">Discounts</th><th class="num">Units</th>
+      <th class="num">Bottles</th><th class="num">Refunds</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>
+    ${detail}
     <div class="taxbox"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Collected — ${esc(dayName)}</div>
       <div class="due">${money(c.collected)}</div>
       <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(c.netSales)} in sales + ${money(c.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}.</div></div>
-    <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — untagged accounts show a dash. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
+    <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
 }
 function rtlCsv(){
   if(!rtlLast)return; const d=rtlLast, ok=d.accounts.filter(a=>a.ok);
   const L=[['Retail Sales — Daily Summary',d.date].join(',')];
-  L.push(''); L.push(['Account','Orders','Net Sales','Tax','Tips','Discounts','Units','Bottles','Refunded','Refunded Tax'].join(','));
-  ok.forEach(a=>L.push([csv(a.merchant||a.label),a.orderCount,a.netSales,a.tax,a.tips,a.discounts,a.units,a.bottles==null?'':a.bottles,a.refunded,a.refundedTax].join(',')));
-  const c=d.combined;
-  L.push(['Combined',c.orderCount,c.netSales,c.tax,c.tips,c.discounts,c.units,c.bottles==null?'':c.bottles,c.refunded,c.refundedTax].join(','));
-  L.push(''); L.push(['Top item','Qty','Net Sales'].join(','));
-  c.topItems.forEach(i=>L.push([csv(i.name),i.qty,i.net].join(',')));
+  const head=['Account','Location','Orders','Net Sales','Avg Ticket','Tax','Tips','Discounts','Units','Bottles','Refunded','Refunded Tax'];
+  const row=(an,name,x)=>[csv(an),csv(name),x.orderCount,x.netSales,x.avgTicket,x.tax,x.tips,x.discounts,x.units,x.bottles==null?'':x.bottles,x.refunded,x.refundedTax].join(',');
+  L.push(''); L.push(head.join(','));
+  ok.forEach(a=>{ const an=rtlAcctName(a);
+    a.locations.forEach(l=>L.push(row(an,l.name,l)));
+    if(a.locations.length>1) L.push(row(an,'— account total —',a.totals));
+  });
+  L.push(row('ALL','— all locations —',d.combined));
+  ok.forEach(a=>{ const an=rtlAcctName(a);
+    a.locations.forEach(l=>{
+      if(!l.topItems.length)return;
+      L.push(''); L.push([csv(an+' / '+l.name+' — top sellers'),'Qty','Net Sales'].join(','));
+      l.topItems.forEach(it=>L.push([csv(it.name),it.qty,it.net].join(',')));
+    });
+  });
   const blob=new Blob([L.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=`retail-sales_${d.date}.csv`; a.click();
 }
