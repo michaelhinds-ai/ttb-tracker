@@ -1475,20 +1475,35 @@ function renderRetailOut(d){
 
   const cols=(x)=>`<td class="num">${x.orderCount}</td><td class="num">${money(x.netSales)}</td><td class="num">${money(x.avgTicket)}</td><td class="num">${money(x.tax)}</td><td class="num">${money(x.tips)}</td><td class="num">${money(x.discounts)}</td><td class="num">${numf(x.units,0)}</td><td class="num">${x.bottles!=null?numf(x.bottles,0):'—'}</td><td class="num">${x.refundCount?`(${money(x.refunded)})`:'—'}</td>`;
 
+  // A back-office location with no activity is noise — hide it, but keep it if it ever has data.
+  const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!l.refundCount&&!(+l.netSales)&&!(+l.tax);
+  const shownLocs=a=>a.locations.filter(l=>!blankBO(l));
+
   // One row per location, grouped under its account, with a subtotal per account.
   let rows='';
   ok.forEach(a=>{
-    const an=rtlAcctName(a);
+    const an=rtlAcctName(a); const locs=shownLocs(a);
     if(ok.length>1) rows+=`<tr class="sub"><td colspan="10" style="font-weight:700;color:var(--copper)">${esc(an)}</td></tr>`;
-    rows+=a.locations.map(l=>`<tr><td style="padding-left:${ok.length>1?'18px':'0'}">${esc(l.name)}</td>${cols(l)}</tr>`).join('');
-    if(a.locations.length>1) rows+=`<tr class="sub"><td style="padding-left:${ok.length>1?'18px':'0'}"><i>${esc(an)} total</i></td>${cols(a.totals)}</tr>`;
+    rows+=locs.map(l=>`<tr><td style="padding-left:${ok.length>1?'18px':'0'}">${esc(l.name)}</td>${cols(l)}</tr>`).join('');
+    if(locs.length>1) rows+=`<tr class="sub"><td style="padding-left:${ok.length>1?'18px':'0'}"><i>${esc(an)} total</i></td>${cols(a.totals)}</tr>`;
   });
-  if(ok.length>1||ok.some(a=>a.locations.length>1)) rows+=`<tr class="total" style="font-weight:700"><td>All locations</td>${cols(c)}</tr>`;
+  if(ok.length>1||ok.some(a=>shownLocs(a).length>1)) rows+=`<tr class="total" style="font-weight:700"><td>All locations</td>${cols(c)}</tr>`;
+
+  // Per-account summary block (Louisville Rickhouse, NBC, …) — a birds-eye between the combined KPIs and the table.
+  const acctSummary=a=>{ const t=a.totals, an=rtlAcctName(a), lc=shownLocs(a).length; return `<h4 style="margin-top:20px">${esc(an)} — summary</h4>`+
+    `<div class="kpis" style="margin:8px 0 4px">`+[
+      kpi('copper','Net Sales',money(t.netSales),`${t.orderCount} order${t.orderCount===1?'':'s'} · ${lc} location${lc===1?'':'s'}`),
+      kpi('blue','Avg Ticket',money(t.avgTicket),'net sales per order'),
+      kpi('ky','Sales Tax',money(t.tax),t.refundedTax?`${money(t.netTax)} net of refunds`:'collected at retail'),
+      kpi('green','Tips',money(t.tips),t.tipPct?`${numf(t.tipPct,1)}% of net sales`:'none recorded'),
+      kpi('barrel','Units Sold',numf(t.units,0),t.bottles!=null?`${numf(t.bottles,0)} tagged bottles`:'line-item quantity'),
+    ].join('')+`</div>`; };
+  const acctBlocks=ok.length>1?ok.map(acctSummary).join(''):'';
 
   // Per-location detail, each with its own top sellers.
   const detail=ok.map(a=>{
     const an=rtlAcctName(a);
-    return a.locations.map(l=>{
+    return shownLocs(a).map(l=>{
       const head=`<h4 style="margin-top:22px">${esc(l.name)} <span style="color:var(--muted);font-weight:400;font-size:13px">— ${esc(an)}</span></h4>`;
       // Quiet locations collapse to one line instead of a wall of zeros.
       if(!l.orderCount&&!l.refundCount) return head+`<div style="color:var(--muted);font-size:13px;margin-top:6px">No sales on this day.</div>`;
@@ -1508,7 +1523,7 @@ function renderRetailOut(d){
 
   const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(rtlAcctName(a))).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. Everything below covers the remaining account${ok.length===1?'':'s'} only.</div>`:'';
 
-  $('#rtlOut').innerHTML=reportHeader('Retail Sales — Daily Summary','Every location, every Square account',dayName)+failNote+kpis+`
+  $('#rtlOut').innerHTML=reportHeader('Retail Sales — Daily Summary','Every location, every Square account',dayName)+failNote+kpis+acctBlocks+`
     <h4>All locations</h4>
     <div class="tablewrap"><table><thead><tr>
       <th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th>
@@ -1519,7 +1534,7 @@ function renderRetailOut(d){
     <div class="taxbox"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Collected — ${esc(dayName)}</div>
       <div class="due">${money(c.collected)}</div>
       <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(c.netSales)} in sales + ${money(c.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}.</div></div>
-    <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
+    <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero — except an empty back-office location, which is hidden until it has activity. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
 }
 function rtlCsv(){
   if(!rtlLast)return; const d=rtlLast, ok=d.accounts.filter(a=>a.ok);
