@@ -418,7 +418,7 @@
     <div class="card">
       <div class="toolbar">
         <div class="grow"><label class="fld">Search</label><input type="text" id="barrelSearch" placeholder="Barrel #, spirit, warehouse, source, notes…"></div>
-        <div><label class="fld">Status</label><select id="barrelStatus"><option value="">All</option><option>Aging</option><option>Dumped</option><option>Transferred out (TIB)</option><option>Loss</option></select></div>
+        <div><label class="fld">Status</label><select id="barrelStatus"><option value="">All</option><option selected>Aging</option><option>Dumped</option><option>Transferred out (TIB)</option><option>Loss</option></select></div>
         <div><label class="fld">Spirit</label><select id="barrelSpirit"><option value="">All</option></select></div>
         <button class="btn ghost sm" id="exportBarrelsCsv">Export CSV</button>
       </div>
@@ -1512,15 +1512,20 @@ async function rtlRun(){
   if(!from){ alert('Pick a date range.'); return; }
   $('#rtlFrom').value=from; $('#rtlTo').value=to;
   const py={from:ymdShift(from,-364),to:ymdShift(to,-364)};   // 52 weeks back = same weekdays a year ago
+  // "Through this hour" comparison: cap the current window at now, and the prior-year window at the
+  // same clock time a year ago (now − 364 days). Only bites when the range is still in progress (today).
+  const nowISO=new Date().toISOString();
+  const priorNowISO=new Date(Date.now()-364*86400000).toISOString();
+  const inProgress=(to===rtlTodayStr());
   $('#rtlOut').innerHTML='<div class="empty">Pulling Square sales…</div>';
   $('#rtlCsv').style.display='none'; $('#rtlPrint').style.display='none';
   try{
     const [cur,prior]=await Promise.all([
-      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}).then(r=>r.json()),
-      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:py.from,endDate:py.to})}).then(r=>r.json()).catch(()=>null),
+      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to,endCapISO:nowISO})}).then(r=>r.json()),
+      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:py.from,endDate:py.to,endCapISO:priorNowISO})}).then(r=>r.json()).catch(()=>null),
     ]);
     if(!cur||cur.error){ $('#rtlOut').innerHTML='<div class="note">⚠️ '+esc((cur&&(cur.detail||cur.error))||'Could not load.')+'</div>'; return; }
-    cur.range={from,to};
+    cur.range={from,to}; cur.inProgress=inProgress; cur.throughTime=inProgress?new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):null;
     cur.priorYear=(prior&&!prior.error)?Object.assign(prior,{range:py}):null;
     rtlLast=cur; renderRetailOut(cur);
     $('#rtlCsv').style.display='inline-flex'; $('#rtlPrint').style.display='inline-flex';
@@ -1536,7 +1541,8 @@ function renderRetailOut(d){
 
   // Prior-year (same weekdays) comparison lookups.
   const py=d.priorYear&&!d.priorYear.error?d.priorYear:null;
-  const lyLabel=py&&py.range?rtlPeriodLabel(py.range.from,py.range.to):'';
+  let lyLabel=py&&py.range?rtlPeriodLabel(py.range.from,py.range.to):'';
+  if(lyLabel&&d.inProgress&&d.throughTime) lyLabel+=` · through ${d.throughTime}`;
   const pyCombined=py?py.combined:null;
   const pyAcct=key=>py?(py.accounts||[]).find(a=>a.key===key&&a.ok):null;
 
@@ -1632,7 +1638,7 @@ async function openLocTxns(acctKey, locId, name){
   $('#rtlOut').style.display='none'; out.style.display='';
   window.scrollTo({top:0,behavior:'smooth'});
   try{
-    const r=await fetch('/api/square/transactions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({acct:acctKey,locationId:locId,name,startDate:from,endDate:to})});
+    const r=await fetch('/api/square/transactions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({acct:acctKey,locationId:locId,name,startDate:from,endDate:to,endCapISO:new Date().toISOString()})});
     const d=await r.json();
     if(!r.ok||d.error){ out.innerHTML=backBar(name)+`<div class="note">Couldn’t load transactions${d&&d.detail?': '+esc(d.detail):''}.</div>`; wireTxnBack(); return; }
     renderLocTxns(d);
