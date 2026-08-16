@@ -16,9 +16,12 @@ export default async (req) => {
   const ymd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   const range = ymd(p.startDate) && ymd(p.endDate) ? { startDate: p.startDate, endDate: p.endDate } : null;
   const date = ymd(p.date) ? p.date : todayInTz(acct.tz);
-  const win = (p.startISO && p.endISO) ? { startISO: p.startISO, endISO: p.endISO }
+  const base = (p.startISO && p.endISO) ? { startISO: p.startISO, endISO: p.endISO }
     : range ? { startISO: dayRange(range.startDate, acct.tz).startISO, endISO: dayRange(range.endDate, acct.tz).endISO }
     : dayRange(date, acct.tz);
+  const win = { startISO: base.startISO, endISO: base.endISO };
+  const cap = typeof p.endCapISO === "string" && p.endCapISO ? p.endCapISO : null;
+  if (cap && cap > win.startISO && cap < win.endISO) win.endISO = cap;
 
   try {
     let locName = p.name || locationId;

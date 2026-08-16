@@ -21,10 +21,16 @@ export default async (req) => {
   const range = ymd(p.startDate) && ymd(p.endDate) ? { startDate: p.startDate, endDate: p.endDate } : null;
   const date = ymd(p.date) ? p.date : todayInTz(accts[0].tz);
 
+  // Optional cap instant: end the window at this moment if it's earlier than the day's end.
+  // Used for "through the same hour" comparisons (e.g. today so far vs. the same slice a year ago).
+  const cap = typeof p.endCapISO === "string" && p.endCapISO ? p.endCapISO : null;
+
   // Accounts run independently — one failing account must not blank the page.
   const results = await Promise.all(accts.map(async (a) => {
-    const win = customWindow
+    const base = customWindow
       || (range ? { startISO: dayRange(range.startDate, a.tz).startISO, endISO: dayRange(range.endDate, a.tz).endISO } : dayRange(date, a.tz));
+    const win = { startISO: base.startISO, endISO: base.endISO };
+    if (cap && cap > win.startISO && cap < win.endISO) win.endISO = cap;
     const head = { key: a.key, label: a.label || null, tz: a.tz, startISO: win.startISO, endISO: win.endISO };
     try {
       const data = await accountSummary(a, win.startISO, win.endISO);
