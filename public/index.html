@@ -134,6 +134,7 @@
   .authcard .err{color:#b23a2e;font-size:13px;margin-top:10px;min-height:18px}
   .userrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee2d0;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px}
   tr.loclink:hover{background:#f5efe3}
+  .cmp-up{color:#3f7d54;font-weight:700}.cmp-down{color:#b23a2e;font-weight:700}.cmp-flat{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -319,14 +320,15 @@
   <section class="view" id="view-retail">
     <h2 class="section">Retail Sales</h2>
     <div class="card noprint">
-      <p class="hint">A single day of retail activity across <b>all of your Square accounts</b> — each account on its own, plus a combined total. Sales are shown net of discounts and exclude tax and tips; refunds recorded that day are netted out separately.</p>
+      <p class="hint">Retail activity across <b>all of your Square accounts</b> for a day or a date range — each account on its own, plus a combined total, automatically compared to the <b>same weekdays a year ago</b> (a Fri–Sun range lines up with last year's Fri–Sun). Sales are net of discounts and exclude tax and tips; refunds in the window are netted out separately.</p>
       <div id="rtlStatus" class="note" style="margin-bottom:12px">Checking Square connections…</div>
       <div class="toolbar">
-        <div><label class="fld">Day</label><input type="date" id="rtlDate"></div>
-        <button class="btn ghost sm" id="rtlPrev" title="Previous day">◀</button>
+        <div><label class="fld">From</label><input type="date" id="rtlFrom"></div>
+        <div><label class="fld">To</label><input type="date" id="rtlTo"></div>
+        <button class="btn ghost sm" id="rtlPrev" title="Shift back one period">◀</button>
         <button class="btn ghost sm" id="rtlToday">Today</button>
-        <button class="btn ghost sm" id="rtlNext" title="Next day">▶</button>
-        <button class="btn ky sm cap-reports" id="rtlRun">Pull the day</button>
+        <button class="btn ghost sm" id="rtlNext" title="Shift forward one period">▶</button>
+        <button class="btn ky sm cap-reports" id="rtlRun">Pull the range</button>
         <button class="btn ghost sm noprint" id="rtlCsv" style="display:none">Export CSV</button>
         <button class="btn ghost sm noprint" id="rtlPrint" style="display:none">Print / Save PDF</button>
       </div>
@@ -1265,19 +1267,42 @@ async function sqStatus(){
 }
 async function sqSetup(){
   if(!requireCap('setup'))return;
-  if(!confirm('Set up the TTB Bottle Size attribute in Square and tag your bottle items (750/375)? This adds a tag to bottle products in your Square catalog — it does not change prices, names, or anything else.')) return;
-  const el=$('#sqStatus'); el.textContent='Setting up bottle tags in Square…'; $('#sqSetup').disabled=true;
+  const el=$('#sqStatus'); const btn=$('#sqSetup');
+  // Step 1: PREVIEW across every account — write nothing yet.
+  el.textContent='Checking which bottles would be tagged in each Square account…'; btn.disabled=true;
+  let pre;
+  try{ const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preview:true})}); pre=await r.json(); }
+  catch(e){ el.textContent='Could not reach Square.'; btn.disabled=false; return; }
+  if(pre.error){ el.innerHTML='⚠️ '+esc(pre.detail||pre.error); btn.disabled=false; return; }
+  const accts=pre.accounts||[];
+  const acctName=a=>a.label||('Account '+(a.key==='a2'?2:1));
+  // Show the preview so the user can eyeball coverage before committing (this affects the 73A525 tax numbers).
+  $('#sqOut').innerHTML=accts.map(a=>{
+    if(!a.ok) return `<div class="note" style="border-color:#a33"><b>${esc(acctName(a))}</b> — couldn’t read catalog: ${esc(a.detail||a.error)}</div>`;
+    const would=a.would||[]; const unm=a.unmatched||[];
+    return `<div class="note ky"><b>${esc(acctName(a))}</b>: ${would.length} new bottle(s) to tag, ${a.alreadyTagged||0} already tagged, of ${a.itemCount||0} catalog items.</div>`+
+      (would.length?`<div class="tablewrap"><table><thead><tr><th>Would tag as bottle</th><th class="num">mL</th></tr></thead><tbody>`+would.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`:'')+
+      (unm.length?`<details style="margin:6px 0 14px"><summary style="cursor:pointer;color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">Show ${unm.length} item(s) NOT treated as bottles (check nothing’s missing)</summary><div style="font-size:12px;color:var(--muted);margin-top:6px">${unm.map(esc).join(' · ')}</div></details>`:'');
+  }).join('');
+  const totalWould=accts.reduce((s,a)=>s+((a.would||[]).length),0);
+  if(!totalWould){ el.innerHTML='Nothing new to tag — bottles are already tagged in every account. If a bottle is missing above, tell me its name and I’ll add it to the rule.'; btn.disabled=false; sqStatus(); return; }
+  if(!confirm(`Tag ${totalWould} bottle item(s) across ${accts.filter(a=>a.ok).length} Square account(s) with their size (750/375)? Review the lists shown first — this only adds a size tag (no price/name changes) and feeds the Kentucky 73A525 counts.`)){ el.textContent='No changes made — review the preview above.'; btn.disabled=false; return; }
+  // Step 2: COMMIT.
+  el.textContent='Tagging bottle items in Square…';
   try{
-    const r=await fetch('/api/square/setup-tags',{method:'POST'}); const d=await r.json();
-    if(d.error){ el.innerHTML='⚠️ '+(d.detail||d.error); $('#sqSetup').disabled=false; return; }
-    const list=(d.tagged||[]).concat(d.skipped||[]).sort((a,b)=>a.name.localeCompare(b.name));
-    const failed=d.failed||[];
-    $('#sqOut').innerHTML=`<div class="note ky">Tagged <b>${d.totalBottles}</b> bottle item(s) in Square${d.definitionCreated?' and created the size attribute':''}. ${(d.tagged||[]).length} updated, ${(d.skipped||[]).length} already set${failed.length?`, <b style="color:#a33">${failed.length} failed</b>`:''}.</div>`+
-      (failed.length?`<div class="note" style="border-color:#a33">Failed items:<br>`+failed.map(x=>`• ${x.name} — ${x.error}`).join('<br>')+`</div>`:'')+
-      `<div class="tablewrap"><table><thead><tr><th>Bottle</th><th class="num">Size (mL)</th></tr></thead><tbody>`+
-      list.map(x=>`<tr><td>${x.name}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`;
-    sqStatus();
-  }catch(e){ el.textContent='Setup failed to reach Square.'; $('#sqSetup').disabled=false; }
+    const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})}); const d=await r.json();
+    if(d.error){ el.innerHTML='⚠️ '+esc(d.detail||d.error); btn.disabled=false; return; }
+    $('#sqOut').innerHTML=(d.accounts||[]).map(a=>{
+      if(!a.ok) return `<div class="note" style="border-color:#a33"><b>${esc(acctName(a))}</b> — ${esc(a.detail||a.error)}</div>`;
+      const failed=a.failed||[];
+      const list=(a.tagged||[]).concat(a.skipped||[]).sort((x,y)=>x.name.localeCompare(y.name));
+      return `<div class="note ky"><b>${esc(acctName(a))}</b>: tagged ${(a.tagged||[]).length}, already set ${(a.skipped||[]).length}${a.definitionCreated?', created the size attribute':''}${failed.length?`, <b style="color:#a33">${failed.length} failed</b>`:''}.</div>`+
+        (failed.length?`<div class="note" style="border-color:#a33">Failed: ${failed.map(x=>esc(x.name)+' — '+esc(x.error)).join('; ')}</div>`:'')+
+        (list.length?`<div class="tablewrap"><table><thead><tr><th>Bottle</th><th class="num">mL</th></tr></thead><tbody>`+list.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`:'');
+    }).join('');
+    el.textContent='Done. Re-pull a day on the Retail tab to see NBC bottle counts.';
+    btn.disabled=false; sqStatus();
+  }catch(e){ el.textContent='Setup failed to reach Square.'; btn.disabled=false; }
 }
 async function sqRun(){
   if(!requireCap('reports'))return;
@@ -1420,7 +1445,8 @@ const rtlTodayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.
 // The name you set in SQUARE_LABEL_n wins; then Square's business name; then a plain fallback.
 const rtlAcctName=a=>a.label||a.merchant||('Account '+(a.key==='a2'?2:1));
 function renderRetail(){
-  if(!$('#rtlDate').value) $('#rtlDate').value=rtlTodayStr();
+  if(!$('#rtlFrom').value) $('#rtlFrom').value=rtlTodayStr();
+  if(!$('#rtlTo').value) $('#rtlTo').value=rtlTodayStr();
   rtlStatus();
 }
 async function rtlStatus(){
@@ -1442,31 +1468,77 @@ async function rtlStatus(){
     el.innerHTML=bits.join(' &nbsp;·&nbsp; ');
   }catch(e){ el.textContent='Could not reach the Square accounts endpoint.'; }
 }
-function rtlShift(days){
-  const v=$('#rtlDate').value||rtlTodayStr(); const [y,m,d]=v.split('-').map(Number);
-  const dt=new Date(y,m-1,d+days);
-  $('#rtlDate').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+function ymdShift(ymd,days){ const [y,m,d]=ymd.split('-').map(Number); const dt=new Date(Date.UTC(y,m-1,d+days)); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`; }
+function ymdSpan(a,b){ return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000)+1; }
+function rtlRange(){ let from=$('#rtlFrom').value, to=$('#rtlTo').value; if(!from&&to)from=to; if(!to&&from)to=from; if(from&&to&&from>to){ const t=from; from=to; to=t; } return {from,to}; }
+function rtlShift(dir){
+  let {from,to}=rtlRange(); if(!from){ from=to=rtlTodayStr(); }
+  const span=ymdSpan(from,to);
+  $('#rtlFrom').value=ymdShift(from,dir*span); $('#rtlTo').value=ymdShift(to,dir*span);
   rtlRun();
+}
+function rtlPeriodLabel(from,to){
+  const f=new Date(from+'T00:00:00'), t=new Date(to+'T00:00:00');
+  if(from===to) return f.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const sameYear=f.getFullYear()===t.getFullYear();
+  const fFmt=f.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',...(sameYear?{}:{year:'numeric'})});
+  const tFmt=t.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  return `${fFmt} – ${tFmt}`;
+}
+function rtlDelta(cur,prev){
+  cur=+cur||0; prev=+prev||0;
+  if(!prev) return cur>0?{txt:'new',cls:'up'}:{txt:'—',cls:'flat'};
+  const pct=(cur-prev)/Math.abs(prev)*100;
+  if(pct>0.05) return {txt:'▲'+numf(pct,1)+'%',cls:'up'};
+  if(pct<-0.05) return {txt:'▼'+numf(Math.abs(pct),1)+'%',cls:'down'};
+  return {txt:'0%',cls:'flat'};
+}
+function rtlCmp(cur,prev,lyLabel){
+  if(!prev) return '';
+  const row=(label,curV,prevV,fmt)=>{const d=rtlDelta(curV,prevV);return `<tr><td>${label}</td><td class="num">${fmt(curV)}</td><td class="num" style="color:var(--muted)">${fmt(prevV)}</td><td class="num cmp-${d.cls}">${d.txt}</td></tr>`;};
+  const m=v=>money(v), n=v=>numf(v,0);
+  return `<div class="tablewrap" style="margin:6px 0 4px"><table><thead><tr><th>vs. last year <span style="font-weight:400;color:var(--muted)">(${esc(lyLabel)})</span></th><th class="num">This period</th><th class="num">Last year</th><th class="num">Change</th></tr></thead><tbody>`+
+    row('Net Sales',cur.netSales,prev.netSales,m)+
+    row('Orders',cur.orderCount,prev.orderCount,n)+
+    row('Avg Ticket',cur.avgTicket,prev.avgTicket,m)+
+    row('Sales Tax',cur.tax,prev.tax,m)+
+    row('Tips',cur.tips,prev.tips,m)+
+    row('Units',cur.units,prev.units,n)+
+    `</tbody></table></div>`;
 }
 async function rtlRun(){
   if(!requireCap('reports'))return;
-  const date=$('#rtlDate').value; if(!date){ alert('Pick a day.'); return; }
-  $('#rtlOut').innerHTML='<div class="empty">Pulling Square sales for '+date+'…</div>';
+  let {from,to}=rtlRange();
+  if(!from){ alert('Pick a date range.'); return; }
+  $('#rtlFrom').value=from; $('#rtlTo').value=to;
+  const py={from:ymdShift(from,-364),to:ymdShift(to,-364)};   // 52 weeks back = same weekdays a year ago
+  $('#rtlOut').innerHTML='<div class="empty">Pulling Square sales…</div>';
   $('#rtlCsv').style.display='none'; $('#rtlPrint').style.display='none';
   try{
-    const r=await fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date})});
-    const d=await r.json();
-    if(d.error){ $('#rtlOut').innerHTML='<div class="note">⚠️ '+esc(d.detail||d.error)+'</div>'; return; }
-    rtlLast=d; renderRetailOut(d);
+    const [cur,prior]=await Promise.all([
+      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}).then(r=>r.json()),
+      fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:py.from,endDate:py.to})}).then(r=>r.json()).catch(()=>null),
+    ]);
+    if(!cur||cur.error){ $('#rtlOut').innerHTML='<div class="note">⚠️ '+esc((cur&&(cur.detail||cur.error))||'Could not load.')+'</div>'; return; }
+    cur.range={from,to};
+    cur.priorYear=(prior&&!prior.error)?Object.assign(prior,{range:py}):null;
+    rtlLast=cur; renderRetailOut(cur);
     $('#rtlCsv').style.display='inline-flex'; $('#rtlPrint').style.display='inline-flex';
   }catch(e){ $('#rtlOut').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
 }
 function rtlStat(l,v){return `<span style="display:inline-block;margin:0 20px 8px 0"><span style="font-family:-apple-system,Segoe UI,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block">${l}</span><b style="font-variant-numeric:tabular-nums;font-size:15px">${v}</b></span>`;}
 function renderRetailOut(d){
   const tx=$('#rtlTxns'); if(tx){ tx.style.display='none'; tx.innerHTML=''; } $('#rtlOut').style.display='';
-  const c=d.combined, [y,m,dd]=d.date.split('-').map(Number);
-  const dayName=new Date(y,m-1,dd).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const c=d.combined;
+  const from=(d.range&&d.range.from)||d.startDate||d.date, to=(d.range&&d.range.to)||d.endDate||d.date;
+  const dayName=rtlPeriodLabel(from,to);
   const ok=d.accounts.filter(a=>a.ok), bad=d.accounts.filter(a=>!a.ok);
+
+  // Prior-year (same weekdays) comparison lookups.
+  const py=d.priorYear&&!d.priorYear.error?d.priorYear:null;
+  const lyLabel=py&&py.range?rtlPeriodLabel(py.range.from,py.range.to):'';
+  const pyCombined=py?py.combined:null;
+  const pyAcct=key=>py?(py.accounts||[]).find(a=>a.key===key&&a.ok):null;
 
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
     kpi('copper','Net Sales',money(c.netSales),`${c.orderCount} order${c.orderCount===1?'':'s'} · ${c.locations} location${c.locations===1?'':'s'}`),
@@ -1474,7 +1546,7 @@ function renderRetailOut(d){
     kpi('ky','Sales Tax',money(c.tax),c.refundedTax?`${money(c.netTax)} net of refunds`:'collected at retail'),
     kpi('green','Tips',money(c.tips),c.tipPct?`${numf(c.tipPct,1)}% of net sales`:'none recorded'),
     kpi('barrel','Units Sold',numf(c.units,0),c.bottles!=null?`${numf(c.bottles,0)} tagged bottles`:'line-item quantity'),
-  ].join('')+`</div>`;
+  ].join('')+`</div>`+(pyCombined?rtlCmp(c,pyCombined,lyLabel):'');
 
   const cols=(x)=>`<td class="num">${x.orderCount}</td><td class="num">${money(x.netSales)}</td><td class="num">${money(x.avgTicket)}</td><td class="num">${money(x.tax)}</td><td class="num">${money(x.tips)}</td><td class="num">${money(x.discounts)}</td><td class="num">${numf(x.units,0)}</td><td class="num">${x.bottles!=null?numf(x.bottles,0):'—'}</td><td class="num">${x.refundCount?`(${money(x.refunded)})`:'—'}</td>`;
 
@@ -1498,13 +1570,14 @@ function renderRetailOut(d){
     const header=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid var(--copper);padding-bottom:12px;margin:30px 0 6px">`+
       `<div><div style="font-size:20px;font-weight:800">${esc(an)}</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${lc} location${lc===1?'':'s'}</div></div>`+
       `<div style="text-align:right"><div style="font-weight:700">Retail Sales — Daily Summary</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${esc(dayName)}</div></div></div>`;
+    const pa=pyAcct(a.key);
     return header+`<div class="kpis" style="margin:14px 0">`+[
       kpi('copper','Net Sales',money(t.netSales),`${t.orderCount} order${t.orderCount===1?'':'s'} · ${lc} location${lc===1?'':'s'}`),
       kpi('blue','Avg Ticket',money(t.avgTicket),'net sales per order'),
       kpi('ky','Sales Tax',money(t.tax),t.refundedTax?`${money(t.netTax)} net of refunds`:'collected at retail'),
       kpi('green','Tips',money(t.tips),t.tipPct?`${numf(t.tipPct,1)}% of net sales`:'none recorded'),
       kpi('barrel','Units Sold',numf(t.units,0),t.bottles!=null?`${numf(t.bottles,0)} tagged bottles`:'line-item quantity'),
-    ].join('')+`</div>`; };
+    ].join('')+`</div>`+(pa?rtlCmp(t,pa.totals,lyLabel):''); };
   const acctBlocks=ok.length>1?ok.map(acctBlock).join(''):'';
 
   // Combined top header — the all-accounts roll-up (KY = Louisville Rickhouse, TN = NBC).
@@ -1552,13 +1625,14 @@ function renderRetailOut(d){
 // ---- Location drill-down: individual transactions for one location on the shown day ----
 async function openLocTxns(acctKey, locId, name){
   if(!rtlLast){ return; }
-  const date=rtlLast.date;
+  const from=(rtlLast.range&&rtlLast.range.from)||rtlLast.startDate||rtlLast.date;
+  const to=(rtlLast.range&&rtlLast.range.to)||rtlLast.endDate||rtlLast.date;
   const out=$('#rtlTxns');
   out.innerHTML=`<div class="empty">Loading ${esc(name)} transactions…</div>`;
   $('#rtlOut').style.display='none'; out.style.display='';
   window.scrollTo({top:0,behavior:'smooth'});
   try{
-    const r=await fetch('/api/square/transactions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({acct:acctKey,locationId:locId,name,date})});
+    const r=await fetch('/api/square/transactions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({acct:acctKey,locationId:locId,name,startDate:from,endDate:to})});
     const d=await r.json();
     if(!r.ok||d.error){ out.innerHTML=backBar(name)+`<div class="note">Couldn’t load transactions${d&&d.detail?': '+esc(d.detail):''}.</div>`; wireTxnBack(); return; }
     renderLocTxns(d);
@@ -1567,10 +1641,12 @@ async function openLocTxns(acctKey, locId, name){
 function backBar(name){ return `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px"><button class="btn ghost sm" id="txnBack">← Back to summary</button><div style="font-family:-apple-system,Segoe UI,sans-serif;color:var(--muted);font-size:13px">${esc(name||'')}</div></div>`; }
 function wireTxnBack(){ const b=$('#txnBack'); if(b) b.onclick=()=>{ $('#rtlTxns').style.display='none'; $('#rtlTxns').innerHTML=''; $('#rtlOut').style.display=''; window.scrollTo({top:0,behavior:'smooth'}); }; }
 function fmtTime(iso,tz){ if(!iso) return '—'; try{ return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:tz||undefined}); }catch(e){ return '—'; } }
+function fmtDateTime(iso,tz){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:tz||undefined}); }catch(e){ return '—'; } }
 function renderLocTxns(d){
   const out=$('#rtlTxns');
-  const [y,m,dd]=(d.date||'').split('-').map(Number);
-  const dayName=new Date(y,m-1,dd).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const sD=d.startDate||d.date, eD=d.endDate||d.date, multi=sD!==eD;
+  const when=iso=>multi?fmtDateTime(iso,d.tz):fmtTime(iso,d.tz);
+  const dayName=rtlPeriodLabel(sD, eD);
   const acctLabel=d.account&&d.account.label?d.account.label:'';
   const t=d.totals||{};
   const header=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid var(--copper);padding-bottom:12px;margin-bottom:6px">`+
@@ -1588,14 +1664,14 @@ function renderLocTxns(d){
   } else {
     const rows=d.orders.map(o=>{
       const items=(o.items||[]).map(it=>`${esc(it.name)}${it.qty>1?` ×${numf(it.qty,0)}`:''}`).join(', ')||'—';
-      return `<tr><td style="white-space:nowrap">${fmtTime(o.timeISO,d.tz)}</td><td>${items}</td><td>${(o.tenders||[]).map(esc).join(', ')||'—'}</td><td class="num">${money(o.net)}</td><td class="num">${money(o.tax)}</td><td class="num">${money(o.tips)}</td><td class="num"><b>${money(o.total)}</b></td></tr>`;
+      return `<tr><td style="white-space:nowrap">${when(o.timeISO)}</td><td>${items}</td><td>${(o.tenders||[]).map(esc).join(', ')||'—'}</td><td class="num">${money(o.net)}</td><td class="num">${money(o.tax)}</td><td class="num">${money(o.tips)}</td><td class="num"><b>${money(o.total)}</b></td></tr>`;
     }).join('');
     body=`<div class="tablewrap"><table><thead><tr><th>Time</th><th>Items</th><th>Payment</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody>`+
       `<tfoot><tr class="total" style="font-weight:700"><td>Total</td><td>${d.orders.length} transaction${d.orders.length===1?'':'s'}</td><td></td><td class="num">${money(t.net)}</td><td class="num">${money(t.tax)}</td><td class="num">${money(t.tips)}</td><td class="num">${money(t.total)}</td></tr></tfoot></table></div>`;
   }
   const refunds=(d.refunds&&d.refunds.length)
     ? `<h4 style="margin-top:20px">Refunds</h4><div class="tablewrap"><table><thead><tr><th>Time</th><th>Reason</th><th class="num">Amount</th></tr></thead><tbody>`+
-      d.refunds.map(r=>`<tr><td>${fmtTime(r.timeISO,d.tz)}</td><td>${esc(r.reason||'—')}</td><td class="num">(${money(r.amount)})</td></tr>`).join('')+`</tbody></table></div>`
+      d.refunds.map(r=>`<tr><td>${when(r.timeISO)}</td><td>${esc(r.reason||'—')}</td><td class="num">(${money(r.amount)})</td></tr>`).join('')+`</tbody></table></div>`
     : '';
   out.innerHTML=backBar(d.location&&d.location.name)+header+kpis+body+refunds+
     `<div class="disclaimer">Completed Square orders at this location for the calendar day, in the account’s timezone. Net is merchandise after discounts, before tax and tips. Times shown in the account’s local timezone.</div>`;
@@ -1603,7 +1679,8 @@ function renderLocTxns(d){
 }
 function rtlCsv(){
   if(!rtlLast)return; const d=rtlLast, ok=d.accounts.filter(a=>a.ok);
-  const L=[['Retail Sales — Daily Summary',d.date].join(',')];
+  const sD=(d.range&&d.range.from)||d.startDate||d.date, eD=(d.range&&d.range.to)||d.endDate||d.date;
+  const L=[['Retail Sales — Summary',csv(rtlPeriodLabel(sD,eD))].join(',')];
   const head=['Account','Location','Orders','Net Sales','Avg Ticket','Tax','Tips','Discounts','Units','Bottles','Refunded','Refunded Tax'];
   const row=(an,name,x)=>[csv(an),csv(name),x.orderCount,x.netSales,x.avgTicket,x.tax,x.tips,x.discounts,x.units,x.bottles==null?'':x.bottles,x.refunded,x.refundedTax].join(',');
   L.push(''); L.push(head.join(','));
@@ -1612,6 +1689,10 @@ function rtlCsv(){
     if(a.locations.length>1) L.push(row(an,'— account total —',a.totals));
   });
   L.push(row('ALL','— all locations —',d.combined));
+  const py=d.priorYear&&!d.priorYear.error?d.priorYear:null;
+  if(py){ L.push(''); L.push(['Prior year (same weekdays)',csv(py.range?rtlPeriodLabel(py.range.from,py.range.to):'')].join(',')); L.push(head.join(','));
+    (py.accounts||[]).filter(a=>a.ok).forEach(a=>{ const an=rtlAcctName(a); a.locations.forEach(l=>L.push(row(an,l.name,l))); if(a.locations.length>1)L.push(row(an,'— account total —',a.totals)); });
+    L.push(row('ALL','— all locations (LY) —',py.combined)); }
   ok.forEach(a=>{ const an=rtlAcctName(a);
     a.locations.forEach(l=>{
       if(!l.topItems.length)return;
@@ -1620,7 +1701,7 @@ function rtlCsv(){
     });
   });
   const blob=new Blob([L.join('\n')],{type:'text/csv'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=`retail-sales_${d.date}.csv`; a.click();
+  a.href=URL.createObjectURL(blob); a.download=`retail-sales_${sD}${eD!==sD?'_to_'+eD:''}.csv`; a.click();
 }
 
 /* ================= Setup / sync / data ================= */
@@ -2314,9 +2395,10 @@ function wireOnce(){
   $('#stxPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#rtlRun').onclick=rtlRun; $('#rtlCsv').onclick=rtlCsv;
-  $('#rtlToday').onclick=()=>{$('#rtlDate').value=rtlTodayStr();rtlRun();};
+  $('#rtlToday').onclick=()=>{const t=rtlTodayStr();$('#rtlFrom').value=t;$('#rtlTo').value=t;rtlRun();};
   $('#rtlPrev').onclick=()=>rtlShift(-1); $('#rtlNext').onclick=()=>rtlShift(1);
-  $('#rtlDate').onchange=rtlRun;
+  $('#rtlFrom').onchange=()=>{ if($('#rtlTo').value&&$('#rtlFrom').value>$('#rtlTo').value)$('#rtlTo').value=$('#rtlFrom').value; };
+  $('#rtlTo').onchange=()=>{ if($('#rtlFrom').value&&$('#rtlTo').value<$('#rtlFrom').value)$('#rtlFrom').value=$('#rtlTo').value; };
   $('#rtlPrint').onclick=()=>{const o=$('#view-retail');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#undoBtn').onclick=undo;
   const us=$('#userSave'); if(us) us.onclick=userSave; const uc=$('#userCancel'); if(uc) uc.onclick=cancelUser;
