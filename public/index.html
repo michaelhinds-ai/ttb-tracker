@@ -1265,33 +1265,50 @@ async function sqStatus(){
     el.innerHTML=`✅ Connected: ${who} <span style="color:var(--muted)">(${d.environment})</span><br>Bottle size attribute: ${d.attribute?'set up':'not set up'} — ${tag}.`;
   }catch(e){ el.textContent='Could not reach the Square status endpoint.'; }
 }
+const RTL_BOTTLE_HINT=/\b(bourbon|rye|whisk|spirit|bottle|gin|vodka|rum|tequila|agave|liqueur|moonshine|single ?barrel|small ?batch|blend|750|375)\b/i;
 async function sqSetup(){
   if(!requireCap('setup'))return;
-  const el=$('#sqStatus'); const btn=$('#sqSetup');
-  // Step 1: PREVIEW across every account — write nothing yet.
-  el.textContent='Checking which bottles would be tagged in each Square account…'; btn.disabled=true;
+  const el=$('#sqStatus'), out=$('#sqOut'), btn=$('#sqSetup');
+  el.textContent='Reading your Square categories…'; btn.disabled=true;
   let pre;
-  try{ const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preview:true})}); pre=await r.json(); }
+  try{ const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})}); pre=await r.json(); }
   catch(e){ el.textContent='Could not reach Square.'; btn.disabled=false; return; }
-  if(pre.error){ el.innerHTML='⚠️ '+esc(pre.detail||pre.error); btn.disabled=false; return; }
+  btn.disabled=false;
+  if(pre.error){ el.innerHTML='⚠️ '+esc(pre.detail||pre.error); return; }
   const accts=pre.accounts||[];
   const acctName=a=>a.label||('Account '+(a.key==='a2'?2:1));
-  // Show the preview so the user can eyeball coverage before committing (this affects the 73A525 tax numbers).
-  $('#sqOut').innerHTML=accts.map(a=>{
+  const saved=(state.settings&&state.settings.bottleCats)||{};
+  el.textContent='Check the categories that are actual distilled-spirits bottles, then tag them.';
+  out.innerHTML=accts.map(a=>{
     if(!a.ok) return `<div class="note" style="border-color:#a33"><b>${esc(acctName(a))}</b> — couldn’t read catalog: ${esc(a.detail||a.error)}</div>`;
-    const would=a.would||[]; const unm=a.unmatched||[];
-    return `<div class="note ky"><b>${esc(acctName(a))}</b>: ${would.length} new bottle(s) to tag, ${a.alreadyTagged||0} already tagged, of ${a.itemCount||0} catalog items.</div>`+
-      (would.length?`<div class="tablewrap"><table><thead><tr><th>Would tag as bottle</th><th class="num">mL</th></tr></thead><tbody>`+would.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`:'')+
-      (unm.length?`<details style="margin:6px 0 14px"><summary style="cursor:pointer;color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">Show ${unm.length} item(s) NOT treated as bottles (check nothing’s missing)</summary><div style="font-size:12px;color:var(--muted);margin-top:6px">${unm.map(esc).join(' · ')}</div></details>`:'');
-  }).join('');
-  const totalWould=accts.reduce((s,a)=>s+((a.would||[]).length),0);
-  if(!totalWould){ el.innerHTML='Nothing new to tag — bottles are already tagged in every account. If a bottle is missing above, tell me its name and I’ll add it to the rule.'; btn.disabled=false; sqStatus(); return; }
-  if(!confirm(`Tag ${totalWould} bottle item(s) across ${accts.filter(a=>a.ok).length} Square account(s) with their size (750/375)? Review the lists shown first — this only adds a size tag (no price/name changes) and feeds the Kentucky 73A525 counts.`)){ el.textContent='No changes made — review the preview above.'; btn.disabled=false; return; }
-  // Step 2: COMMIT.
-  el.textContent='Tagging bottle items in Square…';
+    const savedSet=new Set(saved[a.key]||[]); const useSaved=savedSet.size>0;
+    const cats=a.categories||[];
+    const head=`<div class="note ky"><b>${esc(acctName(a))}</b> — ${cats.length} categor${cats.length===1?'y':'ies'}, ${a.itemCount} item(s)${a.uncategorized?`, ${a.uncategorized} uncategorized`:''}. Check the bottle categories:</div>`;
+    const rows=cats.map(c=>{
+      const on=useSaved?savedSet.has(c.id):RTL_BOTTLE_HINT.test(c.name);
+      return `<label style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #eee2d0;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;cursor:pointer">`+
+        `<input type="checkbox" data-acct="${a.key}" value="${esc(c.id)}" ${on?'checked':''} style="margin-top:3px;width:16px;height:16px;flex:none">`+
+        `<span><b>${esc(c.name)}</b> <span style="color:var(--muted)">· ${c.count} item${c.count===1?'':'s'}</span>`+
+        (c.samples&&c.samples.length?`<div style="color:var(--muted);font-size:12px;margin-top:2px">${c.samples.map(esc).join(' · ')}</div>`:'')+`</span></label>`;
+    }).join('');
+    return head+`<div style="margin:4px 0 16px">${rows||'<div class="hint">No categories found.</div>'}</div>`;
+  }).join('')+
+    `<div class="row-actions"><button class="btn ky" id="sqTagGo">Tag checked categories as bottles</button><span class="hint" style="margin:0">Adds a 750/375 size tag only — no price or name changes. Feeds the Kentucky 73A525 counts.</span></div>`;
+  const go=$('#sqTagGo'); if(go) go.onclick=sqCommitTags;
+}
+async function sqCommitTags(){
+  if(!requireCap('setup'))return;
+  const sel={};
+  document.querySelectorAll('#sqOut input[type=checkbox][data-acct]:checked').forEach(cb=>{ (sel[cb.dataset.acct]=sel[cb.dataset.acct]||[]).push(cb.value); });
+  const total=Object.values(sel).reduce((s,a)=>s+a.length,0);
+  if(!total){ alert('Check at least one bottle category first.'); return; }
+  if(!confirm(`Tag every item in the ${total} checked categor${total===1?'y':'ies'} with its size (750, or 375 when the name says 375)? This only adds a size tag — no price or name changes.`)) return;
+  const el=$('#sqStatus'); el.textContent='Tagging bottle items in Square…';
   try{
-    const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})}); const d=await r.json();
-    if(d.error){ el.innerHTML='⚠️ '+esc(d.detail||d.error); btn.disabled=false; return; }
+    const r=await fetch('/api/square/setup-tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({commit:true,selections:sel})}); const d=await r.json();
+    if(d.error){ el.innerHTML='⚠️ '+esc(d.detail||d.error); return; }
+    if(can('write')){ state.settings.bottleCats=sel; save('Saved Square bottle categories'); }
+    const acctName=a=>a.label||('Account '+(a.key==='a2'?2:1));
     $('#sqOut').innerHTML=(d.accounts||[]).map(a=>{
       if(!a.ok) return `<div class="note" style="border-color:#a33"><b>${esc(acctName(a))}</b> — ${esc(a.detail||a.error)}</div>`;
       const failed=a.failed||[];
@@ -1300,9 +1317,8 @@ async function sqSetup(){
         (failed.length?`<div class="note" style="border-color:#a33">Failed: ${failed.map(x=>esc(x.name)+' — '+esc(x.error)).join('; ')}</div>`:'')+
         (list.length?`<div class="tablewrap"><table><thead><tr><th>Bottle</th><th class="num">mL</th></tr></thead><tbody>`+list.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.size}</td></tr>`).join('')+`</tbody></table></div>`:'');
     }).join('');
-    el.textContent='Done. Re-pull a day on the Retail tab to see NBC bottle counts.';
-    btn.disabled=false; sqStatus();
-  }catch(e){ el.textContent='Setup failed to reach Square.'; btn.disabled=false; }
+    el.textContent='Done. Re-pull a day on the Retail tab to see the bottle counts.'; sqStatus();
+  }catch(e){ el.textContent='Tagging failed to reach Square.'; }
 }
 async function sqRun(){
   if(!requireCap('reports'))return;
