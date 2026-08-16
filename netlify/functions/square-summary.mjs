@@ -16,12 +16,15 @@ export default async (req) => {
   if (!accts.length) return json({ configured: false, error: "not_configured" }, 200);
 
   let p; try { p = await req.json(); } catch { p = {}; }
+  const ymd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   const customWindow = p.startISO && p.endISO ? { startISO: p.startISO, endISO: p.endISO } : null;
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || "") ? p.date : todayInTz(accts[0].tz);
+  const range = ymd(p.startDate) && ymd(p.endDate) ? { startDate: p.startDate, endDate: p.endDate } : null;
+  const date = ymd(p.date) ? p.date : todayInTz(accts[0].tz);
 
   // Accounts run independently — one failing account must not blank the page.
   const results = await Promise.all(accts.map(async (a) => {
-    const win = customWindow || dayRange(date, a.tz);
+    const win = customWindow
+      || (range ? { startISO: dayRange(range.startDate, a.tz).startISO, endISO: dayRange(range.endDate, a.tz).endISO } : dayRange(date, a.tz));
     const head = { key: a.key, label: a.label || null, tz: a.tz, startISO: win.startISO, endISO: win.endISO };
     try {
       const data = await accountSummary(a, win.startISO, win.endISO);
@@ -44,7 +47,9 @@ export default async (req) => {
 
   return json({
     configured: true,
-    date,
+    date: range ? range.startDate : date,
+    startDate: range ? range.startDate : date,
+    endDate: range ? range.endDate : date,
     custom: !!customWindow,
     accounts: results,
     combined,

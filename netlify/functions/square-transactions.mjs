@@ -13,8 +13,12 @@ export default async (req) => {
   const acct = accts.find((a) => a.key === p.acct) || accts[0];
   const locationId = (p.locationId || "").trim();
   if (!locationId) return json({ error: "missing_location" }, 400);
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || "") ? p.date : todayInTz(acct.tz);
-  const win = (p.startISO && p.endISO) ? { startISO: p.startISO, endISO: p.endISO } : dayRange(date, acct.tz);
+  const ymd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  const range = ymd(p.startDate) && ymd(p.endDate) ? { startDate: p.startDate, endDate: p.endDate } : null;
+  const date = ymd(p.date) ? p.date : todayInTz(acct.tz);
+  const win = (p.startISO && p.endISO) ? { startISO: p.startISO, endISO: p.endISO }
+    : range ? { startISO: dayRange(range.startDate, acct.tz).startISO, endISO: dayRange(range.endDate, acct.tz).endISO }
+    : dayRange(date, acct.tz);
 
   try {
     let locName = p.name || locationId;
@@ -61,7 +65,7 @@ export default async (req) => {
       refunded: r2(refundRows.reduce((s, r) => s + r.amount, 0)),
     };
 
-    return json({ ok: true, account: { key: acct.key, label: acct.label || null }, location: { id: locationId, name: locName }, date, tz: acct.tz, orders: txns, refunds: refundRows, totals });
+    return json({ ok: true, account: { key: acct.key, label: acct.label || null }, location: { id: locationId, name: locName }, date: range ? range.startDate : date, startDate: range ? range.startDate : date, endDate: range ? range.endDate : date, tz: acct.tz, orders: txns, refunds: refundRows, totals });
   } catch (e) {
     const status = (e && e.status) || null;
     if (status === 401) return json({ configured: false, error: "unauthorized" }, 200);
