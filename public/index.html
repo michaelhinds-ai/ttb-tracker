@@ -725,9 +725,19 @@ function can(cap){ return (ROLE_CAPS[currentRole()]||[]).includes(cap); }
 function requireCap(cap){ if(can(cap)) return true; flash('Your role ('+ROLE_LABEL[currentRole()]+') can’t do that.'); return false; }
 async function hashPin(pin){ const enc=new TextEncoder().encode('ttbsalt:'+pin); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
 function sessKey(){ return 'ttb_sess_'+(WS||''); }
-function loadSession(){ try{ const j=sessionStorage.getItem(sessKey()); if(j){ const s=JSON.parse(j); if(state.auth.users.some(u=>u.id===s.userId&&u.role===s.role)) SESSION=s; } }catch(e){} }
-function saveSession(){ try{ sessionStorage.setItem(sessKey(),JSON.stringify(SESSION)); }catch(e){} }
-function clearSession(){ SESSION=null; try{ sessionStorage.removeItem(sessKey()); }catch(e){} }
+const SESS_MAX_MS=30*24*3600*1000; // stay signed in on this device for 30 days of inactivity
+function loadSession(){
+  try{
+    // Prefer the persistent (this-device) login; fall back to any older tab-only session.
+    const j=localStorage.getItem(sessKey())||sessionStorage.getItem(sessKey());
+    if(!j) return;
+    const s=JSON.parse(j);
+    if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // expired → require sign-in
+    if(state.auth.users.some(u=>u.id===s.userId&&u.role===s.role)){ SESSION={userId:s.userId,name:s.name,role:s.role}; saveSession(); } // valid → slide the expiry forward
+  }catch(e){}
+}
+function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
+function clearSession(){ SESSION=null; try{ localStorage.removeItem(sessKey()); sessionStorage.removeItem(sessKey()); }catch(e){} }
 function gateBoot(){
   loadSession();
   if(authOn() && !SESSION){ showLogin(); return false; }
