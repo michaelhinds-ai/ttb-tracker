@@ -1423,11 +1423,14 @@ async function stxRun(){
   if(!requireCap('reports'))return;
   const ym=$('#stxMonth').value; if(!ym){ alert('Choose a reporting month.'); return; }
   const [y,m]=ym.split('-').map(Number);
-  $('#stxOut').innerHTML='<div class="empty">Pulling Square sales for '+ym+'…</div>'; $('#stxCsv').style.display='none'; $('#stxPrint').style.display='none';
+  $('#stxOut').innerHTML='<div class="empty">Pulling sales tax for '+ym+'…</div>'; $('#stxCsv').style.display='none'; $('#stxPrint').style.display='none';
   try{
-    const r=await fetch('/api/square/salestax',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({year:y,month:m})});
-    const d=await r.json();
+    const [d,xd]=await Promise.all([
+      fetch('/api/square/salestax',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({year:y,month:m})}).then(r=>r.json()),
+      fetch('/api/xola/salestax',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({year:y,month:m,basis:'collected'})}).then(r=>r.json()).catch(()=>null),
+    ]);
     if(d.error){ $('#stxOut').innerHTML='<div class="note">⚠️ '+(d.detail||d.error)+'</div>'; return; }
+    d.xola=(xd&&xd.configured&&!xd.error)?xd:null;
     stxLast=d; renderStx(d); $('#stxCsv').style.display='inline-flex'; $('#stxPrint').style.display='inline-flex';
   }catch(e){ $('#stxOut').innerHTML='<div class="note">Could not reach the Square sales-tax endpoint.</div>'; }
 }
@@ -1436,27 +1439,48 @@ function renderStx(d){
   const due=new Date(d.year,d.month,20).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const locRows=d.byLocation.map(l=>`<tr><td>${l.name}</td><td class="num">${l.orders}</td><td class="num">${money(l.gross)}</td><td class="num">${money(l.tax)}</td></tr>`).join('');
   const taxRows=d.byTax.length?d.byTax.map(t=>`<tr><td>${t.name}</td><td class="num">${money(t.tax)}</td></tr>`).join(''):`<tr><td colspan="2" style="color:var(--muted)">No tax lines.</td></tr>`;
-  const netTax=d.taxNet!=null?d.taxNet:d.taxCollected;
-  $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected','Sales tax collected through Square, net of refunds (for Form 51A102)',mName)+`
-    <div class="note ky">Pulled from Square (${d.orderCount} completed orders${d.refundCount?`, ${d.refundCount} refund(s)`:''}, all locations). Refunds are netted out so this ties to what you remit.</div>
+  const sqNet=d.taxNet!=null?d.taxNet:d.taxCollected;
+  const x=d.xola; const xNet=x?(x.taxNet!=null?x.taxNet:x.taxCollected):0;
+  const combinedNet=round2(sqNet+xNet);
+  const sub=x?'Sales tax collected through Square + Xola, net of refunds (for Form 51A102)':'Sales tax collected through Square, net of refunds (for Form 51A102)';
+  // Per-source breakdown when Xola is connected; otherwise the original single-source table.
+  const breakdown=x?`
+    <h4>By source</h4>
+    <div class="tablewrap"><table><thead><tr><th>Source</th><th class="num">Gross sales</th><th class="num">Tax collected</th><th class="num">Refunded</th><th class="num">Net tax</th></tr></thead><tbody>
+      <tr><td>Square (retail / gift shop)</td><td class="num">${money(d.grossSales)}</td><td class="num">${money(d.taxCollected)}</td><td class="num">${d.taxRefunded?`(${money(d.taxRefunded)})`:'—'}</td><td class="num">${money(sqNet)}</td></tr>
+      <tr><td>Xola (experiences)</td><td class="num">${money(x.grossSales)}</td><td class="num">${money(x.taxCollected)}</td><td class="num">${x.taxRefunded?`(${money(x.taxRefunded)})`:'—'}</td><td class="num">${money(xNet)}</td></tr>
+      <tr class="total"><td>Combined</td><td class="num">${money(round2(d.grossSales+ x.grossSales))}</td><td class="num">${money(round2(d.taxCollected+x.taxCollected))}</td><td class="num">${(d.taxRefunded||x.taxRefunded)?`(${money(round2((d.taxRefunded||0)+(x.taxRefunded||0)))})`:'—'}</td><td class="num">${money(combinedNet)}</td></tr>
+    </tbody></table></div>`
+   :`
     <table><tbody>
       <tr><td>Gross retail sales (before tax &amp; tips)</td><td class="num">${money(d.grossSales)}</td></tr>
       <tr><td>Sales tax collected</td><td class="num">${money(d.taxCollected)}</td></tr>
       <tr><td>Less: sales tax refunded${d.refundCount?` (${d.refundCount})`:''}</td><td class="num">(${money(d.taxRefunded||0)})</td></tr>
-      <tr class="total"><td>Net sales tax to remit</td><td class="num">${money(netTax)}</td></tr>
-    </tbody></table>
-    <h4>By tax</h4><div class="tablewrap"><table><thead><tr><th>Tax</th><th class="num">Collected</th></tr></thead><tbody>${taxRows}</tbody></table></div>
-    <h4>By location</h4><div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Gross</th><th class="num">Tax</th></tr></thead><tbody>${locRows}</tbody></table></div>
-    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net Sales Tax to Remit</div><div class="due">${money(netTax)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">KY Sales &amp; Use Tax (Form 51A102) is generally due by the 20th of the following month (by <b>${due}</b>).</div></div>
-    <div class="disclaimer">Totals the sales tax Square collected on completed orders (net of tips), minus tax refunded during the month (apportioned from each refund). It does not account for exempt sales or use tax on your own purchases — reconcile against your Square tax report and confirm your filing figures with the Kentucky DOR before filing.</div>`;
+      <tr class="total"><td>Net sales tax to remit</td><td class="num">${money(sqNet)}</td></tr>
+    </tbody></table>`;
+  $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected',sub,mName)+`
+    <div class="note ky">Square: ${d.orderCount} order${d.orderCount===1?'':'s'}${d.refundCount?`, ${d.refundCount} refund(s)`:''}, all locations.${x?` Xola: ${x.purchaseCount} booking${x.purchaseCount===1?'':'s'}${x.refundCount?`, ${x.refundCount} refund(s)`:''} (tax counted when booked, net of refunds).`:''} Refunds are netted out so this ties to what you remit.</div>
+    ${breakdown}
+    <h4>Square — by tax</h4><div class="tablewrap"><table><thead><tr><th>Tax</th><th class="num">Collected</th></tr></thead><tbody>${taxRows}</tbody></table></div>
+    <h4>Square — by location</h4><div class="tablewrap"><table><thead><tr><th>Location</th><th class="num">Orders</th><th class="num">Gross</th><th class="num">Tax</th></tr></thead><tbody>${locRows}</tbody></table></div>
+    <div class="taxbox ky"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net Sales Tax to Remit${x?' — Square + Xola':''}</div><div class="due">${money(combinedNet)}</div><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">KY Sales &amp; Use Tax (Form 51A102) is generally due by the 20th of the following month (by <b>${due}</b>).</div></div>
+    <div class="disclaimer">Square tax is from completed orders (net of tips), minus tax refunded during the month.${x?' Xola tax is the “Kentucky Sales Tax” collected on experience bookings, counted in the month booked and net of refunds.':''} Excludes exempt sales and use tax on your own purchases — reconcile against your Square/Xola tax reports and confirm figures with the Kentucky DOR before filing.</div>`;
 }
 function stxCsv(){
   if(!stxLast)return; const d=stxLast;
   const lines=[['Kentucky Retail Sales Tax Collected',`${d.year}-${String(d.month).padStart(2,'0')}`].join(',')];
-  lines.push(['Gross retail sales',d.grossSales].join(','));
-  lines.push(['Sales tax collected',d.taxCollected].join(','));
-  lines.push(['Sales tax refunded',d.taxRefunded||0].join(','));
-  lines.push(['Net sales tax to remit',d.taxNet!=null?d.taxNet:d.taxCollected].join(','));
+  const sqNet=d.taxNet!=null?d.taxNet:d.taxCollected; const x=d.xola; const xNet=x?(x.taxNet!=null?x.taxNet:x.taxCollected):0;
+  if(x){
+    lines.push(['Source','Gross','Tax collected','Refunded','Net'].join(','));
+    lines.push(['Square',d.grossSales,d.taxCollected,d.taxRefunded||0,sqNet].join(','));
+    lines.push(['Xola',x.grossSales,x.taxCollected,x.taxRefunded||0,xNet].join(','));
+    lines.push(['Combined',round2(d.grossSales+x.grossSales),round2(d.taxCollected+x.taxCollected),round2((d.taxRefunded||0)+(x.taxRefunded||0)),round2(sqNet+xNet)].join(','));
+  } else {
+    lines.push(['Gross retail sales',d.grossSales].join(','));
+    lines.push(['Sales tax collected',d.taxCollected].join(','));
+    lines.push(['Sales tax refunded',d.taxRefunded||0].join(','));
+    lines.push(['Net sales tax to remit',sqNet].join(','));
+  }
   lines.push(''); lines.push(['By tax','Collected'].join(','));
   d.byTax.forEach(t=>lines.push([csv(t.name),t.tax].join(',')));
   lines.push(''); lines.push(['By location','Orders','Gross','Tax'].join(','));
