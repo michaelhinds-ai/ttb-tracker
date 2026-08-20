@@ -359,12 +359,19 @@
         <button class="btn ky" id="tibReceive">Receive into inventory</button>
         <span class="hint" id="tibSummary" style="margin:0"></span>
       </div>
+      <div id="tibResult" class="note ky" style="display:none;margin-top:12px"></div>
       <details class="sched" style="margin-top:16px"><summary style="color:var(--ky)">Bulk paste — import many lots at once</summary>
         <p class="hint" style="margin-top:10px">Fill in <b>Received from / permit / date</b> above, then paste one lot per line as <b>Class, Fill Date, Proof Gallons, # Barrels, Lot Code, Proof</b> (commas or tabs). The last column, Proof, is optional — include it to show a proof on each barrel; leave it off and PG stands alone. Then click Import.</p>
         <textarea id="tibBulk" rows="6" placeholder="Bourbon, 09/12/2014, 757.10, 12, 14I12, 120&#10;Rye, 12/17/2015, 190.80, 3, 15L17, 120"></textarea>
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px"><input type="checkbox" id="tibReplace"> Replace existing aging received-in-bond barrels from this same source first (use when re-importing to correct a batch)</label>
         <div class="row-actions" style="margin-top:10px"><button class="btn ky sm" id="tibBulkImport">Import pasted barrels</button><span class="hint" id="tibBulkMsg" style="margin:0"></span></div>
       </details>
+    </div>
+
+    <div class="card" id="tibinHistoryCard" style="display:none">
+      <h3>Received Transfer Records (TIB in)</h3>
+      <p class="hint">Every barrel receipt in bond you've logged. Reprint the transfer-in-bond receipt for your files or an audit.</p>
+      <div class="tablewrap"><table><thead><tr><th>Receipt #</th><th>Date</th><th>From (DSP)</th><th class="num">Barrels</th><th class="num">Proof Gallons</th><th class="noprint"></th></tr></thead><tbody id="tibinHistory"></tbody></table></div>
     </div>
 
     <div class="card cap-write" style="border-color:#2f6f8f">
@@ -376,7 +383,7 @@
         <div><label class="fld">Transfer date</label><input type="date" id="tibo_date"></div>
       </div>
       <div class="tablewrap" style="margin-top:14px">
-        <table><thead><tr><th>Barrel / Lot</th><th>Spirit</th><th class="num">Available</th><th class="num"># to transfer</th><th class="num">PG out</th><th class="noprint"></th></tr></thead>
+        <table><thead><tr><th>Barrel / Lot</th><th>Barrel #(s) <span style="font-weight:400;color:var(--muted)">— for the record</span></th><th>Spirit</th><th class="num">Available</th><th class="num"># to transfer</th><th class="num">PG out</th><th class="noprint"></th></tr></thead>
         <tbody id="tiboLines"></tbody></table>
       </div>
       <div class="row-actions" style="margin-top:12px">
@@ -729,7 +736,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -739,7 +746,7 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
 const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], reports:['reports'], viewer:[] };
@@ -2026,7 +2033,7 @@ function renderBarrels(){
     kpi('ky','Received in Bond',tibIn.toLocaleString(),'aging TIB barrels'),
   ].join('');
   const q=($('#barrelSearch').value||'').toLowerCase(), sf=$('#barrelStatus').value, spf=$('#barrelSpirit').value;
-  let rows=bs.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.dumpNo||''} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.destDSP||''} ${b.destPermit||''} ${b.dumpDate||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
+  let rows=bs.filter(b=>{ if(sf&&b.status!==sf)return false; if(spf&&b.spirit!==spf)return false; if(q){const h=`${b.barrelNo} ${b.dumpNo||''} ${b.tiboutNo||''} ${b.spirit} ${b.warehouse} ${b.location} ${b.sourceDSP||''} ${b.destDSP||''} ${b.destPermit||''} ${b.dumpDate||''} ${b.notes||''}`.toLowerCase(); if(!h.includes(q))return false;} return true; });
   rows=sortBarrels(rows); updateBarrelHeadArrows();
   $('#barrelBody').innerHTML=rows.map(b=>{
     const origin=b.origin==='Received in bond (TIB)'?`<span class="pill tibin">TIB in</span>`:'—';
@@ -2040,7 +2047,7 @@ function renderBarrels(){
     const ageCell=b.status==='Aging'?fmtAge(barrelAge(b)):(b.status==='Dumped'&&b.dumpDate?`${fmtAge(barrelAge(b,b.dumpDate))}<div style="font-size:11px;color:var(--muted)">at dump</div>`:'—');
     const bottledLine=(b.status==='Dumped'&&b.dumpBottlingId)?`<div style="font-size:11px"><button class="link" onclick="openBottlingDetail('${b.dumpBottlingId}')">bottled${b.dumpNo?(' as #'+b.dumpNo):''}${bt?` · ${numf(bt.pg)} PG bottled`:''} ›</button></div>`:'';
     const bottlesCell=bt?(+bt.bottles||0).toLocaleString():'—';
-    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${(b.status==='Transferred out (TIB)'&&b.destDSP)?`<div style="font-size:11px;color:#2f6f8f">→ to ${esc(b.destDSP)}${b.destPermit?(' · '+esc(b.destPermit)):''}</div>`:''}${bottledLine}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${ageCell}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td class="num">${bottlesCell}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
+    return `<tr><td><b>${b.barrelNo||b.dumpNo||(cnt>1?'Lot':'—')}</b>${cnt>1?` <span class="pill" style="background:#efe7d8;color:#7a5a2b">×${cnt}</span>`:''}${b.mashbill?`<div style="font-size:11px;color:var(--muted)">${b.mashbill}</div>`:''}${b.sourceDSP?`<div style="font-size:11px;color:var(--muted)">from ${b.sourceDSP}</div>`:''}${(b.status==='Transferred out (TIB)'&&b.destDSP)?`<div style="font-size:11px;color:#2f6f8f">→ to ${esc(b.destDSP)}${b.destPermit?(' · '+esc(b.destPermit)):''}${b.tiboutNo?(' · #'+esc(b.tiboutNo)):''}</div>`:''}${bottledLine}</td><td>${b.spirit||''}</td><td>${b.distillDate?fmtDate(b.distillDate):(b.fillDate?fmtDate(b.fillDate):'—')}${(b.origin==='Received in bond (TIB)'&&b.tibInDate)?`<div style="font-size:11px;color:var(--muted)">rec'd ${fmtDate(b.tibInDate)}</div>`:''}</td><td class="num">${ageCell}</td><td class="num">${b.entryProof>0?numf(b.entryProof,1):'—'}</td><td class="num">${numf(barrelPG(b))}</td><td class="num">${bottlesCell}</td><td>${origin}</td><td>${barrelStatusPill(b.status)}</td><td class="noprint">${acts}</td></tr>`;
   }).join('');
   $('#barrelEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🛢️</div>No barrels yet. Add your first barrel above, or load sample data from Setup &amp; Sync.</div>`;
   const bySpirit={}; aging.forEach(b=>{const k=b.spirit||'Other';bySpirit[k]=bySpirit[k]||{n:0,pg:0};bySpirit[k].n+=barrelCount(b);bySpirit[k].pg+=barrelPG(b);});
@@ -2052,7 +2059,7 @@ function renderBarrels(){
   const ssY=summSort.year; yrArr.sort((a,b)=>{const d=ssY.key==='year'?String(a.year).localeCompare(String(b.year)):(a[ssY.key]-b[ssY.key]); return d*ssY.dir;});
   $('#barrelByYear').innerHTML=yrArr.map(r=>`<tr><td>${r.year}</td><td class="num">${r.n}</td><td class="num">${numf(round1(r.pg))}</td></tr>`).join('')||`<tr><td colspan="3" style="color:var(--muted)">No aging barrels.</td></tr>`;
   renderTiboLines(); // keep the transfer-out lot picker in sync with current aging inventory
-  renderTibouts();
+  renderTibouts(); renderTibins();
 }
 let summSort={spirit:{key:'n',dir:-1},year:{key:'n',dir:-1}};
 function setSummSort(which,key){ const s=summSort[which]; if(s.key===key)s.dir*=-1; else{s.key=key; s.dir=(key==='name'||key==='year')?1:-1;} renderBarrels(); }
@@ -2088,11 +2095,18 @@ function tibReceive(){
   const valid=tibRows.filter(r=>(+r.qty>0)&&(+r.pg>0));
   if(!valid.length){ alert('Add at least one line with proof gallons and a barrel count.'); return; }
   if(!from){ alert('Enter the source DSP (who you received these barrels from) before receiving.'); $('#tib_from').focus(); return; }
-  valid.forEach(r=>state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:(r.distill||date),entryProof:+r.proof||0,pgTotal:+r.pg||0,qty:Math.max(1,+r.qty||1),size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'}));
+  const lines=[];
+  valid.forEach(r=>{ const q=Math.max(1,+r.qty||1); const pg=+r.pg||0;
+    state.barrels.push({id:uid(),barrelNo:'',spirit:r.cls,spiritType:r.type,distillDate:r.distill,fillDate:(r.distill||date),entryProof:+r.proof||0,pgTotal:pg,qty:q,size:'53 gal (standard)',char:'',warehouse:'',location:'',origin:'Received in bond (TIB)',sourceDSP:from,sourcePermit:permit,tibInDate:date,notes:'',status:'Aging'});
+    lines.push({lot:'—',dateCode:r.distill||'',spirit:(r.type?r.type+' / ':'')+(r.cls||''),qty:q,proof:+r.proof||0,pg:round1(pg),wg:0});
+  });
   const nb=valid.reduce((s,r)=>s+(+r.qty||0),0);
+  const rec=addTibinRecord({date:date||new Date().toISOString().slice(0,10),sourceDSP:from,sourcePermit:permit,lines,totalBarrels:nb,totalPG:round1(lines.reduce((s,l)=>s+l.pg,0))});
   save('Received '+nb+' barrel(s) in bond from '+from); tibRows=[tibNewRow()]; $('#tib_from').value=''; $('#tib_permit').value=''; renderTibLines(); refreshAll();
+  const res=$('#tibResult'); if(res){ res.style.display=''; res.innerHTML=`✓ <b>${esc(rec.num)}</b> recorded — ${nb} barrel(s), ${numf(rec.totalPG)} PG from <b>${esc(from)}</b>. <button class="btn ky sm" style="margin-left:8px" onclick="printTransfer('${rec.id}')">🖨 Print receipt record</button>`; }
   flash('Received '+nb+' barrels in bond.');
 }
+function addTibinRecord(o){ state.tibins=state.tibins||[]; const num='TIBIN-'+String(o.date).slice(0,4)+'-'+String(state.tibins.length+1).padStart(3,'0'); const rec=Object.assign({id:uid(),num,dir:'in',by:(authOn()&&SESSION)?SESSION.name:null},o); state.tibins.push(rec); return rec; }
 function normDate(s){ s=(s||'').trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s; const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(m){let y=m[3];if(y.length===2)y='20'+y;return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;} return s; }
 function tibBulkImport(){
   if(!requireCap('write'))return;
@@ -2121,14 +2135,17 @@ function tibBulkImport(){
   const rmMsg=replace?`\n\nThis will first REMOVE ${willRemove} existing aging received-in-bond barrel record(s) from ${from}, then import the pasted lots.`:'';
   if(!confirm(`Import ${recs.length} lots — ${bbl} barrels, ${numf(round1(pg))} PG — received in bond${from?(' from '+from):''}?`+rmMsg)) return;
   if(replace){ state.barrels=state.barrels.filter(b=>!(b.status==='Aging'&&b.origin==='Received in bond (TIB)'&&(b.sourceDSP||'').trim().toLowerCase()===from.toLowerCase())); }
-  state.barrels.push(...recs); save((replace?('Replaced & imported '):('Imported '))+bbl+' barrels in bond from '+from); refreshAll(); $('#tibBulk').value=''; $('#tib_from').value=''; $('#tib_permit').value=''; $('#tibReplace').checked=false;
-  $('#tibBulkMsg').textContent=`Imported ${bbl} barrels (${recs.length} lots)`+(skipped?`, ${skipped} skipped`:'');
+  state.barrels.push(...recs);
+  const recLines=recs.map(r=>({lot:(r.notes||'').replace(/^Lot\s*/i,'')||'—',dateCode:r.distillDate||'',spirit:(r.spiritType?r.spiritType+' / ':'')+(r.spirit||''),qty:r.qty,proof:+r.entryProof||0,pg:round1(+r.pgTotal||0),wg:round2((+r.fillWG||0)*r.qty)}));
+  const rec=addTibinRecord({date,sourceDSP:from,sourcePermit:permit,lines:recLines,totalBarrels:bbl,totalPG:round1(recLines.reduce((s,l)=>s+l.pg,0))});
+  save((replace?('Replaced & imported '):('Imported '))+bbl+' barrels in bond from '+from); refreshAll(); $('#tibBulk').value=''; $('#tib_from').value=''; $('#tib_permit').value=''; $('#tibReplace').checked=false;
+  $('#tibBulkMsg').innerHTML=`Imported ${bbl} barrels (${recs.length} lots)`+(skipped?`, ${skipped} skipped`:'')+` · <button class="link" onclick="printTransfer('${rec.id}')">🖨 Print receipt ${esc(rec.num)}</button>`;
   flash(`Imported ${bbl} barrels in bond.`);
 }
 
 /* ---- Transfer barrels OUT in bond (TIB out) ---- */
 let tiboRows=[];
-function tiboNewRow(){ return {barrelId:'',qty:''}; }
+function tiboNewRow(){ return {barrelId:'',no:'',qty:''}; }
 function initTibo(){ if(!tiboRows.length) tiboRows=[tiboNewRow()]; if($('#tibo_date')&&!$('#tibo_date').value)$('#tibo_date').value=new Date().toISOString().slice(0,10); renderTiboLines(); }
 function tiboLabel(b){ return (b.barrelNo||(barrelCount(b)>1?'Lot ×'+barrelCount(b):'Barrel'))+' — '+(b.spirit||'')+(b.distillDate?(' · '+fmtDate(b.distillDate)):(b.fillDate?(' · '+fmtDate(b.fillDate)):'')); }
 function renderTiboLines(){
@@ -2143,6 +2160,7 @@ function renderTiboLines(){
     const opts=`<option value="">— choose a lot —</option>`+list.map(x=>`<option value="${x.id}" ${x.id===r.barrelId?'selected':''}>${esc(tiboLabel(x))}</option>`).join('');
     return `<tr>
       <td><select data-i="${i}" data-k="barrelId">${opts}</select></td>
+      <td><input type="text" data-i="${i}" data-k="no" value="${esc(r.no||'')}" placeholder="e.g. 14I12-A" style="width:130px"></td>
       <td>${b?esc((b.spiritType?b.spiritType+' / ':'')+(b.spirit||'')):''}</td>
       <td class="num">${b?avail:'—'}</td>
       <td class="num"><input type="number" min="1" max="${avail||1}" step="1" data-i="${i}" data-k="qty" value="${r.qty}" style="width:80px" inputmode="numeric"></td>
@@ -2152,7 +2170,7 @@ function renderTiboLines(){
   body.querySelectorAll('select,input').forEach(el=>{ el.onchange=el.oninput=e=>{
     const i=+e.target.dataset.i, k=e.target.dataset.k; tiboRows[i][k]=e.target.value;
     if(k==='barrelId'){ renderTiboLines(); }
-    else { const b=state.barrels.find(x=>x.id===tiboRows[i].barrelId); const per=b&&barrelCount(b)?barrelPG(b)/barrelCount(b):0; const cell=e.target.closest('tr').querySelector('td:nth-child(5)'); if(cell)cell.textContent=b?numf(round1(per*(+tiboRows[i].qty||0))):'—'; }
+    else if(k==='qty'){ const b=state.barrels.find(x=>x.id===tiboRows[i].barrelId); const per=b&&barrelCount(b)?barrelPG(b)/barrelCount(b):0; const cell=e.target.closest('tr').querySelector('td:nth-child(6)'); if(cell)cell.textContent=b?numf(round1(per*(+tiboRows[i].qty||0))):'—'; }
     updateTiboSummary();
   };});
   body.querySelectorAll('[data-del]').forEach(el=>{ el.onclick=e=>{ tiboRows.splice(+e.target.dataset.del,1); renderTiboLines(); }; });
@@ -2164,25 +2182,25 @@ function tiboSend(){
   if(!requireCap('write'))return;
   const to=$('#tibo_to').value.trim(), permit=$('#tibo_permit').value.trim(), date=$('#tibo_date').value||new Date().toISOString().slice(0,10);
   if(!to){ alert('Enter the destination DSP name.'); return; }
-  const valid=tiboRows.map(r=>({b:state.barrels.find(x=>x.id===r.barrelId&&x.status==='Aging'),qty:+r.qty||0})).filter(x=>x.b&&x.qty>0);
+  const valid=tiboRows.map(r=>({b:state.barrels.find(x=>x.id===r.barrelId&&x.status==='Aging'),qty:+r.qty||0,no:(r.no||'').trim()})).filter(x=>x.b&&x.qty>0);
   if(!valid.length){ alert('Add at least one lot and a quantity to transfer.'); return; }
   for(const {b,qty} of valid){ if(qty>barrelCount(b)){ alert(`Only ${barrelCount(b)} barrel(s) available in ${b.barrelNo||'that lot'}.`); return; } }
   if(!confirm(`Transfer ${valid.reduce((s,x)=>s+x.qty,0)} barrel(s) OUT in bond to ${to}${permit?(' ('+permit+')'):''}? This removes them from aging inventory as a non-taxable transfer.`)) return;
   let totalB=0,totalPG=0; const lines=[];
-  valid.forEach(({b,qty})=>{
+  valid.forEach(({b,qty,no})=>{
     const perPG=barrelPG(b)/barrelCount(b); const outPG=round1(perPG*qty);
-    lines.push({ lot:(b.barrelNo||(barrelCount(b)>1?'Lot':'—')), dateCode:(b.distillDate||b.fillDate||''), spirit:(b.spiritType?b.spiritType+' / ':'')+(b.spirit||''), qty, proof:+b.entryProof||0, pg:outPG, wg:round2((b.fillWG||0)*qty) });
+    lines.push({ lot:(no||b.barrelNo||(barrelCount(b)>1?'Lot':'—')), dateCode:(b.distillDate||b.fillDate||''), spirit:(b.spiritType?b.spiritType+' / ':'')+(b.spirit||''), qty, proof:+b.entryProof||0, pg:outPG, wg:round2((b.fillWG||0)*qty) });
     if(qty>=barrelCount(b)){
-      b.status='Transferred out (TIB)'; b.destDSP=to; b.destPermit=permit; b.tibOutDate=date;
+      b.status='Transferred out (TIB)'; b.destDSP=to; b.destPermit=permit; b.tibOutDate=date; if(no) b.tiboutNo=no;
     } else {
       b.qty=barrelCount(b)-qty; if(b.pgTotal!==undefined&&b.pgTotal!==null&&b.pgTotal!=='') b.pgTotal=round1(+b.pgTotal-outPG);
-      state.barrels.push({id:uid(),barrelNo:b.barrelNo,spirit:b.spirit,spiritType:b.spiritType,mashbill:b.mashbill,distillDate:b.distillDate,fillDate:b.fillDate,entryProof:b.entryProof,fillWG:b.fillWG,pgTotal:outPG,qty:qty,size:b.size,char:b.char,cooperage:b.cooperage,warehouse:b.warehouse,location:b.location,origin:b.origin,sourceDSP:b.sourceDSP,sourcePermit:b.sourcePermit,tibInDate:b.tibInDate,status:'Transferred out (TIB)',destDSP:to,destPermit:permit,tibOutDate:date,notes:b.notes});
+      state.barrels.push({id:uid(),barrelNo:no||b.barrelNo,tiboutNo:no||'',spirit:b.spirit,spiritType:b.spiritType,mashbill:b.mashbill,distillDate:b.distillDate,fillDate:b.fillDate,entryProof:b.entryProof,fillWG:b.fillWG,pgTotal:outPG,qty:qty,size:b.size,char:b.char,cooperage:b.cooperage,warehouse:b.warehouse,location:b.location,origin:b.origin,sourceDSP:b.sourceDSP,sourcePermit:b.sourcePermit,tibInDate:b.tibInDate,status:'Transferred out (TIB)',destDSP:to,destPermit:permit,tibOutDate:date,notes:b.notes});
     }
     totalB+=qty; totalPG+=outPG;
   });
   state.tibouts=state.tibouts||[];
   const num='TIB-'+String(date).slice(0,4)+'-'+String(state.tibouts.length+1).padStart(3,'0');
-  const rec={id:uid(),num,date,destDSP:to,destPermit:permit,lines,totalBarrels:totalB,totalPG:round1(totalPG),by:(authOn()&&SESSION)?SESSION.name:null};
+  const rec={id:uid(),num,dir:'out',date,destDSP:to,destPermit:permit,lines,totalBarrels:totalB,totalPG:round1(totalPG),by:(authOn()&&SESSION)?SESSION.name:null};
   state.tibouts.push(rec);
   save('Transferred '+totalB+' barrel(s) out in bond to '+to);
   tiboRows=[tiboNewRow()]; $('#tibo_to').value=''; $('#tibo_permit').value=''; renderTiboLines(); refreshAll();
@@ -2196,9 +2214,20 @@ function renderTibouts(){
   body.innerHTML=recs.map(r=>`<tr><td><b>${esc(r.num||'—')}</b></td><td>${r.date?fmtDate(r.date):'—'}</td><td>${esc(r.destDSP||'')}${r.destPermit?`<div style="font-size:11px;color:var(--muted)">${esc(r.destPermit)}</div>`:''}</td><td class="num">${r.totalBarrels||0}</td><td class="num">${numf(r.totalPG||0)}</td><td class="noprint"><button class="link" onclick="printTransfer('${r.id}')">🖨 Print</button>${can('delete')?` · <button class="del" onclick="deleteTibout('${r.id}')">Del record</button>`:''}</td></tr>`).join('');
 }
 function deleteTibout(id){ if(!requireCap('delete'))return; if(!confirm('Delete this transfer RECORD? This only removes the printable record — it does NOT put the barrels back into inventory.'))return; state.tibouts=(state.tibouts||[]).filter(x=>x.id!==id); save('Deleted a transfer record'); renderTibouts(); }
+function renderTibins(){
+  const card=$('#tibinHistoryCard'), body=$('#tibinHistory'); if(!body) return;
+  const recs=[...(state.tibins||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||'').localeCompare(a.num||''));
+  if(card) card.style.display=recs.length?'':'none';
+  body.innerHTML=recs.map(r=>`<tr><td><b>${esc(r.num||'—')}</b></td><td>${r.date?fmtDate(r.date):'—'}</td><td>${esc(r.sourceDSP||'')}${r.sourcePermit?`<div style="font-size:11px;color:var(--muted)">${esc(r.sourcePermit)}</div>`:''}</td><td class="num">${r.totalBarrels||0}</td><td class="num">${numf(r.totalPG||0)}</td><td class="noprint"><button class="link" onclick="printTransfer('${r.id}')">🖨 Print</button>${can('delete')?` · <button class="del" onclick="deleteTibin('${r.id}')">Del record</button>`:''}</td></tr>`).join('');
+}
+function deleteTibin(id){ if(!requireCap('delete'))return; if(!confirm('Delete this receipt RECORD? This only removes the printable record — it does NOT remove the received barrels from inventory.'))return; state.tibins=(state.tibins||[]).filter(x=>x.id!==id); save('Deleted a receipt record'); renderTibins(); }
 function transferDocHtml(rec){
-  const s=state.settings;
-  const rows=(rec.lines||[]).map(l=>`<tr><td>${esc(l.lot||'—')}</td><td>${l.dateCode?esc(fmtDate(l.dateCode)):'—'}</td><td>${esc(l.spirit||'')}</td><td class="num">${l.qty}</td><td class="num">${numf(l.proof,1)}</td><td class="num">${numf(l.wg,2)}</td><td class="num">${numf(l.pg)}</td></tr>`).join('');
+  const s=state.settings; const us={name:s.name||'—',permit:s.permit||'',addr:[s.addr1,s.addr2].filter(Boolean).join(', ')};
+  const inbound=rec.dir==='in';
+  const from = inbound ? {name:rec.sourceDSP||'—',permit:rec.sourcePermit||'',addr:''} : us;
+  const to   = inbound ? us : {name:rec.destDSP||'—',permit:rec.destPermit||'',addr:''};
+  const rows=(rec.lines||[]).map(l=>`<tr><td>${esc(l.lot||'—')}</td><td>${l.dateCode?esc(fmtDate(l.dateCode)):'—'}</td><td>${esc(l.spirit||'')}</td><td class="num">${l.qty}</td><td class="num">${numf(l.proof,1)}</td><td class="num">${l.wg?numf(l.wg,2):'—'}</td><td class="num">${numf(l.pg)}</td></tr>`).join('');
+  const party=(label,d)=>`<div class="party"><b>${label}</b>${esc(d.name)}<br>${d.permit?('Permit '+esc(d.permit)+'<br>'):''}${esc(d.addr||'')}</div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>Transfer in Bond — ${esc(rec.num||'')}</title><style>
     body{font-family:Georgia,'Times New Roman',serif;color:#231a12;margin:40px}
     .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #7a5a2b;padding-bottom:12px}
@@ -2209,11 +2238,11 @@ function transferDocHtml(rec){
     .sig{margin-top:48px;display:flex;justify-content:space-between} .sig div{border-top:1px solid #333;width:44%;padding-top:6px;font-size:12px;color:#555;font-family:Arial,sans-serif}
     .foot{margin-top:26px;font-size:11px;color:#8a7a66;font-family:Arial,sans-serif}
     @media print{body{margin:14mm}} </style></head><body>
-    <div class="head"><div><h1>Distilled Spirits — Transfer in Bond</h1><div class="sub">Non-taxable transfer between distilled spirits plants</div></div>
-      <div style="text-align:right"><div style="font-size:15px"><b>${esc(rec.num||'')}</b></div><div class="sub">Transfer date: ${rec.date?fmtDate(rec.date):'—'}</div></div></div>
+    <div class="head"><div><h1>Distilled Spirits — Transfer in Bond ${inbound?'(Received)':'(Shipped)'}</h1><div class="sub">Non-taxable transfer between distilled spirits plants</div></div>
+      <div style="text-align:right"><div style="font-size:15px"><b>${esc(rec.num||'')}</b></div><div class="sub">${inbound?'Received':'Transfer'} date: ${rec.date?fmtDate(rec.date):'—'}</div></div></div>
     <div class="parties">
-      <div class="party"><b>Shipping DSP (From)</b>${esc(s.name||'—')}<br>${s.permit?('Permit '+esc(s.permit)+'<br>'):''}${esc([s.addr1,s.addr2].filter(Boolean).join(', '))}</div>
-      <div class="party"><b>Receiving DSP (To)</b>${esc(rec.destDSP||'—')}<br>${rec.destPermit?('Permit '+esc(rec.destPermit)):''}</div>
+      ${party('Shipping DSP (From)',from)}
+      ${party('Receiving DSP (To)',to)}
     </div>
     <table><thead><tr><th>Lot / Serial</th><th>Date Code (distilled)</th><th>Spirit Type / Class</th><th class="num"># Barrels</th><th class="num">Proof</th><th class="num">Wine Gal</th><th class="num">Proof Gallons</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -2223,7 +2252,7 @@ function transferDocHtml(rec){
     <scr`+`ipt>window.onload=function(){setTimeout(function(){window.print();},150);};<\/scr`+`ipt></body></html>`;
 }
 function printTransfer(id){
-  const rec=(state.tibouts||[]).find(x=>x.id===id); if(!rec){ flash('That transfer record is gone.'); return; }
+  const rec=(state.tibouts||[]).find(x=>x.id===id)||(state.tibins||[]).find(x=>x.id===id); if(!rec){ flash('That transfer record is gone.'); return; }
   const w=window.open('','_blank'); if(!w){ alert('Allow pop-ups for this site to print the transfer record.'); return; }
   w.document.write(transferDocHtml(rec)); w.document.close();
 }
