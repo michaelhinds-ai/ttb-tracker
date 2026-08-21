@@ -1527,10 +1527,15 @@ let rtlLast=null, rtlAccts=null;
 const rtlTodayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // The name you set in SQUARE_LABEL_n wins; then Square's business name; then a plain fallback.
 const rtlAcctName=a=>a.label||a.merchant||('Account '+(a.key==='a2'?2:1));
+let rtlAutoRan=false;
 function renderRetail(){
   if(!$('#rtlFrom').value) $('#rtlFrom').value=rtlTodayStr();
   if(!$('#rtlTo').value) $('#rtlTo').value=rtlTodayStr();
   rtlStatus();
+  // Auto-pull TODAY the first time the tab is opened (don't clobber a range the user already pulled).
+  if(!rtlAutoRan && !rtlLast && location.protocol!=='file:' && can('reports')){
+    rtlAutoRan=true; $('#rtlFrom').value=rtlTodayStr(); $('#rtlTo').value=rtlTodayStr(); rtlRun();
+  }
 }
 async function rtlStatus(){
   const el=$('#rtlStatus'); if(!el)return;
@@ -1603,18 +1608,45 @@ async function rtlRun(){
   $('#rtlOut').innerHTML='<div class="empty">Pulling Square sales…</div>';
   $('#rtlCsv').style.display='none'; $('#rtlPrint').style.display='none';
   try{
-    const [cur,prior]=await Promise.all([
+    const jx=body=>fetch('/api/xola/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>null);
+    const [cur,prior,xr,xrP]=await Promise.all([
       fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to,endCapISO:nowISO})}).then(r=>r.json()),
       fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:py.from,endDate:py.to,endCapISO:priorNowISO})}).then(r=>r.json()).catch(()=>null),
+      jx({startDate:from,endDate:to,endCapISO:nowISO}),
+      jx({startDate:py.from,endDate:py.to,endCapISO:priorNowISO}),
     ]);
     if(!cur||cur.error){ $('#rtlOut').innerHTML='<div class="note">⚠️ '+esc((cur&&(cur.detail||cur.error))||'Could not load.')+'</div>'; return; }
     cur.range={from,to}; cur.inProgress=inProgress; cur.throughTime=inProgress?new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):null;
-    cur.priorYear=(prior&&!prior.error)?Object.assign(prior,{range:py}):null;
+    cur.xola=(xr&&xr.configured&&!xr.error)?xr:null;
+    cur.priorYear=(prior&&!prior.error)?Object.assign(prior,{range:py,xola:(xrP&&xrP.configured&&!xrP.error)?xrP:null}):null;
     rtlLast=cur; renderRetailOut(cur);
     $('#rtlCsv').style.display='inline-flex'; $('#rtlPrint').style.display='inline-flex';
   }catch(e){ $('#rtlOut').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
 }
 function rtlStat(l,v){return `<span style="display:inline-block;margin:0 20px 8px 0"><span style="font-family:-apple-system,Segoe UI,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block">${l}</span><b style="font-variant-numeric:tabular-nums;font-size:15px">${v}</b></span>`;}
+function xolaCmp(cur,prev,lyLabel){
+  if(!prev) return '';
+  const row=(l,c,p,fmt)=>{const dd=rtlDelta(c,p);return `<tr><td>${l}</td><td class="num">${fmt(c)}</td><td class="num" style="color:var(--muted)">${fmt(p)}</td><td class="num cmp-${dd.cls}">${dd.txt}</td></tr>`;};
+  const m=v=>money(v), n=v=>numf(v,0);
+  return `<div class="tablewrap" style="margin:6px 0 4px"><table><thead><tr><th>vs. last year <span style="font-weight:400;color:var(--muted)">(${esc(lyLabel)})</span></th><th class="num">This period</th><th class="num">Last year</th><th class="num">Change</th></tr></thead><tbody>`+
+    row('Net Sales',cur.netSales,prev.netSales,m)+row('Bookings',cur.orderCount,prev.orderCount,n)+row('Avg Ticket',cur.avgTicket,prev.avgTicket,m)+row('Sales Tax',cur.tax,prev.tax,m)+row('Guests',cur.guests,prev.guests,n)+`</tbody></table></div>`;
+}
+function renderXolaBlock(xr,pyXr,dayName,lyLabel){
+  const header=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid var(--copper);padding-bottom:12px;margin:30px 0 6px">`+
+    `<div><div style="font-size:20px;font-weight:800">Xola — Experiences Redeemed</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">Revenue recognized on the day the experience ran (not the day booked)</div></div>`+
+    `<div style="text-align:right"><div style="font-weight:700">Retail Sales — Daily Summary</div><div style="color:var(--muted);font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${esc(dayName)}</div></div></div>`;
+  const tiles=`<div class="kpis" style="margin:14px 0">`+[
+    kpi('copper','Net Sales',money(xr.netSales),`${xr.orderCount} booking${xr.orderCount===1?'':'s'}${xr.guests?` · ${numf(xr.guests,0)} guests`:''}`),
+    kpi('blue','Avg Ticket',money(xr.avgTicket),'net per booking'),
+    kpi('ky','Sales Tax',money(xr.tax),'collected'),
+    kpi('barrel','Guests',numf(xr.guests,0),'redeemed this period'),
+  ].join('')+`</div>`;
+  const exp=(xr.experiences&&xr.experiences.length)
+    ? `<div class="tablewrap"><table><thead><tr><th>Experience</th><th class="num">Guests</th><th class="num">Net Sales</th></tr></thead><tbody>`+
+      xr.experiences.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${numf(e.guests,0)}</td><td class="num">${money(e.net)}</td></tr>`).join('')+`</tbody></table></div>`
+    : `<div style="color:var(--muted);font-size:13px">No experiences redeemed in this period.</div>`;
+  return header+tiles+(pyXr?xolaCmp(xr,pyXr,lyLabel):'')+exp;
+}
 function renderRetailOut(d){
   const tx=$('#rtlTxns'); if(tx){ tx.style.display='none'; tx.innerHTML=''; } $('#rtlOut').style.display='';
   const c=d.combined;
@@ -1629,13 +1661,21 @@ function renderRetailOut(d){
   const pyCombined=py?py.combined:null;
   const pyAcct=key=>py?(py.accounts||[]).find(a=>a.key===key&&a.ok):null;
 
+  // Xola experience revenue (recognized on the day the tour ran), folded into the grand total.
+  const xr=d.xola, pyXr=py?py.xola:null;
+  const withXola=(cc,xx)=>{ if(!xx) return cc; const oc=cc.orderCount+(xx.orderCount||0); return Object.assign({},cc,{
+    netSales:round2(cc.netSales+(xx.netSales||0)), tax:round2(cc.tax+(xx.tax||0)), netTax:round2((cc.netTax!=null?cc.netTax:cc.tax)+(xx.tax||0)),
+    units:round2((cc.units||0)+(xx.guests||0)), orderCount:oc, collected:round2((cc.collected||0)+(xx.collected||0)),
+    avgTicket:oc?round2((cc.netSales+(xx.netSales||0))/oc):0 }); };
+  const cAll=withXola(c,xr), pyCombinedAll=pyCombined?withXola(pyCombined,pyXr):null;
+
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
-    kpi('copper','Net Sales',money(c.netSales),`${c.orderCount} order${c.orderCount===1?'':'s'} · ${c.locations} location${c.locations===1?'':'s'}`),
-    kpi('blue','Avg Ticket',money(c.avgTicket),'net sales per order'),
-    kpi('ky','Sales Tax',money(c.tax),c.refundedTax?`${money(c.netTax)} net of refunds`:'collected at retail'),
+    kpi('copper','Net Sales',money(cAll.netSales),`${cAll.orderCount} sale${cAll.orderCount===1?'':'s'} · ${c.locations} loc${c.locations===1?'':'s'}${xr?' + Xola':''}`),
+    kpi('blue','Avg Ticket',money(cAll.avgTicket),'net sales per sale'),
+    kpi('ky','Sales Tax',money(cAll.tax),c.refundedTax?`${money(cAll.netTax)} net of refunds`:'collected at retail'),
     kpi('green','Tips',money(c.tips),c.tipPct?`${numf(c.tipPct,1)}% of net sales`:'none recorded'),
-    kpi('barrel','Units Sold',numf(c.units,0),c.bottles!=null?`${numf(c.bottles,0)} tagged bottles`:'line-item quantity'),
-  ].join('')+`</div>`+(pyCombined?rtlCmp(c,pyCombined,lyLabel):'');
+    kpi('barrel','Units Sold',numf(cAll.units,0),c.bottles!=null?`${numf(c.bottles,0)} bottles${xr?` + ${numf(xr.guests,0)} guests`:''}`:'line-item quantity'),
+  ].join('')+`</div>`+(pyCombinedAll?rtlCmp(cAll,pyCombinedAll,lyLabel):'');
 
   const cols=(x)=>`<td class="num">${x.orderCount}</td><td class="num">${money(x.netSales)}</td><td class="num">${money(x.avgTicket)}</td><td class="num">${money(x.tax)}</td><td class="num">${money(x.tips)}</td><td class="num">${money(x.discounts)}</td><td class="num">${numf(x.units,0)}</td><td class="num">${x.bottles!=null?numf(x.bottles,0):'—'}</td><td class="num">${x.refundCount?`(${money(x.refunded)})`:'—'}</td>`;
 
@@ -1668,6 +1708,7 @@ function renderRetailOut(d){
       kpi('barrel','Units Sold',numf(t.units,0),t.bottles!=null?`${numf(t.bottles,0)} tagged bottles`:'line-item quantity'),
     ].join('')+`</div>`+(pa?rtlCmp(t,pa.totals,lyLabel):''); };
   const acctBlocks=ok.length>1?ok.map(acctBlock).join(''):'';
+  const xolaBlock=xr?renderXolaBlock(xr,pyXr,dayName,lyLabel):'';
 
   // Combined top header — the all-accounts roll-up (KY = Louisville Rickhouse, TN = NBC).
   const topSub=ok.length>1?ok.map(a=>esc(rtlAcctName(a))).join(' + '):(ok[0]?esc(rtlAcctName(ok[0])):'All accounts');
@@ -1698,7 +1739,7 @@ function renderRetailOut(d){
 
   const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(rtlAcctName(a))).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. Everything below covers the remaining account${ok.length===1?'':'s'} only.</div>`:'';
 
-  $('#rtlOut').innerHTML=topHeader+failNote+kpis+acctBlocks+`
+  $('#rtlOut').innerHTML=topHeader+failNote+kpis+acctBlocks+xolaBlock+`
     <h4>All locations</h4>
     <div class="tablewrap"><table><thead><tr>
       <th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th>
@@ -1707,8 +1748,8 @@ function renderRetailOut(d){
     </tr></thead><tbody>${rows}</tbody></table></div>
     ${detail}
     <div class="taxbox"><div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Collected — ${esc(dayName)}</div>
-      <div class="due">${money(c.collected)}</div>
-      <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(c.netSales)} in sales + ${money(c.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}.</div></div>
+      <div class="due">${money(cAll.collected)}</div>
+      <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(cAll.netSales)} in sales + ${money(cAll.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}${xr?`. Includes Xola experiences redeemed this period.`:'.'}</div></div>
     <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero — except an empty back-office location, which is hidden until it has activity. <b>Tip:</b> click any location to see its individual transactions. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
 }
 // ---- Location drill-down: individual transactions for one location on the shown day ----
