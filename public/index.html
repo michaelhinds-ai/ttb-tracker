@@ -1485,22 +1485,27 @@ function xolaSources(x){
 }
 // Missing seller data means the remit figure is too LOW, which is the dangerous
 // direction to be wrong in. Never let that pass silently.
-function xolaWarning(x){
+// mode 'ky' talks about sales tax and filing; mode 'retail' must not — the daily
+// report shows no tax at all, so warning about missing tax there is nonsense.
+function xolaWarning(x,mode){
   if(!x) return '';
+  const ky=mode!=='retail';
+  const missing=ky?'Their sales tax is <b>not</b> in the total below.':'Their bookings and revenue are <b>not</b> in the totals below.';
+  const closer=ky?' Re-run before filing.':' Re-run for a complete day.';
   const bad=(x.failed||[]).map(f=>esc(f.label||f.key));
   const blind=(x.unreadable||[]).map(f=>esc(f.label||f.key));
   const parts=[];
-  if(bad.length) parts.push(`${bad.length} Xola seller${bad.length===1?'':'s'} could not be reached (${bad.join(', ')}). Their sales tax is <b>not</b> in the total below.`);
+  if(bad.length) parts.push(`${bad.length} Xola seller${bad.length===1?'':'s'} could not be reached (${bad.join(', ')}). ${missing}`);
   // The dangerous case: the pull SUCCEEDED and returned nothing. No error, no
   // retry prompt, just a clean zero that reads as a slow month.
-  if(blind.length) parts.push(`${blind.length} Xola seller${blind.length===1?'':'s'} returned <b>no transactions at any date</b> (${blind.join(', ')}) — almost always an API key that cannot read that seller. They are counted as <b>zero</b> here, so the total is too LOW. Set <code>XOLA_API_KEY_n</code> for them and re-run.`);
+  if(blind.length) parts.push(`${blind.length} Xola seller${blind.length===1?'':'s'} returned <b>no transactions at any date</b> (${blind.join(', ')}) — almost always an API key that cannot read that seller. They are counted as <b>zero</b> here, so the ${ky?'total is too LOW':'day is understated'}. Set <code>XOLA_API_KEY_n</code> for them and re-run.`);
   // A seller with no state set sits on no return at all. Neither including nor
   // excluding it silently is safe, so it gets named.
   const unset=(x.unclassified||[]).map(f=>esc(f.label||f.key));
-  if(unset.length) parts.push(`${unset.length} Xola seller${unset.length===1?'':'s'} (${unset.join(', ')}) ${unset.length===1?'has':'have'} no state assigned, so ${unset.length===1?'its':'their'} sales tax is on <b>no</b> return. Set <code>XOLA_STATE_n</code> to <code>KY</code> or <code>TN</code>.`);
+  if(ky&&unset.length) parts.push(`${unset.length} Xola seller${unset.length===1?'':'s'} (${unset.join(', ')}) ${unset.length===1?'has':'have'} no state assigned, so ${unset.length===1?'its':'their'} sales tax is on <b>no</b> return. Set <code>XOLA_STATE_n</code> to <code>KY</code> or <code>TN</code>.`);
   if(x.truncated) parts.push('One or more sellers returned more pages than could be read in time, so their figures are incomplete.');
   if(!parts.length) return '';
-  return `<div class="note" style="border-left:3px solid #c0392b">⚠️ ${parts.join(' ')} Re-run before filing.</div>`;
+  return `<div class="note" style="border-left:3px solid #c0392b">⚠️ ${parts.join(' ')}${closer}</div>`;
 }
 function renderStx(d){
   const mName=new Date(d.year,d.month-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
@@ -1632,7 +1637,6 @@ function rtlCmp(cur,prev,lyLabel){
     row('Net Sales',cur.netSales,prev.netSales,m)+
     row('Orders',cur.orderCount,prev.orderCount,n)+
     row('Avg Ticket',cur.avgTicket,prev.avgTicket,m)+
-    row('Sales Tax',cur.tax,prev.tax,m)+
     row('Tips',cur.tips,prev.tips,m)+
     row('Units',cur.units,prev.units,n)+
     `</tbody></table></div>`;
@@ -1690,7 +1694,7 @@ function renderXolaBlock(xr,pyXr,dayName,lyLabel){
     ? `<h4 style="margin-top:18px">Top experiences — all sellers</h4><div class="tablewrap"><table><thead><tr><th>Experience</th><th class="num">Guests</th><th class="num">Net Sales</th></tr></thead><tbody>`+
       xr.experiences.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${numf(e.guests,0)}</td><td class="num">${money(e.net)}</td></tr>`).join('')+`</tbody></table></div>`
     : `<div style="color:var(--muted);font-size:13px">No experiences redeemed in this period.</div>`;
-  return header+xolaWarning(xr)+tiles+(pyXr?xolaCmp(xr,pyXr,lyLabel):'')+xolaBySeller(xr,pyXr,lyLabel)+exp;
+  return header+xolaWarning(xr,'retail')+tiles+(pyXr?xolaCmp(xr,pyXr,lyLabel):'')+xolaBySeller(xr,pyXr,lyLabel)+exp;
 }
 // Per-seller breakout for the Retail Sales tab. Only rendered with more than one
 // seller configured — with a single seller it would just restate the KPI tiles.
@@ -1742,7 +1746,6 @@ function renderRetailOut(d){
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
     kpi('copper','Net Sales',money(cAll.netSales),`${cAll.orderCount} sale${cAll.orderCount===1?'':'s'} · ${c.locations} loc${c.locations===1?'':'s'}${xr?' + Xola':''}`),
     kpi('blue','Avg Ticket',money(cAll.avgTicket),'net sales per sale'),
-    kpi('ky','Sales Tax',money(cAll.tax),c.refundedTax?`${money(cAll.netTax)} net of refunds`:'collected at retail'),
     kpi('green','Tips',money(c.tips),c.tipPct?`${numf(c.tipPct,1)}% of net sales`:'none recorded'),
     kpi('barrel','Units Sold',numf(cAll.units,0),c.bottles!=null?`${numf(c.bottles,0)} bottles${xr?` + ${numf(xr.guests,0)} guests`:''}`:'line-item quantity'),
   ].join('')+`</div>`+(pyCombinedAll?rtlCmp(cAll,pyCombinedAll,lyLabel):'');
@@ -1773,7 +1776,6 @@ function renderRetailOut(d){
     return header+`<div class="kpis" style="margin:14px 0">`+[
       kpi('copper','Net Sales',money(t.netSales),`${t.orderCount} order${t.orderCount===1?'':'s'} · ${lc} location${lc===1?'':'s'}`),
       kpi('blue','Avg Ticket',money(t.avgTicket),'net sales per order'),
-      kpi('ky','Sales Tax',money(t.tax),t.refundedTax?`${money(t.netTax)} net of refunds`:'collected at retail'),
       kpi('green','Tips',money(t.tips),t.tipPct?`${numf(t.tipPct,1)}% of net sales`:'none recorded'),
       kpi('barrel','Units Sold',numf(t.units,0),t.bottles!=null?`${numf(t.bottles,0)} tagged bottles`:'line-item quantity'),
     ].join('')+`</div>`+(pa?rtlCmp(t,pa.totals,lyLabel):''); };
@@ -1794,7 +1796,7 @@ function renderRetailOut(d){
       // Quiet locations collapse to one line instead of a wall of zeros.
       if(!l.orderCount&&!l.refundCount) return head+`<div style="color:var(--muted);font-size:13px;margin-top:6px">No sales on this day.</div>`;
       const stats=[rtlStat('Net sales',money(l.netSales)),rtlStat('Orders',l.orderCount),rtlStat('Avg ticket',money(l.avgTicket)),
-        rtlStat('Tax',money(l.tax)),rtlStat('Tips',money(l.tips)+(l.tipPct?` <span style="color:var(--muted);font-weight:400;font-size:12px">${numf(l.tipPct,1)}%</span>`:'')),
+        rtlStat('Tips',money(l.tips)+(l.tipPct?` <span style="color:var(--muted);font-weight:400;font-size:12px">${numf(l.tipPct,1)}%</span>`:'')),
         rtlStat('Discounts',money(l.discounts)),rtlStat('Units',numf(l.units,0)),
         l.bottles!=null?rtlStat('Bottles',numf(l.bottles,0)):'',
         l.refundCount?rtlStat('Refunded',money(l.refunded)+` <span style="color:var(--muted);font-weight:400;font-size:12px">${l.refundCount}</span>`):''].join('');
@@ -1855,7 +1857,6 @@ function renderLocTxns(d){
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
     kpi('copper','Transactions',numf(t.orderCount,0),`${money(t.total)} collected`),
     kpi('blue','Net Sales',money(t.net),'before tax & tips'),
-    kpi('ky','Sales Tax',money(t.tax),'collected'),
     kpi('green','Tips',money(t.tips),t.refundCount?`${money(t.refunded)} refunded`:'none / included'),
   ].join('')+`</div>`;
   let body;
@@ -1881,8 +1882,9 @@ function rtlCsv(){
   if(!rtlLast)return; const d=rtlLast, ok=d.accounts.filter(a=>a.ok);
   const sD=(d.range&&d.range.from)||d.startDate||d.date, eD=(d.range&&d.range.to)||d.endDate||d.date;
   const L=[['Retail Sales — Summary',csv(rtlPeriodLabel(sD,eD))].join(',')];
-  const head=['Account','Location','Orders','Net Sales','Avg Ticket','Tax','Tips','Discounts','Units','Bottles','Refunded','Refunded Tax'];
-  const row=(an,name,x)=>[csv(an),csv(name),x.orderCount,x.netSales,x.avgTicket,x.tax,x.tips,x.discounts,x.units,x.bottles==null?'':x.bottles,x.refunded,x.refundedTax].join(',');
+  // No tax columns: the daily report does not show tax. The KY tab owns that.
+  const head=['Account','Location','Orders','Net Sales','Avg Ticket','Tips','Discounts','Units','Bottles','Refunded'];
+  const row=(an,name,x)=>[csv(an),csv(name),x.orderCount,x.netSales,x.avgTicket,x.tips,x.discounts,x.units,x.bottles==null?'':x.bottles,x.refunded].join(',');
   L.push(''); L.push(head.join(','));
   ok.forEach(a=>{ const an=rtlAcctName(a);
     a.locations.forEach(l=>L.push(row(an,l.name,l)));

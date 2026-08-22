@@ -23,7 +23,10 @@ const MAX_PAGES = 60;     // page cap — the old code allowed 300, which could 
 // whole response is bounded by ONE seller's budget. The per-request timeout is
 // clamped to whatever is left of that budget, which makes the worst case the
 // budget itself rather than budget + one full page timeout.
-const PAGE_TIMEOUT_MS = 5000;
+// Lowered from 5000 so a retry fits inside the same budget. A healthy seller
+// answers in about a second, so 4s is already generous; the extra headroom buys
+// a second attempt, which is what the observed failures actually needed.
+const PAGE_TIMEOUT_MS = 4000;
 const TOTAL_BUDGET_MS = 8000;
 // The readability probe only ever runs after a window came back EMPTY, which
 // means that pull finished in one fast page. Kept short so the extra question
@@ -91,8 +94,42 @@ export async function xFor(acct, path, { method = "GET", query, timeoutMs = PAGE
   }
   const text = await r.text();
   let body = null; try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
-  if (!r.ok) throw new XolaError("xola_error", r.status, (body && (body.message || body.error)) || text);
+  if (!r.ok) {
+    // 429 and 5xx are worth trying again; a 401 or a 400 never is.
+    const code = r.status === 429 ? "rate_limited" : (r.status >= 500 ? "server_error" : "xola_error");
+    throw new XolaError(code, r.status, (body && (body.message || body.error)) || text);
+  }
   return body;
+}
+
+// Transient failures worth a second attempt. A bad key or a malformed query is
+// not transient and must fail immediately rather than burning the time budget.
+const RETRYABLE = new Set(["timeout", "network_error", "rate_limited", "server_error"]);
+
+// One page, retried on transient failures for as long as the budget allows.
+//
+// Measured warm, a seller answers in 0.5-1.1s. The failures seen in production
+// were bursts, not slowness: the Retail tab fires this period AND the prior year
+// at once, so three sellers become six concurrent queries and Xola starts
+// throttling — the busiest seller loses. A single retry clears that; a longer
+// timeout would not, because the problem was never one slow response.
+async function pageWithRetry(acct, path, query, deadline) {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const left = deadline - Date.now();
+    if (left <= 250) break;
+    try {
+      return await xFor(acct, path, { query, timeoutMs: Math.min(PAGE_TIMEOUT_MS, left) });
+    } catch (e) {
+      lastErr = e;
+      if (!RETRYABLE.has(e && e.code)) throw e;
+      // Short backoff, and only if there is still budget to make the retry count.
+      const wait = 200 * (attempt + 1);
+      if (deadline - Date.now() <= wait + 500) break;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr || new XolaError("timeout", 504, "No budget left for this page.");
 }
 
 // The seller's display name, for labeling a report column. Never throws — a
@@ -127,7 +164,7 @@ export async function fetchTransactions(acct, {
     if (report) query.context = "report";
     if (cursor) query.cursor = cursor;
 
-    const body = await xFor(acct, "/api/transactions", { query, timeoutMs: Math.min(PAGE_TIMEOUT_MS, left) });
+    const body = await pageWithRetry(acct, "/api/transactions", query, deadline);
     const batch = Array.isArray(body) ? body : (body && body.data) || [];
     for (const t of batch) rows.push(t);
     pages++;

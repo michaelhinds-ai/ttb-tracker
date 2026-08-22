@@ -163,6 +163,51 @@ properly. The Square blocks keep their tax tiles; those are one jurisdiction.
 and never fanned across both Square accounts, so the Square half of the KY return
 was never polluted.
 
+### Landed 2026-08-22 — Nashville HQ's intermittent timeout
+
+HQ kept failing with `No response in 5000ms` while the other two sellers returned
+fine. It looked like a slow seller. It wasn't.
+
+Measured warm, from the browser, four consecutive runs: **1059ms, 1019ms, 569ms,
+525ms — all three sellers OK every time.** HQ is not slow.
+
+What it actually is: the Retail tab requests *this period* and *the prior year*
+concurrently. Three sellers each become two queries, so six hit Xola at once, and
+Xola throttles — the account with the most history loses. Xola's own seller app
+throws 429s under load too, which is the same story from the other side.
+
+A longer timeout would not have fixed this, because no single response was slow.
+
+- **`pageWithRetry` in `lib/xola.mjs`** — up to 3 attempts with 200/400ms backoff,
+  each clamped to the remaining budget.
+- **`xFor` now classifies failures**: 429 → `rate_limited`, 5xx → `server_error`,
+  everything else → `xola_error`. Only timeouts, network errors, 429 and 5xx are
+  retried; a 401 or 400 fails on the first attempt rather than burning the budget
+  three times over on something that will never succeed.
+- **`PAGE_TIMEOUT_MS` lowered 5000 → 4000** so a retry fits in the same 8s budget.
+  A healthy seller answers in about a second, so this costs nothing.
+
+Verified with 7 assertions: 429-then-429-then-200 recovering, timeout and 5xx
+recovering, 401 and 400 failing immediately with exactly one attempt, and
+persistent throttling giving up inside the attempt cap instead of looping.
+
+**The lesson: measure before tuning.** The obvious read was "raise the timeout,"
+which would have burned budget and fixed nothing.
+
+### Landed 2026-08-22 — no tax anywhere on the daily report
+
+Mike's call, and correct: the daily Retail Sales view now shows no tax at all,
+Square or Xola. Removed the Xola KPI tile, the Square KPI tiles (combined,
+per-account, and the transactions drill-down), the per-location `Tax` stat, both
+vs-last-year tax rows, and the `Tax` / `Refunded Tax` columns from the retail CSV.
+
+`xolaWarning(x, mode)` is now context-aware. On the KY tab it still says *"their
+sales tax is not in the total below … re-run before filing."* On the daily report
+that sentence was nonsense once tax was gone, so it reads *"their bookings and
+revenue are not in the totals below … re-run for a complete day."*
+
+Tax lives on the KY tab only, which scopes itself to Kentucky sellers.
+
 ### The three Xola sellers
 
 | Slot | Seller | ID |
