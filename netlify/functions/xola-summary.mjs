@@ -2,92 +2,157 @@
 // experience was REDEEMED (items.realizedAt) — not the day it was booked.
 // So a tour paid last week but run today shows as today's revenue.
 //
+// Every configured Xola seller is pulled independently and gets its own figures;
+// those roll up into one combined total. A seller that errors or times out comes
+// back as an error row and the rest of the report still renders.
+//
 // POST { startDate, endDate, endCapISO? }   (YYYY-MM-DD day or range)
 // GET  ?probe=1                              (a couple realized items, money only)
 //
-// Env: XOLA_API_KEY (required), XOLA_SELLER_ID (default LRWC), XOLA_API_BASE.
+// Response:
+//   { configured, startDate, endDate, tz, startISO, endISO,
+//     accounts: [ { key, label, seller, ok, orderCount, guests, netSales, tax,
+//                   collected, grossSales, avgTicket, experiences[], truncated } ],
+//     ...combined totals at the top level (back-compatible with the old shape) }
 import { env as sqEnv, dayRange, todayInTz, json } from "./lib/square.mjs";
+import { accounts, eachAccount, fetchTransactions, sellerName, num, r2 } from "./lib/xola.mjs";
 
-const BASE = () => (Netlify.env.get("XOLA_API_BASE") || "https://xola.com").replace(/\/+$/, "");
-const SELLER = () => Netlify.env.get("XOLA_SELLER_ID") || "69c2f539f783c835670bcee4";
+const TOP_N_ACCOUNT = 10;
+const TOP_N_ROLLUP = 15;
 
 export default async (req) => {
   const url = new URL(req.url);
-  const key = Netlify.env.get("XOLA_API_KEY") || "";
-  if (!key) return json({ configured: false, error: "not_configured" }, 200);
+  const accts = accounts();
+  if (!accts.length) return json({ configured: false, error: "not_configured" }, 200);
+
   const tz = sqEnv().tz;
   let p;
   if (req.method === "GET") p = { probe: url.searchParams.get("probe") != null };
   else if (req.method === "POST") { try { p = await req.json(); } catch { p = {}; } }
   else return json({ error: "method_not_allowed" }, 405);
 
-  try {
-    const ymd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
-    const from = ymd(p.startDate) ? p.startDate : (ymd(p.date) ? p.date : todayInTz(tz));
-    const to = ymd(p.endDate) ? p.endDate : from;
-    let startISO = dayRange(from, tz).startISO, endISO = dayRange(to, tz).endISO;
+  const ymd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  const from = ymd(p.startDate) ? p.startDate : (ymd(p.date) ? p.date : todayInTz(tz));
+  const to = ymd(p.endDate) ? p.endDate : from;
+
+  // One seller may sit in a different timezone, so the window is computed per account.
+  const windowFor = (a) => {
+    const startISO = dayRange(from, a.tz).startISO;
+    let endISO = dayRange(to, a.tz).endISO;
     if (typeof p.endCapISO === "string" && p.endCapISO && p.endCapISO > startISO && p.endCapISO < endISO) endISO = p.endCapISO;
+    return { startISO, endISO };
+  };
 
-    // Purchases with an item REALIZED in the window (context=report expands purchase items for quantity/guests).
-    const txns = await fetchTransactions(key, { type: "purchase", dateField: "items_realizedAt", startISO, endISO, report: true, limit: p.probe ? 5 : 100 });
+  const rows = await eachAccount(accts, async (a) => {
+    const { startISO, endISO } = windowFor(a);
+    const [pull, name] = await Promise.all([
+      fetchTransactions(a, {
+        type: "purchase", dateField: "items_realizedAt", startISO, endISO,
+        report: true, probe: !!p.probe,
+      }),
+      a.label ? Promise.resolve(null) : sellerName(a),
+    ]);
+    return { ...tally(pull.rows, startISO, endISO, !!p.probe), truncated: pull.truncated, name, startISO, endISO };
+  });
 
-    let orderCount = 0, guests = 0, net = 0, tax = 0, collected = 0;
-    const exp = {}; const sample = [];
-    for (const t of txns) {
-      const pMap = {}; for (const pi of ((t.purchase && t.purchase.items) || [])) pMap[pi.id] = pi;
-      let counted = false;
-      for (const it of (t.items || [])) {
-        const rz = it.realizedAt; if (!rz || !(rz >= startISO && rz < endISO)) continue;
-        const g = num(it.gross), tf = num(it.taxFee); const pretax = g - tf;
-        const q = num((pMap[it.orderItem && it.orderItem.id] || {}).quantity) || 0;
-        net += pretax; tax += tf; collected += g; guests += q; counted = true;
-        const nm = (pMap[it.orderItem && it.orderItem.id] || {}).name || it.name || "Experience";
-        const e = exp[nm] || (exp[nm] = { name: nm, guests: 0, net: 0 });
-        e.guests += q; e.net += pretax;
-        if (p.probe && sample.length < 6) sample.push({ name: nm, realizedAt: rz, gross: g, taxFee: tf, pretax: r2(pretax), quantity: q });
-      }
-      if (counted) orderCount++;
-    }
-    if (p.probe) return json({ configured: true, probe: true, seller: SELLER(), realizedItems: sample.length, sample });
+  // Label precedence: explicit XOLA_LABEL_n, then the seller's own Xola name, then the id.
+  const accountsOut = rows.map((r) => ({ ...r, label: r.label || r.name || r.seller }));
 
-    const experiences = Object.values(exp).map((e) => ({ name: e.name, guests: r2(e.guests), net: r2(e.net) }))
-      .sort((a, b) => b.net - a.net).slice(0, 10);
+  if (p.probe) {
     return json({
-      configured: true, startDate: from, endDate: to, tz, startISO, endISO,
-      orderCount, guests: r2(guests), netSales: r2(net), tax: r2(tax), collected: r2(collected), grossSales: r2(net),
-      avgTicket: orderCount ? r2(net / orderCount) : 0, experiences,
+      configured: true, probe: true,
+      accounts: accountsOut.map((a) => ({
+        key: a.key, label: a.label, seller: a.seller, ok: a.ok,
+        error: a.error || undefined, detail: a.detail || undefined,
+        realizedItems: (a.sample || []).length, sample: a.sample || [],
+      })),
     });
-  } catch (e) {
-    return json({ error: "xola_error", status: (e && e.status) || null, detail: safe(e && (e.detail || e.message)) || "unknown error" }, 502);
   }
+
+  const live = accountsOut.filter((a) => a.ok);
+  const combined = rollup(live);
+  const failed = accountsOut.filter((a) => !a.ok)
+    .map((a) => ({ key: a.key, label: a.label, error: a.error, detail: a.detail }));
+
+  return json({
+    configured: true,
+    startDate: from, endDate: to, tz,
+    // Window of the first account, for display. Per-account windows are on each row.
+    startISO: (accountsOut[0] && accountsOut[0].startISO) || null,
+    endISO: (accountsOut[0] && accountsOut[0].endISO) || null,
+    accountCount: accountsOut.length,
+    accounts: accountsOut.map((a) => ({
+      key: a.key, label: a.label, seller: a.seller, tz: a.tz, ok: a.ok,
+      error: a.error || undefined, status: a.status || undefined, detail: a.detail || undefined,
+      truncated: a.truncated || false,
+      orderCount: a.orderCount || 0, guests: a.guests || 0,
+      netSales: a.netSales || 0, tax: a.tax || 0, collected: a.collected || 0,
+      grossSales: a.grossSales || 0, avgTicket: a.avgTicket || 0,
+      experiences: a.experiences || [],
+    })),
+    failed: failed.length ? failed : undefined,
+    partial: failed.length > 0,
+    truncated: live.some((a) => a.truncated),
+    // ---- combined totals, same field names the single-seller version returned ----
+    ...combined,
+  });
 };
 
-async function fetchTransactions(key, { type, startISO, endISO, dateField = "createdAt", report, limit = 100 } = {}) {
-  const out = []; let cursor = null;
-  for (let page = 0; page < 300; page++) {
-    const qs = new URLSearchParams();
-    qs.set("seller", SELLER());
-    if (type) qs.set("type", type);
-    if (startISO) qs.set(`${dateField}[gte]`, startISO);
-    if (endISO) qs.set(`${dateField}[lte]`, endISO);
-    if (report) qs.set("context", "report");
-    qs.set("limit", String(limit));
-    if (cursor) qs.set("cursor", cursor);
-    const r = await fetch(`${BASE()}/api/transactions?${qs.toString()}`, { headers: { "X-API-KEY": key, "Accept": "application/json" } });
-    const text = await r.text();
-    let body = null; try { body = text ? JSON.parse(text) : null; } catch { /* keep */ }
-    if (!r.ok) { const err = new Error("xola_http_" + r.status); err.status = r.status; err.detail = (body && (body.message || body.error)) || text; throw err; }
-    const batch = Array.isArray(body) ? body : (body && body.data) || [];
-    for (const t of batch) out.push(t);
-    const next = body && body.paging && body.paging.next;
-    cursor = next ? (/[?&]cursor=([^&]+)/.exec(next) || [])[1] : null;
-    if (cursor) cursor = decodeURIComponent(cursor);
-    if (!cursor || batch.length === 0 || limit === 5) break;
+// Sum one seller's transactions over its window.
+function tally(txns, startISO, endISO, probe) {
+  let orderCount = 0, guests = 0, net = 0, tax = 0, collected = 0;
+  const exp = {}; const sample = [];
+  for (const t of txns) {
+    const pMap = {}; for (const pi of ((t.purchase && t.purchase.items) || [])) pMap[pi.id] = pi;
+    let counted = false;
+    for (const it of (t.items || [])) {
+      const rz = it.realizedAt; if (!rz || !(rz >= startISO && rz < endISO)) continue;
+      const gr = num(it.gross), tf = num(it.taxFee); const pretax = gr - tf;
+      const q = num((pMap[it.orderItem && it.orderItem.id] || {}).quantity) || 0;
+      net += pretax; tax += tf; collected += gr; guests += q; counted = true;
+      const nm = (pMap[it.orderItem && it.orderItem.id] || {}).name || it.name || "Experience";
+      const e = exp[nm] || (exp[nm] = { name: nm, guests: 0, net: 0 });
+      e.guests += q; e.net += pretax;
+      if (probe && sample.length < 6) sample.push({ name: nm, realizedAt: rz, gross: gr, taxFee: tf, pretax: r2(pretax), quantity: q });
+    }
+    if (counted) orderCount++;
   }
-  return out;
+  return {
+    orderCount, guests: r2(guests), netSales: r2(net), tax: r2(tax), collected: r2(collected),
+    grossSales: r2(net), avgTicket: orderCount ? r2(net / orderCount) : 0,
+    experiences: topExperiences(exp, TOP_N_ACCOUNT),
+    sample: probe ? sample : undefined,
+  };
 }
 
-function num(v) { const n = +v; return isFinite(n) ? n : 0; }
-function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
-function safe(d) { try { return typeof d === "string" ? d.slice(0, 400) : JSON.stringify(d).slice(0, 400); } catch { return ""; } }
+// Combine the live sellers into one set of totals, merging the experience lists
+// by name so the same tour sold by two sellers shows as one line.
+function rollup(rows) {
+  let orderCount = 0, guests = 0, net = 0, tax = 0, collected = 0;
+  const exp = {};
+  for (const r of rows) {
+    orderCount += r.orderCount || 0;
+    guests += r.guests || 0;
+    net += r.netSales || 0;
+    tax += r.tax || 0;
+    collected += r.collected || 0;
+    for (const e of (r.experiences || [])) {
+      const c = exp[e.name] || (exp[e.name] = { name: e.name, guests: 0, net: 0 });
+      c.guests += e.guests || 0; c.net += e.net || 0;
+    }
+  }
+  return {
+    orderCount, guests: r2(guests), netSales: r2(net), tax: r2(tax), collected: r2(collected),
+    grossSales: r2(net), avgTicket: orderCount ? r2(net / orderCount) : 0,
+    experiences: topExperiences(exp, TOP_N_ROLLUP),
+  };
+}
+
+function topExperiences(map, limit) {
+  return Object.values(map)
+    .map((e) => ({ name: e.name, guests: r2(e.guests), net: r2(e.net) }))
+    .sort((a, b) => b.net - a.net)
+    .slice(0, limit);
+}
+
 export const config = { path: "/api/xola/summary" };

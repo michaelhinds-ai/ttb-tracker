@@ -2,63 +2,108 @@
 // Sums the "Kentucky Sales Tax" collected on Xola experience/merch sales for a month,
 // net of refunds, so it can be added to the Square figure on the KY tab.
 //
+// Every configured Xola seller is summed independently and then combined, so the
+// remit total covers all of them. One seller failing leaves the others intact and
+// flags the response as partial — important, because a silently-missing seller
+// would understate what you owe.
+//
 // Confirmed from live data: each PURCHASE transaction has items[] with a numeric `taxFee`
 // (and a fees[] entry named "Kentucky Sales Tax"); amounts are in DOLLARS.
 //
-// POST { year, month }   -> monthly tax total (net of refunds)
-// POST { probe:true } or GET ?probe=1  -> a couple transactions' MONEY fields only (no PII)
+// POST { year, month, basis? }             -> monthly tax total (net of refunds)
+// POST { probe:true } or GET ?probe=1      -> a couple transactions' MONEY fields only (no PII)
 //
-// Env (Netlify): XOLA_API_KEY (required), XOLA_SELLER_ID (default = the LRWC seller),
-//                XOLA_API_BASE (default https://xola.com).
+// Env: see lib/xola.mjs for the full list (XOLA_API_KEY, XOLA_SELLER_ID_1..N, ...).
 import { env as sqEnv, monthRange, json } from "./lib/square.mjs";
-
-const BASE = () => (Netlify.env.get("XOLA_API_BASE") || "https://xola.com").replace(/\/+$/, "");
-const SELLER = () => Netlify.env.get("XOLA_SELLER_ID") || "69c2f539f783c835670bcee4";
+import { accounts, eachAccount, fetchTransactions, sellerName, r2 } from "./lib/xola.mjs";
 
 export default async (req) => {
   const url = new URL(req.url);
-  const key = Netlify.env.get("XOLA_API_KEY") || "";
-  if (!key) return json({ configured: false, error: "not_configured", detail: "Set XOLA_API_KEY in Netlify." }, 200);
-  const tz = sqEnv().tz; // same month boundaries as the Square KY report so the combined total lines up
+  const accts = accounts();
+  if (!accts.length) {
+    return json({ configured: false, error: "not_configured", detail: "Set XOLA_API_KEY and XOLA_SELLER_ID_1 in Netlify." }, 200);
+  }
+  // Same month boundaries as the Square KY report so the combined total lines up.
+  const tz = sqEnv().tz;
 
   let p;
   if (req.method === "GET") p = { probe: url.searchParams.get("probe") != null };
   else if (req.method === "POST") { try { p = await req.json(); } catch { p = {}; } }
   else return json({ error: "method_not_allowed" }, 405);
 
-  try {
-    if (p.probe) {
-      const txns = await fetchTransactions(key, { type: "purchase", limit: 5 });
-      return json({ configured: true, probe: true, seller: SELLER(), count: txns.length, sample: txns.slice(0, 5).map(moneyOnly) });
-    }
+  if (p.probe) {
+    const probes = await eachAccount(accts, async (a) => {
+      const pull = await fetchTransactions(a, { type: "purchase", probe: true });
+      return { count: pull.rows.length, sample: pull.rows.slice(0, 5).map(moneyOnly) };
+    });
+    return json({ configured: true, probe: true, accounts: probes });
+  }
 
-    const year = +p.year, month = +p.month;
-    if (!(year > 2000) || !(month >= 1 && month <= 12)) return json({ error: "bad_month" }, 400);
-    const { startISO, endISO } = monthRange(year, month, tz);
-    // "collected" (default): count tax by when the booking was PAID (createdAt), net refunds.
-    // "realized": count tax by when the EXPERIENCE happened (items.realizedAt); cancellations never count.
-    const basis = p.basis === "realized" ? "realized" : "collected";
-    const dateField = basis === "realized" ? "items_realizedAt" : "createdAt";
+  const year = +p.year, month = +p.month;
+  if (!(year > 2000) || !(month >= 1 && month <= 12)) return json({ error: "bad_month" }, 400);
+  const { startISO, endISO } = monthRange(year, month, tz);
 
-    const purchases = await fetchTransactions(key, { type: "purchase", startISO, endISO, dateField });
-    const refunds = await fetchTransactions(key, { type: "refund", startISO, endISO, dateField });
+  // "collected" (default): count tax by when the booking was PAID (createdAt), net refunds.
+  // "realized": count tax by when the EXPERIENCE happened (items.realizedAt); cancellations never count.
+  const basis = p.basis === "realized" ? "realized" : "collected";
+  const dateField = basis === "realized" ? "items_realizedAt" : "createdAt";
+
+  const rows = await eachAccount(accts, async (a) => {
+    const [purchases, refunds, name] = await Promise.all([
+      fetchTransactions(a, { type: "purchase", startISO, endISO, dateField }),
+      fetchTransactions(a, { type: "refund", startISO, endISO, dateField }),
+      a.label ? Promise.resolve(null) : sellerName(a),
+    ]);
 
     let taxCollected = 0, grossSales = 0;
-    for (const t of purchases) { taxCollected += txnTax(t); grossSales += txnGross(t); }
+    for (const t of purchases.rows) { taxCollected += txnTax(t); grossSales += txnGross(t); }
     let taxRefunded = 0;
-    for (const t of refunds) taxRefunded += Math.abs(txnTax(t));
+    for (const t of refunds.rows) taxRefunded += Math.abs(txnTax(t));
 
-    return json({
-      configured: true, year, month, tz, startISO, endISO, seller: SELLER(), basis,
-      purchaseCount: purchases.length, refundCount: refunds.length,
-      taxCollected: round2(taxCollected),
-      taxRefunded: round2(taxRefunded),
-      taxNet: round2(taxCollected - taxRefunded),
-      grossSales: round2(grossSales),
-    });
-  } catch (e) {
-    return json({ error: "xola_error", status: (e && e.status) || null, detail: safe(e && (e.detail || e.message)) || "unknown error" }, 502);
-  }
+    return {
+      name,
+      truncated: purchases.truncated || refunds.truncated,
+      purchaseCount: purchases.rows.length,
+      refundCount: refunds.rows.length,
+      taxCollected: r2(taxCollected),
+      taxRefunded: r2(taxRefunded),
+      taxNet: r2(taxCollected - taxRefunded),
+      grossSales: r2(grossSales),
+    };
+  });
+
+  const accountsOut = rows.map((r) => ({
+    key: r.key, label: r.label || r.name || r.seller, seller: r.seller, ok: r.ok,
+    error: r.error || undefined, status: r.status || undefined, detail: r.detail || undefined,
+    truncated: r.truncated || false,
+    purchaseCount: r.purchaseCount || 0, refundCount: r.refundCount || 0,
+    taxCollected: r.taxCollected || 0, taxRefunded: r.taxRefunded || 0,
+    taxNet: r.taxNet || 0, grossSales: r.grossSales || 0,
+  }));
+
+  const live = accountsOut.filter((a) => a.ok);
+  const sum = (f) => r2(live.reduce((n, a) => n + (a[f] || 0), 0));
+  const failed = accountsOut.filter((a) => !a.ok)
+    .map((a) => ({ key: a.key, label: a.label, error: a.error, detail: a.detail }));
+
+  return json({
+    configured: true, year, month, tz, startISO, endISO, basis,
+    accountCount: accountsOut.length,
+    accounts: accountsOut,
+    failed: failed.length ? failed : undefined,
+    // A partial or truncated pull understates tax owed — the UI must say so out loud.
+    partial: failed.length > 0,
+    truncated: live.some((a) => a.truncated),
+    // Legacy single-seller field, kept so nothing that reads it breaks.
+    seller: (accountsOut[0] && accountsOut[0].seller) || null,
+    // ---- combined totals across every live seller ----
+    purchaseCount: live.reduce((n, a) => n + (a.purchaseCount || 0), 0),
+    refundCount: live.reduce((n, a) => n + (a.refundCount || 0), 0),
+    taxCollected: sum("taxCollected"),
+    taxRefunded: sum("taxRefunded"),
+    taxNet: sum("taxNet"),
+    grossSales: sum("grossSales"),
+  });
 };
 
 // Tax on one transaction = sum of item.taxFee (fallback to fees[] entries named like a tax).
@@ -72,32 +117,6 @@ function txnTax(t) {
 }
 function txnGross(t) { let s = 0; for (const it of (t.items || [])) if (isNum(it.gross)) s += it.gross; return s; }
 
-async function fetchTransactions(key, { type, startISO, endISO, limit = 100, dateField = "createdAt" } = {}) {
-  const out = []; let cursor = null;
-  for (let page = 0; page < 300; page++) {
-    const qs = new URLSearchParams();
-    qs.set("seller", SELLER());
-    if (type) qs.set("type", type);
-    if (startISO) qs.set(`${dateField}[gte]`, startISO);
-    if (endISO) qs.set(`${dateField}[lte]`, endISO);
-    qs.set("limit", String(limit));
-    if (cursor) qs.set("cursor", cursor);
-    const r = await fetch(`${BASE()}/api/transactions?${qs.toString()}`, { headers: { "X-API-KEY": key, "Accept": "application/json" } });
-    const text = await r.text();
-    let body = null; try { body = text ? JSON.parse(text) : null; } catch { /* keep */ }
-    if (!r.ok) { const err = new Error("xola_http_" + r.status); err.status = r.status; err.detail = (body && (body.message || body.error)) || text; throw err; }
-    const batch = Array.isArray(body) ? body : (body && body.data) || [];
-    for (const t of batch) out.push(t);
-    const next = body && body.paging && body.paging.next;
-    cursor = next ? extractCursor(next) : null;
-    if (!cursor || batch.length === 0) break;
-    if (limit === 5) break; // probe
-  }
-  return out;
-}
-
-function extractCursor(next) { const m = /[?&]cursor=([^&]+)/.exec(next || ""); return m ? decodeURIComponent(m[1]) : null; }
-
 // Strip everything but money fields for the probe (no customer PII).
 function moneyOnly(t) {
   return {
@@ -107,6 +126,4 @@ function moneyOnly(t) {
 }
 
 function isNum(v) { return typeof v === "number" && isFinite(v); }
-function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
-function safe(d) { try { return typeof d === "string" ? d.slice(0, 400) : JSON.stringify(d).slice(0, 400); } catch { return ""; } }
 export const config = { path: "/api/xola/salestax" };
