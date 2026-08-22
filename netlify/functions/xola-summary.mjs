@@ -15,7 +15,7 @@
 //                   collected, grossSales, avgTicket, experiences[], truncated } ],
 //     ...combined totals at the top level (back-compatible with the old shape) }
 import { env as sqEnv, dayRange, todayInTz, json } from "./lib/square.mjs";
-import { accounts, eachAccount, fetchTransactions, sellerName, num, r2 } from "./lib/xola.mjs";
+import { accounts, eachAccount, fetchTransactions, hasAnyTransactions, sellerName, num, r2 } from "./lib/xola.mjs";
 
 const TOP_N_ACCOUNT = 10;
 const TOP_N_ROLLUP = 15;
@@ -52,7 +52,12 @@ export default async (req) => {
       }),
       a.label ? Promise.resolve(null) : sellerName(a),
     ]);
-    return { ...tally(pull.rows, startISO, endISO, !!p.probe), truncated: pull.truncated, name, startISO, endISO };
+    const t = tally(pull.rows, startISO, endISO, !!p.probe);
+    // An empty window is ambiguous — quiet day, or a key blind to this seller.
+    // Only worth the extra question when nothing came back, and only a definite
+    // `false` counts: an errored probe leaves this unflagged rather than crying wolf.
+    const unreadable = pull.rows.length === 0 && (await hasAnyTransactions(a)) === false;
+    return { ...t, truncated: pull.truncated, unreadable, name, startISO, endISO };
   });
 
   // Label precedence: explicit XOLA_LABEL_n, then the seller's own Xola name, then the id.
@@ -73,6 +78,8 @@ export default async (req) => {
   const combined = rollup(live);
   const failed = accountsOut.filter((a) => !a.ok)
     .map((a) => ({ key: a.key, label: a.label, error: a.error, detail: a.detail }));
+  const unreadable = live.filter((a) => a.unreadable)
+    .map((a) => ({ key: a.key, label: a.label, seller: a.seller }));
 
   return json({
     configured: true,
@@ -85,13 +92,18 @@ export default async (req) => {
       key: a.key, label: a.label, seller: a.seller, tz: a.tz, ok: a.ok,
       error: a.error || undefined, status: a.status || undefined, detail: a.detail || undefined,
       truncated: a.truncated || false,
+      unreadable: a.unreadable || false,
       orderCount: a.orderCount || 0, guests: a.guests || 0,
       netSales: a.netSales || 0, tax: a.tax || 0, collected: a.collected || 0,
       grossSales: a.grossSales || 0, avgTicket: a.avgTicket || 0,
       experiences: a.experiences || [],
     })),
     failed: failed.length ? failed : undefined,
-    partial: failed.length > 0,
+    // A seller whose transactions this key cannot see contributes a clean, quiet
+    // zero to every total below. That reads as a slow day and understates the
+    // business, so it is surfaced next to the outright failures, not buried.
+    unreadable: unreadable.length ? unreadable : undefined,
+    partial: failed.length > 0 || unreadable.length > 0,
     truncated: live.some((a) => a.truncated),
     // ---- combined totals, same field names the single-seller version returned ----
     ...combined,

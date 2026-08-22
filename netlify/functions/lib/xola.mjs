@@ -25,6 +25,10 @@ const MAX_PAGES = 60;     // page cap — the old code allowed 300, which could 
 // budget itself rather than budget + one full page timeout.
 const PAGE_TIMEOUT_MS = 5000;
 const TOTAL_BUDGET_MS = 8000;
+// The readability probe only ever runs after a window came back EMPTY, which
+// means that pull finished in one fast page. Kept short so the extra question
+// still fits inside Netlify's 10s ceiling.
+const PROBE_TIMEOUT_MS = 2500;
 
 const g = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : process.env[k]) || "";
 
@@ -53,8 +57,18 @@ export function accounts() {
       seller,
       apiKey,
       tz: g(`XOLA_TZ_${i}`) || baseTz,
+      // Which state's return this seller's sales tax belongs on. Louisville is KY;
+      // the Nashville sellers are TN and must never reach a Kentucky filing.
+      state: (g(`XOLA_STATE_${i}`) || "").trim().toUpperCase(),
     });
   }
+  // Legacy default: before per-seller states existed there was only ever one Xola
+  // seller — Louisville — so the KY return was right by construction. Preserve
+  // that ONLY while nobody has classified anything. The moment any XOLA_STATE_n
+  // is set the classification is taken at face value, and an unclassified seller
+  // is reported rather than assumed, because guessing its state is how tax ends
+  // up on the wrong return.
+  if (out.length && !out.some((a) => a.state)) out[0].state = "KY";
   return out;
 }
 
@@ -130,6 +144,35 @@ export async function fetchTransactions(acct, {
 export function extractCursor(next) {
   const m = /[?&]cursor=([^&]+)/.exec(next || "");
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// Does this key see ANY transaction for this seller, ever?
+//
+// A seller returning nothing for a reporting window is ambiguous: it is either a
+// genuinely quiet day, or a key that cannot read that seller's transactions at
+// all. Xola answers 200 with an empty list in BOTH cases — no 401, no 403 — so
+// an empty window on its own proves nothing. Reading the seller's profile does
+// not settle it either: profile access and transaction access are separate
+// grants, which is how three sellers can all report "connected" while two of
+// them silently contribute zero revenue.
+//
+// The one question that separates them is this: ask for a single transaction
+// with no date filter. Any seller with a trading history has one. None means the
+// key is almost certainly blind to this seller.
+//
+// Returns true (readable), false (no transactions visible at all), or null
+// (could not tell — a timeout or error must never be reported as unreadable).
+export async function hasAnyTransactions(acct, timeoutMs = PROBE_TIMEOUT_MS) {
+  try {
+    const body = await xFor(acct, "/api/transactions", {
+      query: { seller: acct.seller, limit: "1" },
+      timeoutMs,
+    });
+    const batch = Array.isArray(body) ? body : (body && body.data) || [];
+    return batch.length > 0;
+  } catch {
+    return null;
+  }
 }
 
 // Run every account concurrently, catching per-account so one bad seller

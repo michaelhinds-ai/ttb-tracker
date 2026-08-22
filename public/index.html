@@ -1488,8 +1488,16 @@ function xolaSources(x){
 function xolaWarning(x){
   if(!x) return '';
   const bad=(x.failed||[]).map(f=>esc(f.label||f.key));
+  const blind=(x.unreadable||[]).map(f=>esc(f.label||f.key));
   const parts=[];
   if(bad.length) parts.push(`${bad.length} Xola seller${bad.length===1?'':'s'} could not be reached (${bad.join(', ')}). Their sales tax is <b>not</b> in the total below.`);
+  // The dangerous case: the pull SUCCEEDED and returned nothing. No error, no
+  // retry prompt, just a clean zero that reads as a slow month.
+  if(blind.length) parts.push(`${blind.length} Xola seller${blind.length===1?'':'s'} returned <b>no transactions at any date</b> (${blind.join(', ')}) — almost always an API key that cannot read that seller. They are counted as <b>zero</b> here, so the total is too LOW. Set <code>XOLA_API_KEY_n</code> for them and re-run.`);
+  // A seller with no state set sits on no return at all. Neither including nor
+  // excluding it silently is safe, so it gets named.
+  const unset=(x.unclassified||[]).map(f=>esc(f.label||f.key));
+  if(unset.length) parts.push(`${unset.length} Xola seller${unset.length===1?'':'s'} (${unset.join(', ')}) ${unset.length===1?'has':'have'} no state assigned, so ${unset.length===1?'its':'their'} sales tax is on <b>no</b> return. Set <code>XOLA_STATE_n</code> to <code>KY</code> or <code>TN</code>.`);
   if(x.truncated) parts.push('One or more sellers returned more pages than could be read in time, so their figures are incomplete.');
   if(!parts.length) return '';
   return `<div class="note" style="border-left:3px solid #c0392b">⚠️ ${parts.join(' ')} Re-run before filing.</div>`;
@@ -1525,7 +1533,7 @@ function renderStx(d){
       <tr class="total"><td>Net sales tax to remit</td><td class="num">${money(sqNet)}</td></tr>
     </tbody></table>`;
   $('#stxOut').innerHTML=reportHeader('Kentucky Retail Sales &amp; Use Tax — Collected',sub,mName)+`
-    <div class="note ky">Square: ${d.orderCount} order${d.orderCount===1?'':'s'}${d.refundCount?`, ${d.refundCount} refund(s)`:''}, all locations.${x?` Xola: ${x.purchaseCount} booking${x.purchaseCount===1?'':'s'}${x.refundCount?`, ${x.refundCount} refund(s)`:''} across ${xSrc.length} seller${xSrc.length===1?'':'s'} (tax counted when booked, net of refunds).`:''} Refunds are netted out so this ties to what you remit.</div>
+    <div class="note ky">Square: ${d.orderCount} order${d.orderCount===1?'':'s'}${d.refundCount?`, ${d.refundCount} refund(s)`:''}, all locations.${x?` Xola: ${x.purchaseCount} booking${x.purchaseCount===1?'':'s'}${x.refundCount?`, ${x.refundCount} refund(s)`:''} across ${xSrc.length} Kentucky seller${xSrc.length===1?'':'s'} (tax counted when booked, net of refunds).${(x.otherStates&&x.otherStates.length)?` ${x.otherStates.length} out-of-state Xola seller${x.otherStates.length===1?'':'s'} (${x.otherStates.map(s=>esc(s.label)+' — '+esc(s.state)).join(', ')}) ${x.otherStates.length===1?'is':'are'} correctly excluded.`:''}`:''} Refunds are netted out so this ties to what you remit.</div>
     ${xWarn}
     ${breakdown}
     <h4>Square — by tax</h4><div class="tablewrap"><table><thead><tr><th>Tax</th><th class="num">Collected</th></tr></thead><tbody>${taxRows}</tbody></table></div>
@@ -1664,7 +1672,7 @@ function xolaCmp(cur,prev,lyLabel){
   const row=(l,c,p,fmt)=>{const dd=rtlDelta(c,p);return `<tr><td>${l}</td><td class="num">${fmt(c)}</td><td class="num" style="color:var(--muted)">${fmt(p)}</td><td class="num cmp-${dd.cls}">${dd.txt}</td></tr>`;};
   const m=v=>money(v), n=v=>numf(v,0);
   return `<div class="tablewrap" style="margin:6px 0 4px"><table><thead><tr><th>vs. last year <span style="font-weight:400;color:var(--muted)">(${esc(lyLabel)})</span></th><th class="num">This period</th><th class="num">Last year</th><th class="num">Change</th></tr></thead><tbody>`+
-    row('Net Sales',cur.netSales,prev.netSales,m)+row('Bookings',cur.orderCount,prev.orderCount,n)+row('Avg Ticket',cur.avgTicket,prev.avgTicket,m)+row('Sales Tax',cur.tax,prev.tax,m)+row('Guests',cur.guests,prev.guests,n)+`</tbody></table></div>`;
+    row('Net Sales',cur.netSales,prev.netSales,m)+row('Bookings',cur.orderCount,prev.orderCount,n)+row('Avg Ticket',cur.avgTicket,prev.avgTicket,m)+row('Guests',cur.guests,prev.guests,n)+`</tbody></table></div>`;
 }
 function renderXolaBlock(xr,pyXr,dayName,lyLabel){
   const header=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid var(--copper);padding-bottom:12px;margin:30px 0 6px">`+
@@ -1673,7 +1681,9 @@ function renderXolaBlock(xr,pyXr,dayName,lyLabel){
   const tiles=`<div class="kpis" style="margin:14px 0">`+[
     kpi('copper','Net Sales',money(xr.netSales),`${xr.orderCount} booking${xr.orderCount===1?'':'s'}${xr.guests?` · ${numf(xr.guests,0)} guests`:''}`),
     kpi('blue','Avg Ticket',money(xr.avgTicket),'net per booking'),
-    kpi('ky','Sales Tax',money(xr.tax),'collected'),
+    // Tax deliberately absent from the daily view. Xola tax spans two states and
+    // only the Kentucky slice belongs on a KY return — the KY tab does that job.
+    kpi('ky','Bookings',numf(xr.orderCount,0),'experiences redeemed'),
     kpi('barrel','Guests',numf(xr.guests,0),'redeemed this period'),
   ].join('')+`</div>`;
   const exp=(xr.experiences&&xr.experiences.length)
@@ -1690,20 +1700,21 @@ function xolaBySeller(xr,pyXr,lyLabel){
   const prevBy={}; for(const a of ((pyXr&&pyXr.accounts)||[])) prevBy[a.key]=a;
   const rows=all.map(a=>{
     if(a.ok===false){
-      return `<tr><td>${esc(a.label||a.key)}</td><td colspan="4" style="color:#c0392b;font-size:13px">Unavailable — ${esc(a.detail||a.error||'error')}</td><td class="num">—</td></tr>`;
+      return `<tr><td>${esc(a.label||a.key)}</td><td colspan="3" style="color:#c0392b;font-size:13px">Unavailable — ${esc(a.detail||a.error||'error')}</td><td class="num">—</td></tr>`;
     }
     const p=prevBy[a.key];
     const dd=p?rtlDelta(a.netSales,p.netSales):null;
-    return `<tr><td>${esc(a.label||a.key)}${a.truncated?' <span style="color:#c0392b" title="More pages than could be read in time">(partial)</span>':''}</td>`+
+    return `<tr><td>${esc(a.label||a.key)}${a.truncated?' <span style="color:#c0392b" title="More pages than could be read in time">(partial)</span>':''}`+
+      `${a.unreadable?' <span style="color:#c0392b" title="This key returns no transactions for this seller at any date — the zeros below are not real">(no data visible)</span>':''}</td>`+
       `<td class="num">${numf(a.orderCount,0)}</td><td class="num">${numf(a.guests,0)}</td>`+
-      `<td class="num">${money(a.tax)}</td><td class="num">${money(a.netSales)}</td>`+
+      `<td class="num">${money(a.netSales)}</td>`+
       `<td class="num${dd?' cmp-'+dd.cls:''}" style="${dd?'':'color:var(--muted)'}">${dd?dd.txt:'—'}</td></tr>`;
   }).join('');
   const live=all.filter(a=>a.ok!==false);
   const t=(f)=>live.reduce((n,a)=>n+(a[f]||0),0);
-  return `<h4 style="margin-top:18px">By seller</h4><div class="tablewrap"><table><thead><tr><th>Xola seller</th><th class="num">Bookings</th><th class="num">Guests</th><th class="num">Sales Tax</th><th class="num">Net Sales</th><th class="num">vs. ${esc(lyLabel||'last year')}</th></tr></thead><tbody>`+
+  return `<h4 style="margin-top:18px">By seller</h4><div class="tablewrap"><table><thead><tr><th>Xola seller</th><th class="num">Bookings</th><th class="num">Guests</th><th class="num">Net Sales</th><th class="num">vs. ${esc(lyLabel||'last year')}</th></tr></thead><tbody>`+
     rows+
-    `<tr class="total"><td>All sellers</td><td class="num">${numf(t('orderCount'),0)}</td><td class="num">${numf(t('guests'),0)}</td><td class="num">${money(round2(t('tax')))}</td><td class="num">${money(round2(t('netSales')))}</td><td class="num">—</td></tr>`+
+    `<tr class="total"><td>All sellers</td><td class="num">${numf(t('orderCount'),0)}</td><td class="num">${numf(t('guests'),0)}</td><td class="num">${money(round2(t('netSales')))}</td><td class="num">—</td></tr>`+
     `</tbody></table></div>`;
 }
 function renderRetailOut(d){
@@ -1883,11 +1894,14 @@ function rtlCsv(){
   if(d.xola){
     const xa=Array.isArray(d.xola.accounts)?d.xola.accounts:[];
     L.push(''); L.push(['Xola — experiences redeemed'].join(','));
-    L.push(['Seller','Bookings','Guests','Net Sales','Avg Ticket','Sales Tax','Status'].join(','));
-    (xa.length?xa:[{label:'Xola',ok:true,orderCount:d.xola.orderCount,guests:d.xola.guests,netSales:d.xola.netSales,avgTicket:d.xola.avgTicket,tax:d.xola.tax}])
-      .forEach(a=>L.push([csv(a.label||a.key||'Xola'),a.orderCount||0,a.guests||0,a.netSales||0,a.avgTicket||0,a.tax||0,
-        csv(a.ok===false?('UNAVAILABLE — '+(a.detail||a.error||'error')):(a.truncated?'partial':'ok'))].join(',')));
-    if(xa.length>1) L.push([csv('— all sellers —'),d.xola.orderCount||0,d.xola.guests||0,d.xola.netSales||0,d.xola.avgTicket||0,d.xola.tax||0,csv(d.xola.partial?'INCOMPLETE':'ok')].join(','));
+    // No tax column: Xola spans KY and TN, and only the KY slice is filable here.
+    L.push(['Seller','Bookings','Guests','Net Sales','Avg Ticket','Status'].join(','));
+    (xa.length?xa:[{label:'Xola',ok:true,orderCount:d.xola.orderCount,guests:d.xola.guests,netSales:d.xola.netSales,avgTicket:d.xola.avgTicket}])
+      .forEach(a=>L.push([csv(a.label||a.key||'Xola'),a.orderCount||0,a.guests||0,a.netSales||0,a.avgTicket||0,
+        csv(a.ok===false?('UNAVAILABLE — '+(a.detail||a.error||'error'))
+          :a.unreadable?'UNREADABLE — no transactions visible for this seller; zeros are not real'
+          :(a.truncated?'partial':'ok'))].join(',')));
+    if(xa.length>1) L.push([csv('— all sellers —'),d.xola.orderCount||0,d.xola.guests||0,d.xola.netSales||0,d.xola.avgTicket||0,csv(d.xola.partial?'INCOMPLETE':'ok')].join(','));
   }
   const py=d.priorYear&&!d.priorYear.error?d.priorYear:null;
   if(py){ L.push(''); L.push(['Prior year (same weekdays)',csv(py.range?rtlPeriodLabel(py.range.from,py.range.to):'')].join(',')); L.push(head.join(','));
