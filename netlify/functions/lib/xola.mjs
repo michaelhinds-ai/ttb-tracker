@@ -183,6 +183,50 @@ export function extractCursor(next) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+// ---- Purchase items by ARRIVAL date (the day the experience actually runs) ----
+// Xola's transactions can't be filtered by arrival date, and the item-level
+// `realizedAt` is a settlement date, not the tour date — so revenue keyed off it
+// lands on the wrong day. Purchase items expose `arrivalDate`, which is the tour
+// date. The list endpoint filters ONE arrival date per call, so a range is walked
+// day by day, bounded by the same time budget as everything else.
+let ITEMS_PATH = null; // learned at runtime: /api/items or /api/purchaseItems
+async function itemsPage(acct, query, deadline) {
+  const paths = ITEMS_PATH ? [ITEMS_PATH] : ["/api/items", "/api/purchaseItems"];
+  let lastErr;
+  for (const path of paths) {
+    try { const body = await pageWithRetry(acct, path, query, deadline); ITEMS_PATH = path; return body; }
+    catch (e) { lastErr = e; if (!(e && e.status === 404)) throw e; }
+  }
+  throw lastErr;
+}
+export function itemsPathUsed() { return ITEMS_PATH || "/api/items"; }
+function addDayUTC(ymd) { const [y, m, d] = ymd.split("-").map(Number); const z = new Date(Date.UTC(y, m - 1, d + 1)); return `${z.getUTCFullYear()}-${String(z.getUTCMonth() + 1).padStart(2, "0")}-${String(z.getUTCDate()).padStart(2, "0")}`; }
+function dayList(from, to, cap = 62) { const out = []; let d = from; for (let i = 0; i < cap && d <= to; i++) { out.push(d); d = addDayUTC(d); } return out; }
+
+export async function fetchPurchaseItemsRange(acct, { startDate, endDate, endCapISO = null, limit = 100 } = {}) {
+  const days = dayList(startDate, endDate);
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  const items = []; let truncated = false;
+  for (const day of days) {
+    if (Date.now() >= deadline - 300) { truncated = true; break; }
+    for (let offset = 0, page = 0; page < MAX_PAGES; page++) {
+      const left = deadline - Date.now(); if (left <= 300) { truncated = true; break; }
+      const query = { seller: acct.seller, arrivalDate: day, limit: String(limit), offset: String(offset), exclude: "purchase" };
+      const body = await itemsPage(acct, query, deadline);
+      const batch = Array.isArray(body) ? body : (body && body.data) || [];
+      for (const it of batch) {
+        if (it.status && /cancel|refund/i.test(it.status)) continue;
+        if (endCapISO && it.arrivalDateTime && it.arrivalDateTime > endCapISO) continue; // "through now" on a live day
+        items.push(it);
+      }
+      if (batch.length < limit) break;
+      offset += limit;
+      if (page === MAX_PAGES - 1) truncated = true;
+    }
+  }
+  return { items, truncated, days: days.length };
+}
+
 // Does this key see ANY transaction for this seller, ever?
 //
 // A seller returning nothing for a reporting window is ambiguous: it is either a
