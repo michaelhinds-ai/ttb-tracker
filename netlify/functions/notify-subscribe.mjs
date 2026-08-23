@@ -2,21 +2,27 @@
  * POST /api/notify/subscribe
  *
  * Called by snippets/notify-me.liquid when someone asks to be told a sold-out
- * barrel is back. Does three things:
- *
- *   1. Records the interest against the variant (Netlify Blobs).
- *   2. Upserts the contact into the Mailchimp audience with the date of birth
- *      affirmed at the age gate.
- *   3. Honours the marketing opt-in as a SEPARATE decision from the alert.
+ * barrel is back.
  *
  * The consent split is the important part. Asking to hear when one bottle
  * returns is not consent to a newsletter. Contacts who did not tick the box go
  * in as "transactional": they get the alert, they are not in marketing sends.
+ *
+ * ORDER OF OPERATIONS (this matters, and the first version got it wrong):
+ * Mailchimp is called BEFORE the interest record is stored. Mailchimp is the
+ * only step that can reject an address, so validating there first means a
+ * refused signup leaves nothing behind. Storing first produced orphan records
+ * for addresses that were never actually added.
+ *
+ * The one exception is a Mailchimp outage. If Mailchimp is unreachable or
+ * throwing 5xx, we still keep the interest record rather than lose a customer
+ * to someone else's downtime — they simply are not in the audience yet.
  */
 
 import {
   addInterest,
   upsertContact,
+  classifyMailchimpError,
   validEmail,
   ageFromISO,
   json,
@@ -81,6 +87,53 @@ export default async (req) => {
   const cleanEmail = String(email).trim();
   const nowIso = new Date().toISOString();
 
+  /* --- 1. Mailchimp first ------------------------------------------------ */
+
+  const mergeFields = { SOURCE: 'online' };
+  if (ageAffirmed) {
+    mergeFields.DOB = dob;                                  // yyyy-mm-dd, full affirmed date
+    mergeFields.BIRTHDAY = dob.slice(5).replace('-', '/');  // MM/DD for Mailchimp's birthday field
+  }
+
+  const tags = ['barrel-alert'];
+  if (allowMarketing) tags.push('drops-optin');
+
+  let mailchimpOk = false;
+  let mergeFieldsDropped = false;
+
+  try {
+    const result = await upsertContact({
+      email: cleanEmail,
+      marketingOptIn: allowMarketing,
+      mergeFields,
+      tags
+    });
+    mailchimpOk = true;
+    mergeFieldsDropped = result.mergeFieldsDropped;
+
+    if (mergeFieldsDropped) {
+      console.error(
+        '[notify] CONFIG: merge fields were rejected and dropped. Check DOB / BIRTHDAY / ' +
+          'SOURCE exist in the audience with those exact merge tags.'
+      );
+    }
+  } catch (err) {
+    const kind = classifyMailchimpError(err);
+
+    if (kind === 'address') {
+      // Mailchimp will not take this address. Tell the person plainly rather
+      // than returning a 500 that reads as "our fault, try later" — they need
+      // to change something, and a vague error means they just give up.
+      console.warn(`[notify] address rejected by Mailchimp: ${cleanEmail} — ${err.detail}`);
+      return json({ error: 'email_rejected' }, { status: 400, origin });
+    }
+
+    // Transient or unexpected: fall through and still record the interest.
+    console.error(`[notify] Mailchimp failed (${kind}), keeping interest record: ${err.message}`);
+  }
+
+  /* --- 2. Then store the interest ---------------------------------------- */
+
   try {
     const interest = await addInterest(variantId, {
       email: cleanEmail,
@@ -90,37 +143,18 @@ export default async (req) => {
       productTitle,
       productHandle,
       variantTitle,
-      requestedAt: nowIso
+      requestedAt: nowIso,
+      mailchimpSynced: mailchimpOk
     });
 
     if (interest.total > MAX_WAITING_PER_VARIANT) {
       console.warn(`[notify] variant ${variantId} waitlist above cap (${interest.total})`);
     }
 
-    const mergeFields = {};
-    if (ageAffirmed) {
-      mergeFields.DOB = dob;                        // yyyy-mm-dd, full affirmed date
-      mergeFields.BIRTHDAY = dob.slice(5).replace('-', '/'); // MM/DD for Mailchimp's birthday field
-    }
-    // Only stamp SOURCE for genuinely new online contacts. The weekly sync owns
-    // this field and uses in-store > tour > online precedence; writing 'online'
-    // over someone's 'tour' stamp would quietly downgrade them.
-    mergeFields.SOURCE = 'online';
-
-    const tags = ['barrel-alert'];
-    if (allowMarketing) tags.push('drops-optin');
-
-    await upsertContact({
-      email: cleanEmail,
-      marketingOptIn: allowMarketing,
-      mergeFields,
-      tags
-    });
-
     console.log(
       `[notify] ${cleanEmail} -> variant ${variantId} (${productTitle || 'unknown'}) ` +
         `marketing=${allowMarketing} ageAffirmed=${ageAffirmed} new=${interest.added} ` +
-        `waiting=${interest.total} src=${source} ${pageUrl || ''}`
+        `waiting=${interest.total} mc=${mailchimpOk} src=${source} ${pageUrl || ''}`
     );
 
     return json(
@@ -128,7 +162,13 @@ export default async (req) => {
       { origin }
     );
   } catch (err) {
-    console.error('[notify] subscribe failed:', err?.message || err);
+    // Storage failed. If Mailchimp took them we have not lost the person, only
+    // the per-variant alert. Say so honestly rather than claiming success.
+    console.error(`[notify] interest storage failed for ${cleanEmail}: ${err?.message || err}`);
+
+    if (mailchimpOk) {
+      return json({ ok: true, waiting: null, marketing: allowMarketing, degraded: true }, { origin });
+    }
     return json({ error: 'server_error' }, { status: 500, origin });
   }
 };
