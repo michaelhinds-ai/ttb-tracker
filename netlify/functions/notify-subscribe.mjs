@@ -160,11 +160,22 @@ export default async (req) => {
     console.log(
       `[notify] ${cleanEmail} -> variant ${variantId} (${productTitle || 'unknown'}) ` +
         `marketing=${allowMarketing} ageAffirmed=${ageAffirmed} new=${interest.added} ` +
-        `waiting=${interest.total} mc=${mailchimpOk} src=${source} ${pageUrl || ''}`
+        `waiting=${interest.total} mc=${mailchimpOk} ` +
+        `imgIn=${productImageRaw ? 'y' : 'n'} imgStored=${productImage ? 'y' : 'n'} ` +
+        `src=${source} ${pageUrl || ''}`
     );
 
+    // `image` is echoed back so a single call can prove whether the image
+    // survived validation, without needing to read the blob store. Added after
+    // a restock email shipped with no photo and the cause could not be
+    // narrowed down from outside.
     return json(
-      { ok: true, waiting: interest.total, marketing: allowMarketing },
+      {
+        ok: true,
+        waiting: interest.total,
+        marketing: allowMarketing,
+        image: Boolean(productImage)
+      },
       { origin }
     );
   } catch (err) {

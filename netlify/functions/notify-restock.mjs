@@ -179,7 +179,11 @@ export default async (req) => {
       }
     }
 
-    console.log(`[restock] variant ${v.id} (${productTitle}) — ${people.length} waiting`);
+    console.log(
+      `[restock] variant ${v.id} (${productTitle}) — ${people.length} waiting, ` +
+        `img=${productImage ? 'y' : 'n'} ` +
+        `(${people.filter((p) => p.productImage).length}/${people.length} records carried one)`
+    );
   }
 
   console.log(
