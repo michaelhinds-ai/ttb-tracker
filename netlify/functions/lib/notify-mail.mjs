@@ -51,6 +51,53 @@ const COMPLIANCE_HTML =
   '[SET NOTIFY_COMPLIANCE_HTML — responsible advertiser name and city/state, ' +
     'plus class/type and alcohol content for the product named above.]';
 
+/**
+ * Masthead logos.
+ *
+ * URLs come from the existing thank-you email asset spec, where both marks are
+ * already known to read correctly on a dark header. Overridable by env so a
+ * rebrand does not need a code change.
+ *
+ * Falls back to the text wordmark when neither is set, and every logo carries
+ * alt text — a large share of recipients see images blocked on first contact
+ * with a new sending domain, and a header that vanishes entirely looks broken.
+ */
+const LOGO_NBC =
+  process.env.NOTIFY_LOGO_NBC_URL ||
+  'https://nashvillebarrelco.com/images/nbc-logo.png';
+const LOGO_LR =
+  process.env.NOTIFY_LOGO_LR_URL ||
+  'https://louisvillerickhouse.com/images/LR_Wordmark_PMS_9180.png';
+
+function mastheadHtml(fromName) {
+  const cells = [];
+
+  if (LOGO_NBC) {
+    cells.push(
+      `<td style="padding:0 10px;text-align:center;vertical-align:middle;">` +
+        `<img src="${LOGO_NBC}" alt="Nashville Barrel Co" width="128" ` +
+        `style="width:128px;max-width:44vw;height:auto;display:block;border:0;"></td>`
+    );
+  }
+  if (LOGO_LR) {
+    cells.push(
+      `<td style="padding:0 10px;text-align:center;vertical-align:middle;">` +
+        `<img src="${LOGO_LR}" alt="Louisville Rickhouse Whiskey Co" width="140" ` +
+        `style="width:140px;max-width:46vw;height:auto;display:block;border:0;"></td>`
+    );
+  }
+
+  if (!cells.length) {
+    return `<div style="font-family:Georgia,serif;font-size:12px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:#D4A53A;">
+          ${escapeHtml(fromName)}
+        </div>`;
+  }
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
+          <tr>${cells.join('')}</tr>
+        </table>`;
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -116,11 +163,9 @@ export function buildRestockEmail({ productTitle, productUrl, productImage, firs
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0806;padding:32px 16px;">
   <tr><td align="center">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#12100d;border:1px solid #33291B;border-radius:6px;">
-      <tr><td style="padding:32px 32px 8px;text-align:center;">
-        <div style="font-family:Georgia,serif;font-size:12px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:#D4A53A;">
-          ${escapeHtml(FROM_NAME)}
-        </div>
-        <div style="width:40px;height:1px;background:#D4A53A;opacity:.55;margin:18px auto 0;"></div>
+      <tr><td style="padding:30px 32px 8px;text-align:center;">
+        ${mastheadHtml(FROM_NAME)}
+        <div style="width:40px;height:1px;background:#D4A53A;opacity:.55;margin:20px auto 0;"></div>
       </td></tr>
 
       <tr><td style="padding:24px 32px 0;text-align:center;">
