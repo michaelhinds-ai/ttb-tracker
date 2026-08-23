@@ -189,6 +189,27 @@ export async function setMergeFields(email, mergeFields) {
   });
 }
 
+/**
+ * Look up a contact's audience status and first name.
+ *
+ * This exists because Mandrill does NOT respect Mailchimp audience
+ * unsubscribes — it will happily deliver to someone who opted out of your
+ * list. Every transactional send must therefore check first. Returns
+ * { status, firstName } or null if the contact is not in the audience.
+ */
+export async function getMember(email) {
+  try {
+    const m = await mc(`/lists/${MC_LIST}/members/${subscriberHash(email)}`);
+    return { status: m?.status || null, firstName: m?.merge_fields?.FNAME || '' };
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
+/** Statuses that must never receive a send, transactional or otherwise. */
+export const SUPPRESSED_STATUSES = new Set(['unsubscribed', 'cleaned']);
+
 /* ------------------------------------------------------------------ *
  * Interest storage (Netlify Blobs)
  * ------------------------------------------------------------------ *
