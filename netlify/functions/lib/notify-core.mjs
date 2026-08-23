@@ -49,10 +49,46 @@ async function mc(path, { method = 'GET', body } = {}) {
     const detail = json?.detail || text || res.statusText;
     const err = new Error(`Mailchimp ${method} ${path} -> ${res.status}: ${detail}`);
     err.status = res.status;
+    err.detail = detail;
     err.body = json;
     throw err;
   }
   return json;
+}
+
+/**
+ * Work out what a Mailchimp failure actually means, because the caller's
+ * response to each is different:
+ *
+ *   'address'     Mailchimp will not accept this address, ever. Known-fake
+ *                 domains (example.com), addresses it considers abusive, or
+ *                 ones that have joined too many lists too fast. The person
+ *                 needs to fix it, so this must surface as a 400 with a useful
+ *                 message — not a 500 that blames the store.
+ *   'merge'       A merge field is missing or the wrong shape. That is a
+ *                 configuration mistake on our side and must never cost a
+ *                 customer their place on the list.
+ *   'transient'   Mailchimp is down, rate-limiting, or unreachable. Keep the
+ *                 signup and move on.
+ *   'other'       Anything else — treated as transient, logged loudly.
+ */
+export function classifyMailchimpError(err) {
+  const status = err?.status;
+  const detail = String(err?.detail || err?.message || '');
+
+  if (Array.isArray(err?.body?.errors) && err.body.errors.length) return 'merge';
+  if (status === 429 || (status >= 500 && status <= 599)) return 'transient';
+  if (!status) return 'transient'; // network / DNS / timeout
+
+  if (status === 400) {
+    if (/merge field|merge_fields/i.test(detail)) return 'merge';
+    if (/fake or invalid|invalid email|not a valid email|signed up to a lot of lists|looks fake/i.test(detail)) {
+      return 'address';
+    }
+    return 'other';
+  }
+  if (status === 403) return 'address'; // compliance state
+  return 'other';
 }
 
 /**
@@ -61,24 +97,43 @@ async function mc(path, { method = 'GET', body } = {}) {
  * Consent model, and the reason it matters:
  *   - A back-in-stock alert is a notification the person explicitly asked for,
  *     so it does not require marketing consent. Those contacts go in as
- *     "transactional" — reachable by the alert, absent from marketing sends.
+ *     "transactional": reachable by the alert, absent from marketing sends.
  *   - Ticking the marketing box is a separate act, and only that sets
  *     "subscribed".
  *
  * status_if_new is used everywhere so an existing unsubscribe is never
  * overwritten. Mailchimp will not resurrect someone who opted out.
+ *
+ * Returns { hash, mergeFieldsDropped } so the caller can log a configuration
+ * problem without failing the request.
  */
 export async function upsertContact({ email, marketingOptIn, mergeFields = {}, tags = [] }) {
   const hash = subscriberHash(email);
 
-  await mc(`/lists/${MC_LIST}/members/${hash}`, {
-    method: 'PUT',
-    body: {
-      email_address: email,
-      status_if_new: marketingOptIn ? 'subscribed' : 'transactional',
-      merge_fields: mergeFields
+  const put = (fields) =>
+    mc(`/lists/${MC_LIST}/members/${hash}`, {
+      method: 'PUT',
+      body: {
+        email_address: email,
+        status_if_new: marketingOptIn ? 'subscribed' : 'transactional',
+        ...(fields && Object.keys(fields).length ? { merge_fields: fields } : {})
+      }
+    });
+
+  let mergeFieldsDropped = false;
+  try {
+    await put(mergeFields);
+  } catch (err) {
+    if (classifyMailchimpError(err) === 'merge') {
+      // Retry once with no merge fields. A missing field in the audience is our
+      // mistake to fix; it is not a reason to turn a customer away.
+      console.error(`[notify] merge fields rejected, retrying without them: ${err.detail}`);
+      await put(null);
+      mergeFieldsDropped = true;
+    } else {
+      throw err;
     }
-  });
+  }
 
   // If they opted in and were previously transactional, promote them.
   // This never touches anyone whose status is 'unsubscribed' or 'cleaned'.
@@ -91,8 +146,8 @@ export async function upsertContact({ email, marketingOptIn, mergeFields = {}, t
           body: { status: 'subscribed' }
         });
       }
-    } catch (e) {
-      if (e.status !== 404) throw e;
+    } catch (err) {
+      if (err.status !== 404) throw err;
     }
   }
 
@@ -103,7 +158,7 @@ export async function upsertContact({ email, marketingOptIn, mergeFields = {}, t
     });
   }
 
-  return hash;
+  return { hash, mergeFieldsDropped };
 }
 
 /**
@@ -178,6 +233,23 @@ export async function takeInterest(variantId) {
 export async function peekInterest(variantId) {
   const existing = await store().get(keyFor(variantId), { type: 'json' });
   return existing?.people || [];
+}
+
+/** Drop specific addresses from a variant's list. Used to clear test records. */
+export async function removeInterest(variantId, emails) {
+  const s = store();
+  const key = keyFor(variantId);
+  const existing = await s.get(key, { type: 'json' });
+  if (!existing?.people?.length) return { removed: 0, remaining: 0 };
+
+  const drop = new Set(emails.map((e) => String(e).toLowerCase()));
+  const before = existing.people.length;
+  existing.people = existing.people.filter((p) => !drop.has(String(p.email).toLowerCase()));
+
+  if (existing.people.length === 0) await s.delete(key);
+  else await s.setJSON(key, existing);
+
+  return { removed: before - existing.people.length, remaining: existing.people.length };
 }
 
 /* ------------------------------------------------------------------ *
