@@ -210,6 +210,176 @@ export async function getMember(email) {
 /** Statuses that must never receive a send, transactional or otherwise. */
 export const SUPPRESSED_STATUSES = new Set(['unsubscribed', 'cleaned']);
 
+/**
+ * Everyone eligible for the weekly new-bottles email:
+ * subscribed AND (tagged `drops-optin` OR SOURCE = online).
+ *
+ * Filtering happens here rather than via a Mailchimp segment so the rule lives
+ * in one readable place, and so an accidental segment edit in the Mailchimp UI
+ * cannot silently widen who gets marketing.
+ *
+ * `status=subscribed` is applied server-side, so unsubscribes and cleaned
+ * addresses never enter the list at all.
+ */
+export async function listDropsAudience({ maxPages = 40 } = {}) {
+  const perPage = 1000;
+  const out = [];
+  let offset = 0;
+  let total = Infinity;
+  let pages = 0;
+  let scanned = 0;
+
+  while (offset < total && pages < maxPages) {
+    const res = await mc(
+      `/lists/${MC_LIST}/members?status=subscribed&count=${perPage}&offset=${offset}` +
+        `&fields=total_items,members.email_address,members.merge_fields,members.tags`
+    );
+
+    total = res?.total_items ?? 0;
+    const batch = res?.members || [];
+    if (!batch.length) break;
+
+    for (const m of batch) {
+      scanned += 1;
+      const tags = (m.tags || []).map((t) => String(t.name).toLowerCase());
+      const source = String(m.merge_fields?.SOURCE || '').toLowerCase();
+      if (tags.includes('drops-optin') || source === 'online') {
+        out.push({ email: m.email_address, firstName: m.merge_fields?.FNAME || '' });
+      }
+    }
+
+    offset += batch.length;
+    pages += 1;
+  }
+
+  if (pages >= maxPages) {
+    console.warn(`[drops] audience paging hit the ${maxPages}-page cap — list may be truncated`);
+  }
+  return { recipients: out, scanned, total };
+}
+
+/* ------------------------------------------------------------------ *
+ * Unsubscribe tokens
+ * ------------------------------------------------------------------ *
+ * The weekly drops email is marketing, not a requested one-off, so it needs a
+ * working opt-out. Mandrill does not honour Mailchimp's audience unsubscribes,
+ * so we cannot lean on Mailchimp's own link — we mint a signed token per
+ * recipient and handle the opt-out ourselves, writing the result back to
+ * Mailchimp so both systems agree.
+ *
+ * Signed rather than a bare email so nobody can unsubscribe someone else by
+ * guessing URLs.
+ */
+function unsubSecret() {
+  const s = process.env.NOTIFY_UNSUB_SECRET || process.env.SHOPIFY_WEBHOOK_SECRET;
+  if (!s) throw new Error('NOTIFY_UNSUB_SECRET (or SHOPIFY_WEBHOOK_SECRET) must be set');
+  return s;
+}
+
+export function unsubToken(email) {
+  return crypto
+    .createHmac('sha256', unsubSecret())
+    .update(String(email).trim().toLowerCase())
+    .digest('base64url')
+    .slice(0, 32);
+}
+
+export function verifyUnsubToken(email, token) {
+  if (!email || !token) return false;
+  const expected = Buffer.from(unsubToken(email));
+  const given = Buffer.from(String(token));
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+}
+
+/** Set a contact to unsubscribed. Idempotent; a 404 is treated as success. */
+export async function unsubscribeMember(email) {
+  try {
+    await mc(`/lists/${MC_LIST}/members/${subscriberHash(email)}`, {
+      method: 'PATCH',
+      body: { status: 'unsubscribed' }
+    });
+    return true;
+  } catch (err) {
+    if (err.status === 404) return true;
+    throw err;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Product index + job state
+ * ------------------------------------------------------------------ *
+ * Populated by the products/update webhook rather than polled from the Shopify
+ * Admin API, which avoids needing a read_products scope the app may not have.
+ * The webhook already carries everything the email needs.
+ */
+
+function metaStore() {
+  return getStore({ name: 'notify-meta', consistency: 'strong' });
+}
+
+const PRODUCT_INDEX_KEY = 'products/index';
+const INDEX_WINDOW_DAYS = 30;
+
+export async function recordProduct(p) {
+  if (!p?.id || !p.publishedAt) return { recorded: false, reason: 'missing id or publishedAt' };
+
+  const ageDays = (Date.now() - Date.parse(p.publishedAt)) / 86400000;
+  if (!Number.isFinite(ageDays) || ageDays > INDEX_WINDOW_DAYS || ageDays < -1) {
+    // Older than the window: not a new bottle. Skipping these is what stops
+    // the first run announcing the entire back catalogue.
+    return { recorded: false, reason: 'outside index window' };
+  }
+
+  const s = metaStore();
+  const index = (await s.get(PRODUCT_INDEX_KEY, { type: 'json' })) || {};
+  const id = String(p.id);
+  const existing = index[id];
+
+  index[id] = {
+    ...existing,
+    id,
+    title: p.title,
+    handle: p.handle,
+    image: p.image || existing?.image || null,
+    inStock: p.inStock,
+    tags: p.tags || [],
+    collectionIds: p.collectionIds || existing?.collectionIds || [],
+    publishedAt: p.publishedAt,
+    firstSeen: existing?.firstSeen || new Date().toISOString(),
+    announcedAt: existing?.announcedAt || null
+  };
+
+  // Bound the blob: drop anything that has aged out of the window.
+  for (const [key, val] of Object.entries(index)) {
+    const age = (Date.now() - Date.parse(val.publishedAt)) / 86400000;
+    if (!Number.isFinite(age) || age > INDEX_WINDOW_DAYS) delete index[key];
+  }
+
+  await s.setJSON(PRODUCT_INDEX_KEY, index);
+  return { recorded: true, isNew: !existing };
+}
+
+export async function listIndexedProducts() {
+  const index = (await metaStore().get(PRODUCT_INDEX_KEY, { type: 'json' })) || {};
+  return Object.values(index);
+}
+
+export async function markProductsAnnounced(ids) {
+  const s = metaStore();
+  const index = (await s.get(PRODUCT_INDEX_KEY, { type: 'json' })) || {};
+  const stamp = new Date().toISOString();
+  for (const id of ids) if (index[String(id)]) index[String(id)].announcedAt = stamp;
+  await s.setJSON(PRODUCT_INDEX_KEY, index);
+}
+
+export async function getJobState(key) {
+  return (await metaStore().get(`state/${key}`, { type: 'json' })) || null;
+}
+
+export async function setJobState(key, value) {
+  await metaStore().setJSON(`state/${key}`, value);
+}
+
 /* ------------------------------------------------------------------ *
  * Interest storage (Netlify Blobs)
  * ------------------------------------------------------------------ *

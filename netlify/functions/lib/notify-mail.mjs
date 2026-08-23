@@ -224,11 +224,107 @@ ${imageBlock}      <tr><td style="padding:20px 32px 0;">
   return { html, text };
 }
 
+/**
+ * The weekly new-bottles roundup.
+ *
+ * Unlike the restock alert this is marketing, not a requested one-off, so it
+ * carries a real opt-out. Mandrill does not honour Mailchimp's audience
+ * unsubscribes, so the link is our own signed endpoint, and the same URL goes
+ * into List-Unsubscribe / List-Unsubscribe-Post — Gmail and Yahoo require
+ * one-click for bulk marketing.
+ */
+export function buildDropsEmail({ products, unsubUrl, heading }) {
+  const count = products.length;
+  const title =
+    heading || (count === 1 ? 'A new barrel just landed' : `${count} new barrels just landed`);
+
+  const rows = products
+    .map((p) => {
+      const name = escapeHtml(p.title);
+      const url = escapeHtml(p.url);
+      const img = p.image
+        ? `<td width="96" style="padding:0 14px 0 0;vertical-align:top;">
+             <a href="${url}"><img src="${escapeHtml(p.image)}" alt="${name}" width="96"
+               style="width:96px;height:auto;display:block;border:0;border-radius:4px;"></a>
+           </td>`
+        : '';
+      return `<tr><td style="padding:0 0 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+          style="background:rgba(212,165,58,.05);border:1px solid rgba(212,165,58,.18);border-radius:4px;">
+          <tr><td style="padding:14px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              ${img}
+              <td style="vertical-align:middle;">
+                <div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#F4EFE6;line-height:1.4;">${name}</div>
+                <a href="${url}" style="display:inline-block;margin-top:8px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#D4A53A;text-decoration:none;">View bottle &rarr;</a>
+              </td>
+            </tr></table>
+          </td></tr>
+        </table>
+      </td></tr>`;
+    })
+    .join('');
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0a0806;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0806;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#12100d;border:1px solid #33291B;border-radius:6px;">
+      <tr><td style="padding:30px 30px 8px;text-align:center;">
+        ${mastheadHtml(FROM_NAME)}
+        <div style="width:40px;height:1px;background:#D4A53A;opacity:.55;margin:20px auto 0;"></div>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;text-align:center;">
+        <h1 style="margin:0 0 10px;font-family:Georgia,serif;font-size:25px;line-height:1.24;color:#F4EFE6;font-weight:700;">
+          ${escapeHtml(title)}
+        </h1>
+        <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#A79C8C;">
+          Single barrels, while they last.
+        </p>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+      </td></tr>
+
+      <tr><td style="padding:6px 30px 30px;">
+        <div style="border-top:1px solid #241d14;padding-top:18px;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.7;color:#6E6558;text-align:center;">
+          <p style="margin:0 0 10px;">${COMPLIANCE_HTML}</p>
+          <p style="margin:0 0 10px;">Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.</p>
+          <p style="margin:0;"><a href="${escapeHtml(unsubUrl)}" style="color:#8A8175;">Unsubscribe from new bottle emails</a></p>
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+
+  const text =
+    `${title}\n\n` +
+    products.map((p) => `${p.title}\n${p.url}`).join('\n\n') +
+    `\n\n${htmlToText(COMPLIANCE_HTML)}\n` +
+    `Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.\n\n` +
+    `Unsubscribe: ${unsubUrl}\n`;
+
+  return { html, text, subject: title };
+}
+
 /** Send one message. Throws on transport failure, returns Mandrill's per-recipient result. */
-export async function sendMandrill({ to, subject, html, text, tags = [] }) {
+export async function sendMandrill({ to, subject, html, text, tags = [], unsubUrl = null }) {
   const key = process.env.MANDRILL_API_KEY;
   if (!key) throw new Error('MANDRILL_API_KEY is not set');
   if (!FROM_EMAIL) throw new Error('NOTIFY_FROM_EMAIL is not set');
+
+  const headers = {};
+  if (REPLY_TO) headers['Reply-To'] = REPLY_TO;
+  if (unsubUrl) {
+    // RFC 8058 one-click. Gmail and Yahoo require both headers from bulk
+    // senders; a body link alone is not enough.
+    headers['List-Unsubscribe'] = `<${unsubUrl}>`;
+    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+  }
 
   const res = await fetch(MANDRILL_ENDPOINT, {
     method: 'POST',
@@ -241,7 +337,7 @@ export async function sendMandrill({ to, subject, html, text, tags = [] }) {
         subject,
         from_email: FROM_EMAIL,
         from_name: FROM_NAME,
-        headers: REPLY_TO ? { 'Reply-To': REPLY_TO } : undefined,
+        headers: Object.keys(headers).length ? headers : undefined,
         to: [{ email: to, type: 'to' }],
         track_opens: true,
         track_clicks: true,
