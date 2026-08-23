@@ -25,6 +25,7 @@ import {
   classifyMailchimpError,
   validEmail,
   ageFromISO,
+  safeProductImage,
   json,
   corsHeaders
 } from './lib/notify-core.mjs';
@@ -56,11 +57,15 @@ export default async (req) => {
     product_id: productId,
     product_title: productTitle,
     product_handle: productHandle,
+    product_image: productImageRaw,
     variant_id: variantId,
     variant_title: variantTitle,
     source = 'product_page_notify',
     page_url: pageUrl
   } = payload || {};
+
+  // Vetted against a host whitelist — this ends up in an email we send.
+  const productImage = safeProductImage(productImageRaw);
 
   if (!validEmail(email)) {
     return json({ error: 'invalid_email' }, { status: 400, origin });
@@ -142,6 +147,7 @@ export default async (req) => {
       productId,
       productTitle,
       productHandle,
+      productImage,
       variantTitle,
       requestedAt: nowIso,
       mailchimpSynced: mailchimpOk

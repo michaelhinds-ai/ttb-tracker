@@ -69,6 +69,11 @@ export default async (req) => {
   const productUrl = first.productHandle ? `${STORE}/products/${first.productHandle}` : STORE;
   const subject = `Back in stock: ${productTitle}`;
 
+  // Earliest record with an image wins. Signups made before image capture
+  // existed simply have none, and the email drops the block rather than
+  // rendering a broken one.
+  const productImage = people.find((p) => p.productImage)?.productImage || null;
+
   let sent = 0;
   let suppressed = 0;
   const failed = [];
@@ -89,6 +94,7 @@ export default async (req) => {
       const { html, text } = buildRestockEmail({
         productTitle,
         productUrl,
+        productImage,
         firstName: member?.firstName || ''
       });
 
