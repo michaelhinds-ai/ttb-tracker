@@ -316,21 +316,50 @@ export function safeProductImage(value) {
 
   if (url.protocol !== 'https:') return null;
 
-  const allowed = [
-    'cdn.shopify.com',
-    'cdn.shopifycdn.net',
-    ...(process.env.NOTIFY_IMAGE_HOSTS || '')
-      .split(',')
-      .map((h) => h.trim().toLowerCase())
-      .filter(Boolean)
-  ];
-
   const host = url.hostname.toLowerCase();
-  const okHost = allowed.some((a) => host === a || host.endsWith('.' + a));
+  const okHost = imageHostAllowlist().some((a) => host === a || host.endsWith('.' + a));
   if (!okHost) return null;
 
   if (url.pathname.length > 512) return null;
   return url.toString();
+}
+
+/**
+ * Hosts an image may be served from.
+ *
+ * NOTE, because this was wrong the first time and cost a debugging cycle:
+ * Shopify's image_url filter does NOT return cdn.shopify.com. It returns the
+ * STORE'S OWN domain with a /cdn/shop/... path — e.g.
+ * //buyspiritsdirect.myshopify.com/cdn/shop/files/656.jpg?v=...
+ * Whitelisting only cdn.shopify.com silently rejected every real product
+ * image, and the restock email shipped with no photo and no error.
+ *
+ * The list is derived from configuration rather than hardcoded so that adding
+ * a branded domain later does not silently break images again. Deliberately
+ * NOT a blanket *.myshopify.com: that would let anyone point the public
+ * endpoint at any Shopify store's assets.
+ */
+function imageHostAllowlist() {
+  const hosts = ['cdn.shopify.com', 'cdn.shopifycdn.net'];
+
+  const addFromUrl = (value) => {
+    if (!value) return;
+    try {
+      hosts.push(new URL(value.trim()).hostname.toLowerCase());
+    } catch {
+      const bare = value.trim().replace(/^https?:\/\//, '').split('/')[0].toLowerCase();
+      if (bare) hosts.push(bare);
+    }
+  };
+
+  addFromUrl(process.env.NOTIFY_STORE_URL || 'https://buyspiritsdirect.myshopify.com');
+  (process.env.NOTIFY_ALLOWED_ORIGINS ||
+    'https://buyspiritsdirect.myshopify.com,https://nashvillebarrelco.myshopify.com')
+    .split(',')
+    .forEach(addFromUrl);
+  (process.env.NOTIFY_IMAGE_HOSTS || '').split(',').forEach(addFromUrl);
+
+  return [...new Set(hosts.filter(Boolean))];
 }
 
 /**
