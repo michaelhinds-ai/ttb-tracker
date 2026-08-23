@@ -97,6 +97,25 @@ export async function mcUpsert(members) {
   return { submitted: members.length, batches };
 }
 
+// Apply the thank-you TRIGGER tag to a small set of just-active contacts (new walk-ins
+// and freshly-completed tour guests). Done as ensure-exists + add-tag per contact so a
+// brand-new member is present before it's tagged. Idempotent: re-tagging an already
+// tagged contact is a no-op, so the Mailchimp journey fires exactly once per person and
+// nobody gets a second discount. Never runs on the full seed, so history isn't blasted.
+export async function mcWelcome(members, tag = "welcome-offer") {
+  const { list, status } = mcConfig();
+  let tagged = 0;
+  for (const m of members.slice(0, 800)) {
+    const hash = md5(m.email);
+    try {
+      await mcFetch(`/lists/${list}/members/${hash}`, { method: "PUT", body: { email_address: m.email, status_if_new: status, merge_fields: { FNAME: m.fname || "", LNAME: m.lname || "", SOURCE: srcLabel(m.source) } } });
+      await mcFetch(`/lists/${list}/members/${hash}/tags`, { method: "POST", body: { tags: [{ name: tag, status: "active" }] } });
+      tagged++;
+    } catch { /* skip one, keep going */ }
+  }
+  return tagged;
+}
+
 // Square customers across every configured account.
 export async function squareCustomers({ sinceISO } = {}) {
   const out = []; const accts = squareAccounts();
@@ -193,6 +212,74 @@ export async function xolaCustomers({ sinceISO } = {}) {
   return out;
 }
 
+// ---- Xola COMPLETED tours (by arrival/tour date, not booking date) ----
+// Used by the weekly incremental run to find guests whose tour actually ran in the
+// window, so a "thanks for visiting" only goes out AFTER the experience. Walks the
+// arrival-date item endpoint day by day (the only way Xola filters by tour date).
+let _xItemsPath = null; // /api/items or /api/purchaseItems, learned once
+async function xItems(acct, query) {
+  const paths = _xItemsPath ? [_xItemsPath] : ["/api/items", "/api/purchaseItems"];
+  let lastErr;
+  for (const path of paths) {
+    try { const b = await xFor(acct, path, { query }); _xItemsPath = path; return b; }
+    catch (e) { lastErr = e; if (!(e && e.status === 404)) throw e; }
+  }
+  throw lastErr;
+}
+function ymdUTC(d) { return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`; }
+function daysUTC(start, end, cap = 40) {
+  const out = [];
+  const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  for (let i = 0; i < cap && d <= last; i++) { out.push(ymdUTC(d)); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+// Run async tasks with bounded concurrency (keeps the tour walk fast without
+// hammering Xola hard enough to get throttled).
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length); let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx]); }
+  });
+  await Promise.all(workers);
+  return out;
+}
+export async function xolaCompletedTours({ sinceISO } = {}) {
+  let accts = [];
+  try { accts = xolaAccounts(); } catch { accts = []; }
+  if (!accts.length) return [];
+  const end = new Date();
+  const start = sinceISO ? new Date(sinceISO) : new Date(Date.now() - 30 * 86400000);
+  const days = daysUTC(start, end, 40);
+  const tasks = [];
+  for (const a of accts) for (const day of days) tasks.push({ a, day });
+  const perTask = await mapLimit(tasks, 6, async ({ a, day }) => {
+    const rows = [];
+    let offset = 0, pages = 0;
+    for (;;) {
+      let body;
+      try { body = await xItems(a, { seller: a.seller, arrivalDate: day, limit: "100", offset: String(offset) }); }
+      catch { break; } // one seller/day failing never blanks the rest
+      const batch = Array.isArray(body) ? body : (body && body.data) || [];
+      if (!batch.length) break;
+      for (const it of batch) {
+        const st = (it && it.status) || "";
+        if (/cancel|refund|void/i.test(st)) continue;
+        const p = it && it.purchase, org = it && it.organizer;
+        const email = (((p && p.customerEmail) || (org && org.email) || "") + "").trim();
+        if (!email) continue;
+        const nm = (((p && p.customerName) || (org && org.name) || "") + "").trim();
+        const sp = nm.indexOf(" ");
+        rows.push({ email, fname: sp > 0 ? nm.slice(0, sp) : nm, lname: sp > 0 ? nm.slice(sp + 1) : "", source: "xola:" + (a.label || a.key) });
+      }
+      offset += batch.length; pages++;
+      if (batch.length < 100 || pages >= 40) break;
+    }
+    return rows;
+  });
+  return perTask.flat();
+}
+
 export function dedupe(list) {
   const seen = new Set(); const out = [];
   for (const c of list) { const k = c.email.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(c); }
@@ -204,7 +291,10 @@ export async function runSync({ full = false, dry = false, sinceDays = 8 } = {})
   const sinceISO = full ? null : new Date(Date.now() - sinceDays * 86400000).toISOString();
   let square = [], sqErr = null, xola = [], xErr = null, shop = [], shopErr = null;
   try { square = await squareCustomers({ sinceISO }); } catch (e) { sqErr = safe(e && (e.detail || e.message)); }
-  try { xola = await xolaCustomers({ sinceISO }); } catch (e) { xErr = safe(e && (e.detail || e.message)); }
+  // Full seed pulls all Xola guests by booking date (fast, for the audience). The weekly
+  // incremental pulls only guests whose TOUR actually ran in the window, so the thank-you
+  // goes out after the experience — never for a tour that hasn't happened yet.
+  try { xola = full ? await xolaCustomers({ sinceISO }) : await xolaCompletedTours({ sinceISO }); } catch (e) { xErr = safe(e && (e.detail || e.message)); }
   try { shop = await shopifyCustomers({ sinceISO }); } catch (e) { shopErr = safe(e && (e.detail || e.message)); }
   // Order sets source priority when the same email appears in more than one system:
   // in-store (Square) > tour (Xola) > online (Shopify).
@@ -213,7 +303,15 @@ export async function runSync({ full = false, dry = false, sinceDays = 8 } = {})
     squareError: sqErr || undefined, xolaError: xErr || undefined, shopifyError: shopErr || undefined };
   if (dry) return base;
   const up = await mcUpsert(merged);
-  return { ...base, submitted: up.submitted, batches: up.batches };
+  // Thank-you trigger: tag new walk-ins (Square) + freshly-completed tour guests (Xola)
+  // with "welcome-offer", which starts the Mailchimp journey. Online-only (Shopify)
+  // buyers are excluded. Skipped on the full seed so the historical base is never blasted.
+  let welcomeTagged = 0;
+  if (!full) {
+    const toWelcome = dedupe([...square, ...xola]).filter((m) => /^(square|xola)/.test(m.source || ""));
+    welcomeTagged = await mcWelcome(toWelcome);
+  }
+  return { ...base, submitted: up.submitted, batches: up.batches, welcomeTagged };
 }
 
 function safe(d) { try { return typeof d === "string" ? d.slice(0, 400) : JSON.stringify(d).slice(0, 400); } catch { return ""; } }
