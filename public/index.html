@@ -1737,35 +1737,40 @@ async function srRunMonthly(){
   try{
     const months=[]; for(let m=1;m<=lastMonth;m++){ const from=`${year}-${String(m).padStart(2,'0')}-01`; const to=`${year}-${String(m).padStart(2,'0')}-${String(new Date(year,m,0).getDate()).padStart(2,'0')}`; months.push({m,from,to}); }
     const results=await Promise.all(months.map(mm=>fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:mm.from,endDate:mm.to})}).then(r=>r.json()).catch(()=>null)));
-    const rows=months.map((mm,i)=>{ const d=results[i]; const c=(d&&!d.error&&d.combined)||{};
-      return { label:new Date(year,mm.m-1,1).toLocaleDateString('en-US',{month:'short'}), m:mm.m,
-        net:+c.netSales||0, orders:+c.orderCount||0, avg:+c.avgTicket||0, tax:+c.tax||0, tips:+c.tips||0, units:+c.units||0, err:!(d&&!d.error) }; });
-    srLast={monthly:true,year,rows}; renderMonthlyOut(year,rows); $('#sr_print').style.display='inline-flex';
+    const meta=months.map(mm=>({m:mm.m,label:new Date(year,mm.m-1,1).toLocaleDateString('en-US',{month:'short'})}));
+    srLast={monthly:true,year,meta,results}; renderMonthlyOut(year,meta,results); $('#sr_print').style.display='inline-flex';
   }catch(e){ $('#sr_out').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
 }
-function renderMonthlyOut(year,rows){
-  const totNet=rows.reduce((s,r)=>s+r.net,0), totOrders=rows.reduce((s,r)=>s+r.orders,0), totTax=rows.reduce((s,r)=>s+r.tax,0), totTips=rows.reduce((s,r)=>s+r.tips,0), totUnits=rows.reduce((s,r)=>s+r.units,0);
-  const active=rows.filter(r=>r.net>0||r.orders>0);
-  const best=rows.slice().sort((a,b)=>b.net-a.net)[0]||{label:'—',net:0};
+function renderMonthlyOut(year,meta,results){
+  const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
+  const zero=()=>({net:0,orders:0,tax:0,tips:0,units:0});
+  const add=(s,z)=>({net:s.net+(+z.net||0),orders:s.orders+(+z.orders||0),tax:s.tax+(+z.tax||0),tips:s.tips+(+z.tips||0),units:s.units+(+z.units||0)});
+  // Combined per month (for the headline KPIs and overview chart).
+  const comb=meta.map((x,i)=>{ const d=results[i]; const c=(d&&!d.error&&d.combined)||{}; return {label:x.label,m:x.m,net:+c.netSales||0,orders:+c.orderCount||0,tax:+c.tax||0,tips:+c.tips||0,units:+c.units||0,err:!(d&&!d.error)}; });
+  // Per-location: each location's numbers for each month.
+  const locMap={};
+  meta.forEach((x,i)=>{ const d=results[i]; if(!d||d.error)return; (d.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const key=(a.key||a.label||'')+'|'+(l.id||l.name); const rec=locMap[key]||(locMap[key]={name:l.name,acct:rtlAcctName(a),byM:{}}); rec.byM[x.m]={net:+l.netSales||0,orders:+l.orderCount||0,tax:+l.tax||0,tips:+l.tips||0,units:+l.units||0}; }); }); });
+  const locs=Object.values(locMap).map(r=>{ const rows=meta.map(x=>Object.assign({label:x.label},zero(),r.byM[x.m]||{})); const tot=rows.reduce(add,zero()); return {name:r.name,acct:r.acct,rows,tot}; }).sort((a,b)=>b.tot.net-a.tot.net);
+  const T=comb.reduce(add,zero());
+  const best=comb.slice().sort((a,b)=>b.net-a.net)[0]||{label:'—',net:0};
+  const active=comb.filter(z=>z.net>0||z.orders>0).length;
+  const multiAcct=new Set(locs.map(L=>L.acct)).size>1;
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
-    kpi('copper','Net Sales',money(totNet),`${totOrders} transaction${totOrders===1?'':'s'} · ${year}`),
-    kpi('blue','Avg Ticket',money(totOrders?totNet/totOrders:0),'net sales per transaction'),
-    kpi('ky','Sales Tax',money(totTax),'collected'),
+    kpi('copper','Net Sales',money(T.net),`${T.orders} transaction${T.orders===1?'':'s'} · ${locs.length} location${locs.length===1?'':'s'}`),
+    kpi('blue','Avg Ticket',money(T.orders?T.net/T.orders:0),'net sales per transaction'),
+    kpi('ky','Sales Tax',money(T.tax),'collected'),
     kpi('green','Best Month',money(best.net),best.label),
-    kpi('barrel','Avg / Month',money(active.length?totNet/active.length:0),`${active.length} active month${active.length===1?'':'s'}`),
+    kpi('barrel','Avg / Month',money(active?T.net/active:0),`${active} active month${active===1?'':'s'}`),
   ].join('')+`</div>`;
-  const max=Math.max(...rows.map(r=>r.net),1);
-  const chart=`<div style="margin:6px 0 4px">`+rows.map(r=>{ const pct=Math.max(r.net>0?2:0,r.net/max*100);
-    return `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
-      <div style="flex:0 0 60px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${r.label}</div>
-      <div style="flex:1;background:#efe7d8;border-radius:5px;height:20px"><div style="width:${pct}%;background:var(--copper);height:100%;border-radius:5px"></div></div>
-      <div style="flex:0 0 96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">${money(r.net)}</div></div>`; }).join('')+`</div>`;
-  const table=`<div class="tablewrap"><table><thead><tr><th>Month</th><th class="num">Transactions</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Units</th></tr></thead><tbody>`+
-    rows.map(r=>`<tr><td>${r.label}${r.err?' <span class="pill" style="background:#f7e7e4;color:#b23a2e">no data</span>':''}</td><td class="num">${r.orders}</td><td class="num">${money(r.net)}</td><td class="num">${money(r.avg)}</td><td class="num">${money(r.tax)}</td><td class="num">${money(r.tips)}</td><td class="num">${numf(r.units,0)}</td></tr>`).join('')+
-    `<tr class="total" style="font-weight:700"><td>Total ${year}</td><td class="num">${totOrders}</td><td class="num">${money(totNet)}</td><td class="num">${money(totOrders?totNet/totOrders:0)}</td><td class="num">${money(totTax)}</td><td class="num">${money(totTips)}</td><td class="num">${numf(totUnits,0)}</td></tr>`+
+  const monthTable=(rows,tot,totLabel)=>`<div class="tablewrap"><table><thead><tr><th>Month</th><th class="num">Transactions</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Units</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${r.label}${r.err?' <span class="pill" style="background:#f7e7e4;color:#b23a2e">no data</span>':''}</td><td class="num">${r.orders}</td><td class="num">${money(r.net)}</td><td class="num">${money(r.orders?r.net/r.orders:0)}</td><td class="num">${money(r.tax)}</td><td class="num">${money(r.tips)}</td><td class="num">${numf(r.units,0)}</td></tr>`).join('')+
+    `<tr class="total" style="font-weight:700"><td>${totLabel}</td><td class="num">${tot.orders}</td><td class="num">${money(tot.net)}</td><td class="num">${money(tot.orders?tot.net/tot.orders:0)}</td><td class="num">${money(tot.tax)}</td><td class="num">${money(tot.tips)}</td><td class="num">${numf(tot.units,0)}</td></tr>`+
     `</tbody></table></div>`;
-  $('#sr_out').innerHTML=reportHeader('Monthly Sales Summary','Square retail & gift shop — net sales by month',String(year))+kpis+`<h4>Net sales by month</h4>${chart}<h4 style="margin-top:20px">Detail</h4>${table}`+
-    `<div class="disclaimer">Completed Square orders across all connected accounts and locations, one row per month of ${year}. Net sales exclude tax and tips. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
+  const locSections=locs.length?locs.map(L=>`<h3 style="margin-top:24px">${esc(L.name)} <span style="color:var(--muted);font-weight:400;font-size:13px">${multiAcct?esc(L.acct)+' · ':''}${money(L.tot.net)} net · ${L.tot.orders} transactions</span></h3>${monthTable(L.rows,L.tot,'Total '+year)}`).join(''):'<div class="empty">No location sales in '+year+'.</div>';
+  $('#sr_out').innerHTML=reportHeader('Monthly Sales by Location','Square retail & gift shop — net sales by month, per location',String(year))+kpis+
+    `<h4>By location</h4>${locSections}`+
+    `<h4 style="margin-top:28px">All locations combined</h4>${monthTable(comb,T,'Total '+year)}`+
+    `<div class="disclaimer">Completed Square orders, one row per month of ${year}, broken out by location across all connected accounts. Net sales exclude tax and tips; empty back-office locations are hidden. Operating snapshot — reconcile against Square before filing.</div>`;
 }
 function ymdShift(ymd,days){ const [y,m,d]=ymd.split('-').map(Number); const dt=new Date(Date.UTC(y,m-1,d+days)); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`; }
 function ymdSpan(a,b){ return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000)+1; }
