@@ -17,6 +17,7 @@
 //   SHOPIFY_API_VERSION   default 2026-07
 //   (Square uses the same SQUARE_ACCESS_TOKEN / _2 the rest of the app already uses.)
 import { accounts as squareAccounts, sqFor } from "./square.mjs";
+import { accounts as xolaAccounts, xFor, extractCursor } from "./xola.mjs";
 import { createHash } from "node:crypto";
 
 const g = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : process.env[k]) || "";
@@ -73,6 +74,10 @@ async function mcFetch(path, { method = "GET", body } = {}) {
 }
 function md5(s) { return createHash("md5").update(String(s).trim().toLowerCase()).digest("hex"); }
 
+// Where a contact came from, written to the Mailchimp SOURCE merge field so you can
+// segment/automate on it (e.g. an "in-store" thank-you journey for Square walk-ins).
+function srcLabel(s) { s = String(s || ""); if (s.startsWith("square")) return "in-store"; if (s.startsWith("xola")) return "tour"; if (s.startsWith("shopify")) return "online"; return ""; }
+
 // Upsert a set of contacts via Mailchimp batch operations (async server-side).
 // Chunked so a very large seed doesn't build one enormous request.
 export async function mcUpsert(members) {
@@ -84,7 +89,7 @@ export async function mcUpsert(members) {
     const operations = chunk.map((m) => ({
       method: "PUT",
       path: `/lists/${list}/members/${md5(m.email)}`,
-      body: JSON.stringify({ email_address: m.email, status_if_new: status, merge_fields: { FNAME: m.fname || "", LNAME: m.lname || "" } }),
+      body: JSON.stringify({ email_address: m.email, status_if_new: status, merge_fields: { FNAME: m.fname || "", LNAME: m.lname || "", SOURCE: srcLabel(m.source) } }),
     }));
     const r = await mcFetch("/batches", { method: "POST", body: { operations } });
     batches.push(r && r.id);
@@ -152,6 +157,42 @@ export async function shopifyCustomers({ sinceISO } = {}) {
   return out;
 }
 
+// Xola tour/experience guests across every configured seller. Xola stores no
+// unsubscribe flag on a booking, so everyone with an email is included — Mailchimp
+// still honors its own unsubscribes on upsert, so nobody who opted out is re-added.
+// One seller failing (bad key, timeout) never blanks the others.
+export async function xolaCustomers({ sinceISO } = {}) {
+  let accts = [];
+  try { accts = xolaAccounts(); } catch { accts = []; }
+  if (!accts.length) return [];
+  const out = [];
+  for (const a of accts) {
+    let cursor = null, pages = 0;
+    try {
+      do {
+        const query = { seller: a.seller, limit: "100", status: "committed" };
+        if (sinceISO) query["createdAt[gte]"] = sinceISO;
+        if (cursor) query.cursor = cursor;
+        const body = await xFor(a, "/api/purchases", { query });
+        const batch = Array.isArray(body) ? body : (body && body.data) || [];
+        for (const p of batch) {
+          if (p && p.status && p.status !== "committed") continue;
+          const email = ((p && (p.customerEmail || (p.organizer && p.organizer.email))) || "").trim();
+          if (!email) continue;
+          const nm = ((p && p.customerName) || "").trim();
+          const sp = nm.indexOf(" ");
+          out.push({ email, fname: sp > 0 ? nm.slice(0, sp) : nm, lname: sp > 0 ? nm.slice(sp + 1) : "", source: "xola:" + (a.label || a.key) });
+        }
+        const next = body && body.paging && body.paging.next;
+        cursor = next ? extractCursor(next) : null;
+        pages++;
+        if (!batch.length) break;
+      } while (cursor && pages < 60);
+    } catch { /* skip this seller, keep the rest */ }
+  }
+  return out;
+}
+
 export function dedupe(list) {
   const seen = new Set(); const out = [];
   for (const c of list) { const k = c.email.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(c); }
@@ -161,12 +202,15 @@ export function dedupe(list) {
 // Full run: gather from all sources, dedupe, and (unless dry) upsert into Mailchimp.
 export async function runSync({ full = false, dry = false, sinceDays = 8 } = {}) {
   const sinceISO = full ? null : new Date(Date.now() - sinceDays * 86400000).toISOString();
-  let square = [], sqErr = null, shop = [], shopErr = null;
+  let square = [], sqErr = null, xola = [], xErr = null, shop = [], shopErr = null;
   try { square = await squareCustomers({ sinceISO }); } catch (e) { sqErr = safe(e && (e.detail || e.message)); }
+  try { xola = await xolaCustomers({ sinceISO }); } catch (e) { xErr = safe(e && (e.detail || e.message)); }
   try { shop = await shopifyCustomers({ sinceISO }); } catch (e) { shopErr = safe(e && (e.detail || e.message)); }
-  const merged = dedupe([...square, ...shop]);
-  const base = { full, dry, sinceISO, squareCount: square.length, shopifyCount: shop.length, unique: merged.length,
-    squareError: sqErr || undefined, shopifyError: shopErr || undefined };
+  // Order sets source priority when the same email appears in more than one system:
+  // in-store (Square) > tour (Xola) > online (Shopify).
+  const merged = dedupe([...square, ...xola, ...shop]);
+  const base = { full, dry, sinceISO, squareCount: square.length, xolaCount: xola.length, shopifyCount: shop.length, unique: merged.length,
+    squareError: sqErr || undefined, xolaError: xErr || undefined, shopifyError: shopErr || undefined };
   if (dry) return base;
   const up = await mcUpsert(merged);
   return { ...base, submitted: up.submitted, batches: up.batches };
