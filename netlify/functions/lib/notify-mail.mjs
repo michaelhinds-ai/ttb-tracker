@@ -60,13 +60,55 @@ function escapeHtml(s) {
 }
 
 /**
+ * HTML -> plain text for the text/plain alternative.
+ *
+ * Naive tag-stripping is not enough: NOTIFY_COMPLIANCE_HTML is authored as
+ * HTML, so it contains entities and <br> line breaks. Stripping tags alone
+ * leaves readers with a literal "&ndash;" and runs the postal address onto the
+ * end of the previous sentence.
+ */
+function htmlToText(s) {
+  return String(s == null ? '' : s)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&ndash;/g, '–')
+    .replace(/&mdash;/g, '—')
+    .replace(/&rsquo;/g, '’')
+    .replace(/&lsquo;/g, '‘')
+    .replace(/&ldquo;/g, '“')
+    .replace(/&rdquo;/g, '”')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')   // last, so it cannot double-decode the others
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+/**
  * Restock email. Table-based and inline-styled because email clients are what
  * they are — Gmail strips <style> blocks, Outlook ignores flexbox.
  */
-export function buildRestockEmail({ productTitle, productUrl, firstName }) {
+export function buildRestockEmail({ productTitle, productUrl, productImage, firstName }) {
   const title = escapeHtml(productTitle);
   const url = escapeHtml(productUrl);
   const hi = firstName ? `${escapeHtml(firstName)}, it` : 'It';
+
+  // Image block is optional on purpose. Most clients block images until the
+  // reader allows them, and some signups predate image capture, so the email
+  // has to read correctly with nothing here at all. The alt text carries the
+  // product name so a blocked image still says what came back.
+  const imageBlock = productImage
+    ? `      <tr><td style="padding:22px 32px 0;text-align:center;">
+        <a href="${url}" style="text-decoration:none;">
+          <img src="${escapeHtml(productImage)}" alt="${title}" width="240"
+               style="width:240px;max-width:100%;height:auto;display:block;margin:0 auto;border:0;border-radius:4px;">
+        </a>
+      </td></tr>\n`
+    : '';
 
   const html = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -90,7 +132,7 @@ export function buildRestockEmail({ productTitle, productUrl, firstName }) {
         </p>
       </td></tr>
 
-      <tr><td style="padding:20px 32px 0;">
+${imageBlock}      <tr><td style="padding:20px 32px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:rgba(212,165,58,.06);border:1px solid rgba(212,165,58,.22);border-radius:4px;">
           <tr><td style="padding:18px 20px;text-align:center;font-family:Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;color:#F4EFE6;line-height:1.4;">
             ${title}
@@ -131,7 +173,7 @@ export function buildRestockEmail({ productTitle, productUrl, firstName }) {
     `Single barrels go quickly and we can't hold one for you.\n\n` +
     `You're getting this because you asked to be told when this bottle came back ` +
     `in stock. It's a one-time notice, not a subscription.\n\n` +
-    `${COMPLIANCE_HTML.replace(/<[^>]+>/g, '')}\n` +
+    `${htmlToText(COMPLIANCE_HTML)}\n\n` +
     `Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.\n`;
 
   return { html, text };

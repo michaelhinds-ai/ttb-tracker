@@ -286,6 +286,54 @@ export function validEmail(value) {
 }
 
 /**
+ * Normalise and vet a product image URL before it can reach an email.
+ *
+ * SECURITY: /api/notify/subscribe is a public, unauthenticated endpoint, and
+ * whatever it stores gets embedded in mail sent from your own domain. Without a
+ * whitelist, anyone could POST an arbitrary URL and have your sending
+ * reputation serve their image — a tracking pixel, or worse. Only Shopify's CDN
+ * and your own storefront are accepted.
+ *
+ * Also fixes the protocol: Shopify's image_url filter emits a
+ * protocol-relative "//cdn.shopify.com/..." URL, which resolves fine in a
+ * browser and not at all in an email client.
+ *
+ * Returns a clean https URL, or null.
+ */
+export function safeProductImage(value) {
+  if (typeof value !== 'string') return null;
+
+  let raw = value.trim();
+  if (!raw) return null;
+  if (raw.startsWith('//')) raw = 'https:' + raw;
+
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== 'https:') return null;
+
+  const allowed = [
+    'cdn.shopify.com',
+    'cdn.shopifycdn.net',
+    ...(process.env.NOTIFY_IMAGE_HOSTS || '')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean)
+  ];
+
+  const host = url.hostname.toLowerCase();
+  const okHost = allowed.some((a) => host === a || host.endsWith('.' + a));
+  if (!okHost) return null;
+
+  if (url.pathname.length > 512) return null;
+  return url.toString();
+}
+
+/**
  * Age from an ISO yyyy-mm-dd string, or null if unparseable.
  * The gate validates client-side; this is the server-side check, because
  * anything a browser sends can be forged.
