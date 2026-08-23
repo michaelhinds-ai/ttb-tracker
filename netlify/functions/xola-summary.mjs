@@ -1,6 +1,7 @@
 // Xola experience revenue for the Retail Sales tab, recognized on the day the
-// experience was REDEEMED (items.realizedAt) — not the day it was booked.
-// So a tour paid last week but run today shows as today's revenue.
+// experience actually RAN (the booking's arrival date) — not the day it was
+// booked, and not the settlement/"realized" date. So a tour paid last week but
+// run today shows as today's revenue. Pulled from purchase items by arrivalDate.
 //
 // Every configured Xola seller is pulled independently and gets its own figures;
 // those roll up into one combined total. A seller that errors or times out comes
@@ -15,7 +16,7 @@
 //                   collected, grossSales, avgTicket, experiences[], truncated } ],
 //     ...combined totals at the top level (back-compatible with the old shape) }
 import { env as sqEnv, dayRange, todayInTz, json } from "./lib/square.mjs";
-import { accounts, eachAccount, fetchTransactions, hasAnyTransactions, sellerName, num, r2 } from "./lib/xola.mjs";
+import { accounts, eachAccount, fetchPurchaseItemsRange, hasAnyTransactions, sellerName, num, r2 } from "./lib/xola.mjs";
 
 const TOP_N_ACCOUNT = 10;
 const TOP_N_ROLLUP = 15;
@@ -46,17 +47,16 @@ export default async (req) => {
   const rows = await eachAccount(accts, async (a) => {
     const { startISO, endISO } = windowFor(a);
     const [pull, name] = await Promise.all([
-      fetchTransactions(a, {
-        type: "purchase", dateField: "items_realizedAt", startISO, endISO,
-        report: true, probe: !!p.probe,
-      }),
+      // Recognize revenue on the day the experience RAN (arrival date), not the
+      // day booked and not the settlement/"realized" date.
+      fetchPurchaseItemsRange(a, { startDate: from, endDate: to, endCapISO: (typeof p.endCapISO === "string" && p.endCapISO) ? p.endCapISO : null }),
       a.label ? Promise.resolve(null) : sellerName(a),
     ]);
-    const t = tally(pull.rows, startISO, endISO, !!p.probe);
+    const t = tally(pull.items, !!p.probe);
     // An empty window is ambiguous — quiet day, or a key blind to this seller.
     // Only worth the extra question when nothing came back, and only a definite
     // `false` counts: an errored probe leaves this unflagged rather than crying wolf.
-    const unreadable = pull.rows.length === 0 && (await hasAnyTransactions(a)) === false;
+    const unreadable = pull.items.length === 0 && (await hasAnyTransactions(a)) === false;
     return { ...t, truncated: pull.truncated, unreadable, name, startISO, endISO };
   });
 
@@ -110,24 +110,19 @@ export default async (req) => {
   });
 };
 
-// Sum one seller's transactions over its window.
-function tally(txns, startISO, endISO, probe) {
+// Sum one seller's purchase items (already filtered to the arrival-date window).
+// Each item is one experience line: amount includes tax, so net = amount − tax;
+// tax is the item's own "tax" line item(s); guests = quantity.
+function tally(items, probe) {
   let orderCount = 0, guests = 0, net = 0, tax = 0, collected = 0;
   const exp = {}; const sample = [];
-  for (const t of txns) {
-    const pMap = {}; for (const pi of ((t.purchase && t.purchase.items) || [])) pMap[pi.id] = pi;
-    let counted = false;
-    for (const it of (t.items || [])) {
-      const rz = it.realizedAt; if (!rz || !(rz >= startISO && rz < endISO)) continue;
-      const gr = num(it.gross), tf = num(it.taxFee); const pretax = gr - tf;
-      const q = num((pMap[it.orderItem && it.orderItem.id] || {}).quantity) || 0;
-      net += pretax; tax += tf; collected += gr; guests += q; counted = true;
-      const nm = (pMap[it.orderItem && it.orderItem.id] || {}).name || it.name || "Experience";
-      const e = exp[nm] || (exp[nm] = { name: nm, guests: 0, net: 0 });
-      e.guests += q; e.net += pretax;
-      if (probe && sample.length < 6) sample.push({ name: nm, realizedAt: rz, gross: gr, taxFee: tf, pretax: r2(pretax), quantity: q });
-    }
-    if (counted) orderCount++;
+  for (const it of items) {
+    const tf = itemTax(it), amt = num(it.amount), pretax = amt - tf, q = num(it.quantity);
+    net += pretax; tax += tf; collected += amt; guests += q; orderCount++;
+    const nm = it.name || "Experience";
+    const e = exp[nm] || (exp[nm] = { name: nm, guests: 0, net: 0 });
+    e.guests += q; e.net += pretax;
+    if (probe && sample.length < 6) sample.push({ name: nm, arrivalDate: it.arrivalDate, amount: amt, tax: tf, pretax: r2(pretax), quantity: q });
   }
   return {
     orderCount, guests: r2(guests), netSales: r2(net), tax: r2(tax), collected: r2(collected),
@@ -136,6 +131,7 @@ function tally(txns, startISO, endISO, probe) {
     sample: probe ? sample : undefined,
   };
 }
+function itemTax(it) { let s = 0; for (const li of (it.lineItems || [])) if (li && li.type === "tax") s += num(li.amount); return s; }
 
 // Combine the live sellers into one set of totals, merging the experience lists
 // by name so the same tour sold by two sellers shows as one line.
