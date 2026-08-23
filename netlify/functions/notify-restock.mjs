@@ -31,7 +31,14 @@
  */
 
 import crypto from 'node:crypto';
-import { takeInterest, peekInterest, getMember, SUPPRESSED_STATUSES } from './lib/notify-core.mjs';
+import {
+  takeInterest,
+  peekInterest,
+  getMember,
+  recordProduct,
+  safeProductImage,
+  SUPPRESSED_STATUSES
+} from './lib/notify-core.mjs';
 import { buildRestockEmail, sendMandrill, STORE } from './lib/notify-mail.mjs';
 
 /** Timing-safe HMAC check. An unverified webhook endpoint is an open relay. */
@@ -108,6 +115,32 @@ export default async (req) => {
   }
 
   const { shape, variants } = extractVariants(payload, topic);
+
+  /* --- Feed the new-bottles index -----------------------------------------
+   * The weekly drops email is built from what these webhooks deliver rather
+   * than by polling the Shopify Admin API, which would need a read_products
+   * scope the app may not have. recordProduct ignores anything published
+   * outside its window, so this cannot resurface the back catalogue.
+   */
+  if (shape === 'product' && payload.id) {
+    try {
+      await recordProduct({
+        id: payload.id,
+        title: payload.title,
+        handle: payload.handle,
+        image: safeProductImage(payload.image?.src || payload.images?.[0]?.src || null),
+        inStock: variants.some((v) => v.inStock === true),
+        tags: String(payload.tags || '')
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        publishedAt: payload.published_at
+      });
+    } catch (err) {
+      // Never let indexing break a restock send.
+      console.error(`[restock] product index write failed: ${err?.message || err}`);
+    }
+  }
 
   if (shape === 'unknown' || !variants.length) {
     console.warn(`[restock] topic=${topic} — unrecognised payload shape, nothing to do`);
