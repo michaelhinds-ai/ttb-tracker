@@ -1,25 +1,37 @@
 /**
  * POST /api/notify/restock   — Shopify webhook receiver
  *
- * Subscribe this to the `variants/in_stock` topic. That topic is the right one:
- * it fires on the zero-crossing rather than on every quantity change, and its
- * payload is a full variant object. The obvious alternative,
- * `inventory_levels/update`, fires on every decrement, is per-location, and
- * carries no product id or previous value.
+ * ACCEPTS TWO TOPICS, because Shopify's admin UI exposes only a subset of the
+ * documented webhook list:
  *
- * Register it once (Notifications -> Webhooks in admin, or the Admin API) at:
- *   https://lrwc-ttb-tracker.netlify.app/api/notify/restock
- * and put the signing secret in SHOPIFY_WEBHOOK_SECRET.
+ *   variants/in_stock   Ideal. Fires on the zero-crossing only, payload is a
+ *                       single ProductVariant. Often NOT available in the admin
+ *                       dropdown — it usually has to be created via the Admin
+ *                       API, and an API-created webhook is signed with the
+ *                       creating app's client secret rather than the store
+ *                       signing key.
+ *
+ *   products/update     Available in the admin dropdown. Noisier — fires on any
+ *                       product edit — but that costs nothing here: we only act
+ *                       when a variant is BOTH in stock AND has people waiting,
+ *                       and the waiting list is cleared on send, so repeat
+ *                       fires cannot double-email.
+ *
+ * The payload shape is detected rather than assumed, and logged, so the first
+ * test tells you plainly which topic arrived and whether it carried usable
+ * inventory data.
+ *
+ * SIGNING SECRET: set SHOPIFY_WEBHOOK_SECRET to whichever applies —
+ *   admin-created  -> the store signing key shown on the Webhooks page
+ *   API-created    -> the creating app's client secret (SHOPIFY_CLIENT_SECRET)
  *
  * DELIVERY: Mailchimp Transactional (Mandrill), not a Customer Journey.
  * Mailchimp does not allow non-subscribed contacts into marketing automations,
- * and most people who ask for a restock alert are deliberately non-subscribed —
- * asking about one bottle is not consent to a newsletter. A journey would have
- * delivered nothing to them, silently. See lib/notify-mail.mjs.
+ * and most restock signups are deliberately non-subscribed. See lib/notify-mail.mjs.
  */
 
 import crypto from 'node:crypto';
-import { takeInterest, getMember, SUPPRESSED_STATUSES } from './lib/notify-core.mjs';
+import { takeInterest, peekInterest, getMember, SUPPRESSED_STATUSES } from './lib/notify-core.mjs';
 import { buildRestockEmail, sendMandrill, STORE } from './lib/notify-mail.mjs';
 
 /** Timing-safe HMAC check. An unverified webhook endpoint is an open relay. */
@@ -33,96 +45,152 @@ function verify(rawBody, header) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/**
+ * Normalise either payload shape into a list of candidate variants.
+ *
+ * `inStock` is deliberately conservative. For variants/in_stock the topic
+ * itself is the signal, so it is true by definition. For products/update we
+ * require a positive inventory_quantity — and if that field is missing
+ * entirely we return null rather than guessing, so the caller can say so out
+ * loud instead of failing silently.
+ */
+function extractVariants(payload, topicHint) {
+  // products/update — a Product with a variants array
+  if (payload && Array.isArray(payload.variants)) {
+    return {
+      shape: 'product',
+      variants: payload.variants.map((v) => ({
+        id: v.id,
+        inStock:
+          typeof v.inventory_quantity === 'number' ? v.inventory_quantity > 0 : null,
+        qty: v.inventory_quantity
+      }))
+    };
+  }
+
+  // variants/in_stock — a single ProductVariant
+  if (payload && payload.id && (payload.product_id !== undefined || payload.sku !== undefined)) {
+    return {
+      shape: 'variant',
+      variants: [
+        {
+          id: payload.id,
+          // The topic is the signal. Trust it over the quantity field, which
+          // can lag on the zero-crossing.
+          inStock: topicHint === 'variants/out_of_stock' ? false : true,
+          qty: payload.inventory_quantity
+        }
+      ]
+    };
+  }
+
+  return { shape: 'unknown', variants: [] };
+}
+
 export default async (req) => {
   if (req.method !== 'POST') {
     return new Response('method not allowed', { status: 405 });
   }
 
   const raw = await req.text();
+  const topic = req.headers.get('x-shopify-topic') || 'unknown';
 
   if (!verify(raw, req.headers.get('x-shopify-hmac-sha256'))) {
-    console.warn('[restock] rejected webhook with bad or missing HMAC');
+    console.warn(`[restock] rejected webhook (topic=${topic}) with bad or missing HMAC`);
     return new Response('unauthorized', { status: 401 });
   }
 
-  let variant;
+  let payload;
   try {
-    variant = JSON.parse(raw);
+    payload = JSON.parse(raw);
   } catch {
     return new Response('bad json', { status: 400 });
   }
 
-  const variantId = variant?.id;
-  if (!variantId) return new Response('no variant id', { status: 400 });
+  const { shape, variants } = extractVariants(payload, topic);
 
-  // Claim the waiting list up front. takeInterest deletes as it reads, so a
-  // Shopify redelivery (they retry on non-2xx) cannot email anyone twice.
-  const people = await takeInterest(variantId);
-
-  if (!people.length) {
-    console.log(`[restock] variant ${variantId} back in stock, nobody waiting`);
+  if (shape === 'unknown' || !variants.length) {
+    console.warn(`[restock] topic=${topic} — unrecognised payload shape, nothing to do`);
     return new Response('ok', { status: 200 });
   }
 
-  const first = people[0];
-  const productTitle = first.productTitle || variant.title || 'a bottle you wanted';
-  const productUrl = first.productHandle ? `${STORE}/products/${first.productHandle}` : STORE;
-  const subject = `Back in stock: ${productTitle}`;
+  if (shape === 'product' && variants.every((v) => v.inStock === null)) {
+    console.error(
+      `[restock] topic=${topic} carried NO inventory_quantity on any variant. ` +
+        'This topic cannot drive restock alerts on its own — switch to ' +
+        'variants/in_stock (Admin API) or add an inventory lookup.'
+    );
+    return new Response('ok', { status: 200 });
+  }
 
-  // Earliest record with an image wins. Signups made before image capture
-  // existed simply have none, and the email drops the block rather than
-  // rendering a broken one.
-  const productImage = people.find((p) => p.productImage)?.productImage || null;
+  let totalSent = 0;
+  let totalSuppressed = 0;
+  let totalFailed = 0;
+  let touched = 0;
 
-  let sent = 0;
-  let suppressed = 0;
-  const failed = [];
+  for (const v of variants) {
+    if (v.inStock !== true) continue;
 
-  // Sequential. Volumes here are dozens, not thousands, and serialising keeps
-  // the Mandrill rate limit and the logs simple to read.
-  for (const person of people) {
-    try {
-      // Mandrill ignores Mailchimp's unsubscribe state, so check it ourselves.
-      // Skipping this would mean emailing people who explicitly opted out.
-      const member = await getMember(person.email);
-      if (member && SUPPRESSED_STATUSES.has(member.status)) {
-        suppressed += 1;
-        console.log(`[restock] suppressed ${person.email} (status=${member.status})`);
-        continue;
+    // Cheap check first: most product edits concern bottles nobody is waiting on.
+    const waiting = await peekInterest(v.id);
+    if (!waiting.length) continue;
+
+    touched += 1;
+
+    // Claim and clear, so a Shopify redelivery cannot email anyone twice.
+    const people = await takeInterest(v.id);
+    if (!people.length) continue;
+
+    const first = people[0];
+    const productTitle =
+      first.productTitle || payload.title || payload.name || 'a bottle you wanted';
+    const productUrl = first.productHandle
+      ? `${STORE}/products/${first.productHandle}`
+      : payload.handle
+        ? `${STORE}/products/${payload.handle}`
+        : STORE;
+    const productImage = people.find((p) => p.productImage)?.productImage || null;
+    const subject = `Back in stock: ${productTitle}`;
+
+    // Sequential: volumes are dozens, and it keeps the log readable.
+    for (const person of people) {
+      try {
+        // Mandrill ignores Mailchimp's unsubscribe state, so check it ourselves.
+        // Without this, opted-out people still get mail. Do not remove.
+        const member = await getMember(person.email);
+        if (member && SUPPRESSED_STATUSES.has(member.status)) {
+          totalSuppressed += 1;
+          console.log(`[restock] suppressed ${person.email} (status=${member.status})`);
+          continue;
+        }
+
+        const { html, text } = buildRestockEmail({
+          productTitle,
+          productUrl,
+          productImage,
+          firstName: member?.firstName || ''
+        });
+
+        await sendMandrill({ to: person.email, subject, html, text, tags: ['restock-alert'] });
+        totalSent += 1;
+      } catch (err) {
+        totalFailed += 1;
+        console.error(`[restock] failed for ${person.email}: ${err?.message || err}`);
       }
-
-      const { html, text } = buildRestockEmail({
-        productTitle,
-        productUrl,
-        productImage,
-        firstName: member?.firstName || ''
-      });
-
-      await sendMandrill({
-        to: person.email,
-        subject,
-        html,
-        text,
-        tags: ['restock-alert']
-      });
-
-      sent += 1;
-    } catch (err) {
-      failed.push({ email: person.email, error: err?.message || String(err) });
-      console.error(`[restock] failed for ${person.email}: ${err?.message || err}`);
     }
+
+    console.log(`[restock] variant ${v.id} (${productTitle}) — ${people.length} waiting`);
   }
 
   console.log(
-    `[restock] variant ${variantId} (${productTitle}) — sent ${sent}/${people.length}` +
-      (suppressed ? `, ${suppressed} suppressed` : '') +
-      (failed.length ? `, ${failed.length} failed` : '')
+    `[restock] topic=${topic} shape=${shape} variants=${variants.length} ` +
+      `withWaitlist=${touched} sent=${totalSent} suppressed=${totalSuppressed} failed=${totalFailed}`
   );
 
-  // Always 200. A non-2xx makes Shopify redeliver, and the list is already
+  // Always 200. A non-2xx makes Shopify redeliver, and the lists are already
   // cleared, so a retry would notify nobody while looking like a failure.
   return new Response(
-    JSON.stringify({ ok: true, sent, suppressed, failed: failed.length }),
+    JSON.stringify({ ok: true, shape, sent: totalSent, suppressed: totalSuppressed, failed: totalFailed }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
   );
 };
