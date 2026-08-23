@@ -8,8 +8,13 @@
 //   MAILCHIMP_LIST_ID     the audience id to add contacts to
 //   MAILCHIMP_STATUS      status for NEW contacts (default "subscribed"; "transactional" to avoid marketing)
 //   SHOPIFY_STORE         your-store.myshopify.com   (optional — omit to skip Shopify)
-//   SHOPIFY_ADMIN_TOKEN   Admin API access token with read_customers (+ protected customer data access)
-//   SHOPIFY_API_VERSION   default 2025-01
+//   Shopify auth — use EITHER of these:
+//     (A) SHOPIFY_ADMIN_TOKEN   a static Admin API token (older custom apps), OR
+//     (B) SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET   from a Dev Dashboard app in the
+//         SAME org as the store. The sync exchanges these for a 24h token on each run
+//         (client-credentials grant) — no static token / OAuth redirect needed.
+//     The app needs read_customers + protected customer data access (approved at install).
+//   SHOPIFY_API_VERSION   default 2026-07
 //   (Square uses the same SQUARE_ACCESS_TOKEN / _2 the rest of the app already uses.)
 import { accounts as squareAccounts, sqFor } from "./square.mjs";
 import { createHash } from "node:crypto";
@@ -26,8 +31,34 @@ export function mcConfig() {
 export function shopifyConfig() {
   const store = g("SHOPIFY_STORE").replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const token = g("SHOPIFY_ADMIN_TOKEN");
-  const ver = g("SHOPIFY_API_VERSION") || "2025-01";
-  return { store, token, ver, ok: !!(store && token) };
+  const clientId = g("SHOPIFY_CLIENT_ID");
+  const clientSecret = g("SHOPIFY_CLIENT_SECRET");
+  const ver = g("SHOPIFY_API_VERSION") || "2026-07";
+  return { store, token, clientId, clientSecret, ver, ok: !!(store && (token || (clientId && clientSecret))) };
+}
+
+// Resolve a usable Shopify Admin API token. A static SHOPIFY_ADMIN_TOKEN wins if set;
+// otherwise use the client-credentials grant (Client ID + Secret, app + store same org).
+// The granted token is valid ~24h; we cache it in-process and refresh before expiry.
+let _shopTok = { v: "", exp: 0 };
+async function shopifyToken() {
+  const cfg = shopifyConfig();
+  if (cfg.token) return cfg.token;
+  if (!(cfg.store && cfg.clientId && cfg.clientSecret)) return "";
+  const now = Date.now();
+  if (_shopTok.v && now < _shopTok.exp) return _shopTok.v;
+  const r = await fetch(`https://${cfg.store}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ client_id: cfg.clientId, client_secret: cfg.clientSecret, grant_type: "client_credentials" }),
+  });
+  const text = await r.text(); let b = null; try { b = text ? JSON.parse(text) : null; } catch { /* keep */ }
+  if (!r.ok || !(b && b.access_token)) {
+    const e = new Error("shopify_auth_" + r.status); e.status = r.status;
+    e.detail = safe((b && (b.error_description || b.error)) || text); throw e;
+  }
+  _shopTok = { v: b.access_token, exp: now + Math.max(0, ((Number(b.expires_in) || 86399) - 120) * 1000) };
+  return b.access_token;
 }
 
 async function mcFetch(path, { method = "GET", body } = {}) {
@@ -83,27 +114,41 @@ export async function squareCustomers({ sinceISO } = {}) {
   return out;
 }
 
-// Shopify customers (REST Admin API), paginated via the Link header.
+// Shopify customers via the GraphQL Admin API, cursor-paginated. (REST customer
+// endpoints are being retired; GraphQL is the durable path.) Everyone WITH an email
+// is included except those who unsubscribed or whose data was redacted.
 export async function shopifyCustomers({ sinceISO } = {}) {
   const cfg = shopifyConfig(); if (!cfg.ok) return [];
-  const out = [];
-  let url = `https://${cfg.store}/admin/api/${cfg.ver}/customers.json?limit=250&fields=id,email,first_name,last_name,email_marketing_consent,updated_at`
-    + (sinceISO ? `&updated_at_min=${encodeURIComponent(sinceISO)}` : "");
-  let pages = 0;
-  while (url && pages < 200) {
-    const r = await fetch(url, { headers: { "X-Shopify-Access-Token": cfg.token, "Accept": "application/json" } });
-    const text = await r.text(); let b = null; try { b = text ? JSON.parse(text) : null; } catch { /* keep */ }
-    if (!r.ok) { const e = new Error("shopify_" + r.status); e.status = r.status; e.detail = safe(b && b.errors) || text; throw e; }
-    for (const c of ((b && b.customers) || [])) {
-      const email = (c.email || "").trim(); if (!email) continue;
-      const st = c.email_marketing_consent && c.email_marketing_consent.state;
-      if (st === "unsubscribed" || st === "redacted") continue;
-      out.push({ email, fname: c.first_name || "", lname: c.last_name || "", source: "shopify" });
+  const token = await shopifyToken(); if (!token) return [];
+  const endpoint = `https://${cfg.store}/admin/api/${cfg.ver}/graphql.json`;
+  const search = sinceISO ? `updated_at:>='${sinceISO}'` : "";
+  const query = `query($cursor: String) {
+    customers(first: 250, after: $cursor${search ? `, query: ${JSON.stringify(search)}` : ""}) {
+      edges { node { email firstName lastName emailMarketingConsent { marketingState } } }
+      pageInfo { hasNextPage endCursor }
     }
-    const link = r.headers.get("link") || r.headers.get("Link") || "";
-    const m = /<([^>]+)>;\s*rel="next"/.exec(link); url = m ? m[1] : null;
+  }`;
+  const out = []; let cursor = null, pages = 0;
+  do {
+    const r = await fetch(endpoint, {
+      method: "POST",
+      headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ query, variables: { cursor } }),
+    });
+    const text = await r.text(); let b = null; try { b = text ? JSON.parse(text) : null; } catch { /* keep */ }
+    if (!r.ok) { const e = new Error("shopify_" + r.status); e.status = r.status; e.detail = safe(text); throw e; }
+    if (b && b.errors) { const e = new Error("shopify_gql"); e.status = 400; e.detail = safe(b.errors); throw e; }
+    const conn = (b && b.data && b.data.customers) || {};
+    for (const edge of (conn.edges || [])) {
+      const c = (edge && edge.node) || {};
+      const email = (c.email || "").trim(); if (!email) continue;
+      const st = c.emailMarketingConsent && c.emailMarketingConsent.marketingState;
+      if (st === "UNSUBSCRIBED" || st === "REDACTED") continue;
+      out.push({ email, fname: c.firstName || "", lname: c.lastName || "", source: "shopify" });
+    }
+    cursor = (conn.pageInfo && conn.pageInfo.hasNextPage) ? conn.pageInfo.endCursor : null;
     pages++;
-  }
+  } while (cursor && pages < 200);
   return out;
 }
 
