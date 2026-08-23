@@ -345,12 +345,16 @@
       <p class="hint">Net sales by location across your Square accounts, for any period. Pick a range (or a preset) and run — you'll get a chart and a sortable table.</p>
       <div id="srStatus" class="note" style="margin-bottom:12px">Checking Square connections…</div>
       <div class="toolbar">
-        <div><label class="fld">From</label><input type="date" id="sr_from"></div>
-        <div><label class="fld">To</label><input type="date" id="sr_to"></div>
-        <button class="btn ghost sm" id="sr_pThis">This month</button>
-        <button class="btn ghost sm" id="sr_pLast">Last month</button>
-        <button class="btn ghost sm" id="sr_pQtr">This quarter</button>
-        <button class="btn ghost sm" id="sr_pYtd">YTD</button>
+        <div><label class="fld">Report</label><select id="sr_type"><option value="location">By location</option><option value="monthly">Monthly summary (year)</option></select></div>
+        <div id="sr_locCtl" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="fld">From</label><input type="date" id="sr_from"></div>
+          <div><label class="fld">To</label><input type="date" id="sr_to"></div>
+          <button class="btn ghost sm" id="sr_pThis">This month</button>
+          <button class="btn ghost sm" id="sr_pLast">Last month</button>
+          <button class="btn ghost sm" id="sr_pQtr">This quarter</button>
+          <button class="btn ghost sm" id="sr_pYtd">YTD</button>
+        </div>
+        <div id="sr_monCtl" style="display:none;align-items:flex-end"><div><label class="fld">Year</label><select id="sr_year"></select></div></div>
         <button class="btn ky sm cap-reports" id="sr_run">Run report</button>
         <button class="btn ghost sm noprint" id="sr_print" style="display:none">Print / Save PDF</button>
       </div>
@@ -1628,9 +1632,22 @@ async function rtlStatus(){
 /* ===== Sales by Location report ===== */
 let srLast=null;
 const SR_COLORS=['var(--copper)','var(--blue)','var(--green)','var(--ky)','var(--amber)','var(--red)'];
+let srInit=false;
 function renderSalesReport(){
   if(!$('#sr_from').value||!$('#sr_to').value) srPreset('this');
+  if(!srInit){
+    srInit=true;
+    const yr=new Date().getFullYear(); const sel=$('#sr_year');
+    if(sel&&!sel.options.length){ for(let y=yr;y>=yr-5;y--){ const o=document.createElement('option'); o.value=String(y); o.textContent=String(y); sel.appendChild(o);} sel.value=String(yr); }
+    $('#sr_type').onchange=srTypeToggle;
+  }
+  srTypeToggle();
   srStatus();
+}
+function srTypeToggle(){
+  const t=$('#sr_type').value;
+  $('#sr_locCtl').style.display=(t==='monthly')?'none':'flex';
+  $('#sr_monCtl').style.display=(t==='monthly')?'flex':'none';
 }
 async function srStatus(){
   const el=$('#srStatus'); if(!el) return;
@@ -1655,6 +1672,7 @@ function srPreset(kind){
 }
 async function srRun(){
   if(!requireCap('reports'))return;
+  if($('#sr_type').value==='monthly'){ return srRunMonthly(); }
   let from=$('#sr_from').value, to=$('#sr_to').value;
   if(!from&&!to){ alert('Pick a date range.'); return; }
   if(!from) from=to; if(!to) to=from; if(from>to){ const t=from; from=to; to=t; $('#sr_from').value=from; $('#sr_to').value=to; }
@@ -1710,6 +1728,44 @@ function renderSalesReportOut(d){
   $('#sr_out').innerHTML=reportHeader('Sales by Location','Square retail & gift shop — net sales (after discounts, before tax & tips)',period)+kpis+
     `<h4>Net sales by location</h4>${legend}${chart}<h4 style="margin-top:20px">Detail</h4>${table}`+
     `<div class="disclaimer">Completed Square orders for the selected period, across all connected accounts and locations. Net sales exclude tax and tips; empty back-office locations are hidden. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
+}
+async function srRunMonthly(){
+  if(!requireCap('reports'))return;
+  const year=+$('#sr_year').value||new Date().getFullYear();
+  const now=new Date(); const lastMonth=(year===now.getFullYear())?now.getMonth()+1:12;
+  $('#sr_out').innerHTML='<div class="empty">Pulling Square sales by month for '+year+'… (this can take a few seconds)</div>'; $('#sr_print').style.display='none';
+  try{
+    const months=[]; for(let m=1;m<=lastMonth;m++){ const from=`${year}-${String(m).padStart(2,'0')}-01`; const to=`${year}-${String(m).padStart(2,'0')}-${String(new Date(year,m,0).getDate()).padStart(2,'0')}`; months.push({m,from,to}); }
+    const results=await Promise.all(months.map(mm=>fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:mm.from,endDate:mm.to})}).then(r=>r.json()).catch(()=>null)));
+    const rows=months.map((mm,i)=>{ const d=results[i]; const c=(d&&!d.error&&d.combined)||{};
+      return { label:new Date(year,mm.m-1,1).toLocaleDateString('en-US',{month:'short'}), m:mm.m,
+        net:+c.netSales||0, orders:+c.orderCount||0, avg:+c.avgTicket||0, tax:+c.tax||0, tips:+c.tips||0, units:+c.units||0, err:!(d&&!d.error) }; });
+    srLast={monthly:true,year,rows}; renderMonthlyOut(year,rows); $('#sr_print').style.display='inline-flex';
+  }catch(e){ $('#sr_out').innerHTML='<div class="note">Could not reach the Square summary endpoint.</div>'; }
+}
+function renderMonthlyOut(year,rows){
+  const totNet=rows.reduce((s,r)=>s+r.net,0), totOrders=rows.reduce((s,r)=>s+r.orders,0), totTax=rows.reduce((s,r)=>s+r.tax,0), totTips=rows.reduce((s,r)=>s+r.tips,0), totUnits=rows.reduce((s,r)=>s+r.units,0);
+  const active=rows.filter(r=>r.net>0||r.orders>0);
+  const best=rows.slice().sort((a,b)=>b.net-a.net)[0]||{label:'—',net:0};
+  const kpis=`<div class="kpis" style="margin:14px 0">`+[
+    kpi('copper','Net Sales',money(totNet),`${totOrders} transaction${totOrders===1?'':'s'} · ${year}`),
+    kpi('blue','Avg Ticket',money(totOrders?totNet/totOrders:0),'net sales per transaction'),
+    kpi('ky','Sales Tax',money(totTax),'collected'),
+    kpi('green','Best Month',money(best.net),best.label),
+    kpi('barrel','Avg / Month',money(active.length?totNet/active.length:0),`${active.length} active month${active.length===1?'':'s'}`),
+  ].join('')+`</div>`;
+  const max=Math.max(...rows.map(r=>r.net),1);
+  const chart=`<div style="margin:6px 0 4px">`+rows.map(r=>{ const pct=Math.max(r.net>0?2:0,r.net/max*100);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+      <div style="flex:0 0 60px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${r.label}</div>
+      <div style="flex:1;background:#efe7d8;border-radius:5px;height:20px"><div style="width:${pct}%;background:var(--copper);height:100%;border-radius:5px"></div></div>
+      <div style="flex:0 0 96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">${money(r.net)}</div></div>`; }).join('')+`</div>`;
+  const table=`<div class="tablewrap"><table><thead><tr><th>Month</th><th class="num">Transactions</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Units</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${r.label}${r.err?' <span class="pill" style="background:#f7e7e4;color:#b23a2e">no data</span>':''}</td><td class="num">${r.orders}</td><td class="num">${money(r.net)}</td><td class="num">${money(r.avg)}</td><td class="num">${money(r.tax)}</td><td class="num">${money(r.tips)}</td><td class="num">${numf(r.units,0)}</td></tr>`).join('')+
+    `<tr class="total" style="font-weight:700"><td>Total ${year}</td><td class="num">${totOrders}</td><td class="num">${money(totNet)}</td><td class="num">${money(totOrders?totNet/totOrders:0)}</td><td class="num">${money(totTax)}</td><td class="num">${money(totTips)}</td><td class="num">${numf(totUnits,0)}</td></tr>`+
+    `</tbody></table></div>`;
+  $('#sr_out').innerHTML=reportHeader('Monthly Sales Summary','Square retail & gift shop — net sales by month',String(year))+kpis+`<h4>Net sales by month</h4>${chart}<h4 style="margin-top:20px">Detail</h4>${table}`+
+    `<div class="disclaimer">Completed Square orders across all connected accounts and locations, one row per month of ${year}. Net sales exclude tax and tips. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
 }
 function ymdShift(ymd,days){ const [y,m,d]=ymd.split('-').map(Number); const dt=new Date(Date.UTC(y,m-1,d+days)); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`; }
 function ymdSpan(a,b){ return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000)+1; }
