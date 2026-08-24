@@ -40,13 +40,30 @@ import {
   setJobState,
   SUPPRESSED_STATUSES
 } from './lib/notify-core.mjs';
-import { fetchRepeatCustomers } from './lib/shopify.mjs';
+import { fetchRepeatCustomers, fetchSubscriptionMembers } from './lib/shopify.mjs';
 import { buildVipEmail, sendMandrill } from './lib/notify-mail.mjs';
 
 const STATE_KEY = 'vip';
 const PER_RUN_CAP = Number(process.env.NOTIFY_VIP_PER_DAY || 300);
 const BACKFILL_DAYS = Number(process.env.NOTIFY_VIP_BACKFILL_DAYS || 14);
-const EXCLUDE_TAG = (process.env.NOTIFY_VIP_EXCLUDE_TAG || 'subscriber').toLowerCase();
+/**
+ * Customer tags that mean "already a member — do not invite".
+ *
+ * These are the store's real tags, confirmed by reading customer records:
+ * `Active Subscriber` and `member-monthly` travel together on every
+ * subscription customer. An earlier guess of `subscriber` matched nothing,
+ * which would have invited all ~100 existing members to join the thing they
+ * already pay for.
+ *
+ * NOT excluded by default: the separate `vip` tag. It appears on plenty of
+ * customers who are not Active Subscribers, so it means something else —
+ * probably granted access rather than a paid membership. Add it here if that
+ * turns out to be wrong.
+ */
+const EXCLUDE_TAGS = (process.env.NOTIFY_VIP_EXCLUDE_TAGS || 'active subscriber,member-monthly')
+  .split(',')
+  .map((t) => t.trim().toLowerCase())
+  .filter(Boolean);
 
 function unsubUrlFor(email) {
   const base = (process.env.NOTIFY_PUBLIC_URL || 'https://lrwc-ttb-tracker.netlify.app')
@@ -61,8 +78,8 @@ async function runBackfill(state) {
   const members = await getVipMembers();
 
   const eligible = customers.filter((c) => {
-    if (members[c.email.toLowerCase()]) return false;          // already a member
-    if ((c.tags || []).includes(EXCLUDE_TAG)) return false;    // tagged as a subscriber
+    if (members[c.email.toLowerCase()]) return false;                        // already a member
+    if ((c.tags || []).some((t) => EXCLUDE_TAGS.includes(t))) return false;  // tagged as a subscriber
     return true;
   });
 
@@ -109,9 +126,33 @@ async function runBackfill(state) {
   );
 }
 
+/**
+ * Refresh the known-members list from recent orders, every run.
+ *
+ * Runs daily rather than once because the backfill drips over two weeks: some-
+ * one queued on day 1 might subscribe on day 3, and should not then receive an
+ * invitation on day 10. It also repairs the queue built before the correct
+ * exclude tags were known — those members are already queued, and this is what
+ * causes the drip to skip them.
+ */
+async function refreshMembers() {
+  try {
+    const emails = await fetchSubscriptionMembers();
+    for (const e of emails) await markVipMember(e);
+    console.log(`[vip] member refresh — ${emails.length} active subscribers found in recent orders`);
+    return emails.length;
+  } catch (err) {
+    console.error(`[vip] member refresh FAILED (invites may reach existing members): ${err?.message || err}`);
+    return 0;
+  }
+}
+
 export default async () => {
   const state = (await getJobState(STATE_KEY)) || {};
   const dryRun = process.env.NOTIFY_VIP_DRY_RUN === 'on';
+
+  // Before anything else, so both the backfill and the drip see current members.
+  await refreshMembers();
 
   /* ---- 1. Backfill, once ---- */
   if (process.env.NOTIFY_VIP_BACKFILL === 'on' && !state.backfillDoneAt) {
@@ -137,12 +178,20 @@ export default async () => {
     return new Response('ok', { status: 200 });
   }
 
+  const members = await getVipMembers();
+
   if (dryRun) {
-    console.log(`[vip] DRY RUN — would send ${due.length} invites today. Nothing sent.`);
+    // Report the member split explicitly. A bare "would send N" cannot show
+    // whether the exclusion is actually working, and getting that wrong means
+    // inviting paying members to join what they already pay for.
+    const wouldSkip = due.filter((r) => members[r.email.toLowerCase()]).length;
+    const pending = queue.filter((r) => !r.sentAt).length;
+    console.log(
+      `[vip] DRY RUN — ${due.length} due today: would send ${due.length - wouldSkip}, ` +
+        `skip ${wouldSkip} as existing members. ${pending} queued overall. Nothing sent.`
+    );
     return new Response('ok', { status: 200 });
   }
-
-  const members = await getVipMembers();
   let sent = 0;
   let skipped = 0;
   let failed = 0;
