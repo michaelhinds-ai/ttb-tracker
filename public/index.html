@@ -132,6 +132,7 @@
   body:not(.perm-setup) .cap-setup{display:none!important}
   body:not(.perm-users) .cap-users{display:none!important}
   body:not(.perm-reports) .cap-reports{display:none!important}
+  body.role-manager .mgr-hide{display:none!important}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -166,19 +167,19 @@
 </header>
 <nav class="tabs"><div class="wrap" id="tabs">
   <button data-view="home" class="active">Home</button>
-  <button data-view="dashboard">Louisville Rickhouse Systems</button>
+  <button data-view="lrs">Louisville Rickhouse Systems</button>
   <button data-view="entry">Add Entry</button>
   <button data-view="ledger">Ledger</button>
-  <button data-view="reports">Federal Reports</button>
-  <button data-view="kentucky">Kentucky</button>
-  <button data-view="retail">Retail Sales</button>
-  <button data-view="salesrpt">Sales Report</button>
+  <button data-view="reports" class="mgr-hide">Federal Reports</button>
+  <button data-view="kentucky" class="mgr-hide">Kentucky</button>
+  <button data-view="retail" class="mgr-hide">Retail Sales</button>
+  <button data-view="salesrpt" class="mgr-hide">Sales Report</button>
   <button data-view="barrels">Barrels</button>
   <button data-view="bottling">Bottling</button>
   <button data-view="finished">Finished Goods</button>
   <button data-view="orders">Orders</button>
   <button data-view="customers">Customers</button>
-  <button data-view="data">Setup &amp; Sync</button>
+  <button data-view="data" class="mgr-hide">Setup &amp; Sync</button>
 </div></nav>
 
 <main>
@@ -196,37 +197,33 @@
     </div>
 
     <div class="kpis" id="homeKpis"></div>
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h3 style="margin:0">Tasks</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="task_for" style="width:auto;min-width:140px"></select>
+          <input id="task_text" placeholder="What needs doing?" style="width:auto;min-width:220px" onkeydown="if(event.key==='Enter')addTask()">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);font-family:-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;white-space:nowrap"><input type="checkbox" id="task_pri" style="width:auto;margin:0"> High priority</label>
+          <button class="btn sm" onclick="addTask()">Add task</button>
+        </div>
+      </div>
+      <div id="taskList" style="margin-top:12px"></div>
+    </div>
+
 
     <h2 class="section">Apps</h2>
     <div class="apps">
-      <div class="apptile">
+      <div class="apptile" style="cursor:pointer" onclick="switchView('lrs')">
         <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
-        <div><div class="an">Louisville Rickhouse Systems</div><div class="ad">TTB &amp; Kentucky reporting, ledger, orders, customers, barrels &amp; bottling.</div></div>
-        <div class="applinks">
-          <button class="applink" onclick="switchView('dashboard')">Dashboard</button>
-          <button class="applink" onclick="switchView('reports')">Federal</button>
-          <button class="applink" onclick="switchView('kentucky')">Kentucky</button>
-          <button class="applink" onclick="switchView('ledger')">Ledger</button>
-          <button class="applink" onclick="switchView('entry')">Add Entry</button>
-          <button class="applink" onclick="switchView('orders')">Orders</button>
-          <button class="applink" onclick="switchView('customers')">Customers</button>
-        </div>
+        <div><div class="an">Louisville Rickhouse Systems</div><div class="ad">Reporting, production, bottling, barrels, orders &amp; customers &mdash; the full distillery system.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open system &rarr;</span></div>
       </div>
       <div class="apptile" style="opacity:.72">
         <div class="ai" style="background:rgba(90,160,138,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5aa08a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
         <div><div class="an">Nashville Barrel Systems <span style="font-size:11px;font-weight:600;background:#efe7d8;color:var(--muted);padding:2px 8px;border-radius:999px;vertical-align:middle">Coming soon</span></div><div class="ad">TN reporting, production &amp; sales for Nashville Barrel Co.</div></div>
         <div class="applinks"><span class="applink" style="cursor:default;background:#f4ecdb;color:var(--muted);border-style:dashed">Coming soon</span></div>
       </div>
-      <div class="apptile">
-        <div class="ai" style="background:rgba(63,125,84,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f7d54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4M10 3v3.5L7 11a3 3 0 0 0-.5 1.7V19a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-6.3A3 3 0 0 0 17 11l-3-4.5V3"/><path d="M6.7 14h10.6"/></svg></div>
-        <div><div class="an">Production</div><div class="ad">Barrels, bottling runs &amp; finished goods.</div></div>
-        <div class="applinks">
-          <button class="applink" onclick="switchView('barrels')">Barrels</button>
-          <button class="applink" onclick="switchView('bottling')">Bottling</button>
-          <button class="applink" onclick="switchView('finished')">Finished</button>
-        </div>
-      </div>
-      <div class="apptile">
+      <div class="apptile mgr-hide">
         <div class="ai" style="background:rgba(47,111,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6f8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/></svg></div>
         <div><div class="an">Sales</div><div class="ad">Retail, tour &amp; online &mdash; sales reports.</div></div>
         <div class="applinks">
@@ -234,14 +231,14 @@
           <button class="applink" onclick="switchView('salesrpt')">Sales Report</button>
         </div>
       </div>
-      <div class="apptile">
+      <div class="apptile mgr-hide">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
         <div><div class="an">Marketing</div><div class="ad">Audience sync + the walk-in / tour thank-you journey. Runs weekly, automatically.</div></div>
         <div class="applinks">
           <button class="applink" onclick="switchView('data')">Connections</button>
         </div>
       </div>
-      <div class="apptile">
+      <div class="apptile mgr-hide">
         <div class="ai" style="background:rgba(122,106,86,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a6a56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 7l1-1a3.5 3.5 0 0 1 5 5l-1 1"/><path d="M13 17l-1 1a3.5 3.5 0 0 1-5-5l1-1"/></svg></div>
         <div><div class="an">Setup &amp; Data</div><div class="ad">Square &middot; Xola &middot; Shopify &middot; QuickBooks &middot; backup &amp; sync.</div></div>
         <div class="applinks">
@@ -256,8 +253,53 @@
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
           <button class="btn" onclick="switchView('entry')">Add Entry</button>
           <button class="btn ghost" onclick="switchView('bottling')">New Bottling</button>
-          <button class="btn ghost" onclick="switchView('salesrpt')">Sales Report</button>
-          <button class="btn ghost" onclick="switchView('data')">Setup &amp; Sync</button>
+          <button class="btn ghost mgr-hide" onclick="switchView('salesrpt')">Sales Report</button>
+          <button class="btn ghost mgr-hide" onclick="switchView('data')">Setup &amp; Sync</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-lrs">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:14px">
+      <div>
+        <h1 style="font-size:29px;margin:0">Louisville Rickhouse Systems</h1>
+        <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">TTB federal + Kentucky &middot; DSP-KY-20181 &middot; production, bottling &amp; wholesale.</p>
+      </div>
+      <div class="entsw"><div class="entpill" style="background:var(--copper);color:#fff"><span style="width:8px;height:8px;border-radius:50%;background:#fff"></span>Louisville Rickhouse &middot; KY</div></div>
+    </div>
+
+    <div class="kpis" id="lrsKpis"></div>
+
+    <h2 class="section">Sections</h2>
+    <div class="apps">
+      <div class="apptile">
+        <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div><div class="an">Reporting</div><div class="ad">TTB federal returns, Kentucky tax, the bulk ledger &amp; new entries.</div></div>
+        <div class="applinks">
+          <button class="applink mgr-hide" onclick="switchView('dashboard')">Dashboard</button>
+          <button class="applink mgr-hide" onclick="switchView('reports')">Federal Reports</button>
+          <button class="applink mgr-hide" onclick="switchView('kentucky')">Kentucky</button>
+          <button class="applink" onclick="switchView('ledger')">Ledger</button>
+          <button class="applink" onclick="switchView('entry')">Add Entry</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(63,125,84,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f7d54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4M10 3v3.5L7 11a3 3 0 0 0-.5 1.7V19a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-6.3A3 3 0 0 0 17 11l-3-4.5V3"/><path d="M6.7 14h10.6"/></svg></div>
+        <div><div class="an">Production</div><div class="ad">Aging barrels, bottling runs &amp; finished-goods inventory.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('barrels')">Barrels</button>
+          <button class="applink" onclick="switchView('bottling')">Bottling</button>
+          <button class="applink" onclick="switchView('finished')">Finished Goods</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(47,111,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6f8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 4v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M4 9h16M8 13h8M8 16h5"/></svg></div>
+        <div><div class="an">Wholesale</div><div class="ad">Distributor orders and the customers behind them.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('orders')">Orders</button>
+          <button class="applink" onclick="switchView('customers')">Customers</button>
         </div>
       </div>
     </div>
@@ -806,7 +848,7 @@
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
@@ -855,7 +897,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -865,14 +907,15 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
-const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], reports:['reports'], viewer:[] };
-const ROLE_LABEL={ admin:'Admin', editor:'Editor', reports:'Reports', viewer:'Viewer' };
+const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], reports:['reports'], viewer:[] };
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', reports:'Reports', viewer:'Viewer' };
 let SESSION=null; // {userId,name,role}
 function authOn(){ return !!(state.auth&&state.auth.enabled&&(state.auth.users||[]).length); }
 function currentRole(){ if(!authOn()) return 'admin'; return SESSION?SESSION.role:'viewer'; }
+function isManager(){ return currentRole()==='manager'; }
 function can(cap){ return (ROLE_CAPS[currentRole()]||[]).includes(cap); }
 function requireCap(cap){ if(can(cap)) return true; flash('Your role ('+ROLE_LABEL[currentRole()]+') can’t do that.'); return false; }
 async function hashPin(pin){ const enc=new TextEncoder().encode('ttbsalt:'+pin); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
@@ -922,6 +965,7 @@ function applyPermissions(){
   const role=currentRole();
   const b=document.body;
   ['write','delete','setup','users','reports'].forEach(c=>b.classList.toggle('perm-'+c, can(c)));
+  ['admin','editor','manager','reports','viewer'].forEach(r=>b.classList.toggle('role-'+r, role===r));
   const el=$('#whoami'); if(el){
     if(authOn()&&SESSION){ el.style.display=''; el.innerHTML=`<span>${SESSION.name}</span><span class="role">${ROLE_LABEL[role]||role}</span><button class="logout" id="logoutBtn">Sign out</button>`; const lb=$('#logoutBtn'); if(lb) lb.onclick=logout; }
     else { el.style.display='none'; el.innerHTML=''; }
@@ -1198,7 +1242,7 @@ function homeChip(label,cur,prev){
   return `<span style="color:${col};font-weight:700;white-space:nowrap">${label} ${arrow}${pct}%</span>`;
 }
 function homeSalesCard(color,name,net,orders,prevW,prevY){
-  const chips=`<div style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${homeChip('wk',net,prevW)}${homeChip('yr',net,prevY)}</div>`;
+  const chips=isManager()?'':`<div style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${homeChip('wk',net,prevW)}${homeChip('yr',net,prevY)}</div>`;
   return `<div class="kpi ${color}"><div class="label">${name}</div><div class="val">${money(net)}</div>${chips}<div class="foot">${orders} order${orders===1?'':'s'} today</div></div>`;
 }
 function homeErrCard(color,label,msg){ return `<div class="kpi ${color}"><div class="label">${label}</div><div class="val">—</div><div class="foot">${msg}</div></div>`; }
@@ -1234,6 +1278,68 @@ async function loadHomeSales(force){
   if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null));
   else cards.push(homeErrCard('amber','Shopify (online)',(sh&&sh.detail)?'Shopify unavailable':'Connect Shopify'));
   _homeSalesHTML=cards.join(''); _homeSalesAt=Date.now(); box.innerHTML=_homeSalesHTML;
+}
+/* ---- Team tasks (assign to a teammate; they see it on Home and check it off) ---- */
+function renderTasks(){
+  const sel=document.getElementById('task_for'); const list=document.getElementById('taskList'); if(!list) return;
+  const users=[...((state.auth&&state.auth.users)||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const me=SESSION?SESSION.userId:null;
+  if(sel){
+    const cur=sel.value;
+    sel.innerHTML = authOn()
+      ? users.map(u=>`<option value="${u.id}">${esc(u.name||'')}${me&&u.id===me?' (me)':''}</option>`).join('')
+      : `<option value="">Anyone</option>`;
+    if(cur) sel.value=cur;
+  }
+  const tasks=(state.tasks||[]);
+  const mine = (authOn()&&me) ? tasks.filter(t=>t.forId===me) : tasks.slice();
+  const out  = (authOn()&&me) ? tasks.filter(t=>t.byId===me && t.forId!==me) : [];
+  const spri=arr=>arr.sort((a,b)=>((b.priority?1:0)-(a.priority?1:0))||((a.ts||0)-(b.ts||0))); spri(mine); spri(out);
+  const lbl=t=>`<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;font-family:-apple-system,Segoe UI,sans-serif;margin:0 0 6px">${t}</div>`;
+  let html='';
+  if(!mine.length && !out.length){ html='<div class="empty" style="padding:20px">No open tasks — assign one above.</div>'; }
+  else {
+    if(mine.length){ html+=lbl(authOn()?'For you':'Open tasks')+mine.map(t=>taskRow(t,true)).join(''); }
+    if(out.length){ html+=`<div style="height:8px"></div>`+lbl('Waiting on others')+out.map(t=>taskRow(t,false)).join(''); }
+  }
+  list.innerHTML=html;
+}
+function taskRow(t,canDone){
+  const meta = canDone ? (t.byName?('from '+esc(t.byName)):'') : ('for '+esc(t.forName||'—'));
+  const box = canDone
+    ? `<button title="Mark done" onclick="completeTask('${t.id}')" style="flex:none;width:22px;height:22px;border-radius:6px;border:2px solid var(--copper);background:#fff;cursor:pointer"></button>`
+    : `<span style="flex:none;width:22px;height:22px;border-radius:6px;border:2px dashed var(--line)"></span>`;
+  const pri = t.priority ? `<span title="High priority" style="flex:none;color:var(--red);font-weight:800;font-size:14px">⚑</span>` : '';
+  const rs = t.priority ? 'display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--line);background:#fbecea;border-left:3px solid var(--red);border-radius:0 6px 6px 0;margin-bottom:3px' : 'display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)';
+  return `<div style="${rs}">${box}${pri}<div style="flex:1"><div style="font-size:14.5px">${esc(t.text||'')}</div><div style="color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${meta}</div></div></div>`;
+}
+function addTask(){
+  const ti=document.getElementById('task_text'); const text=(ti&&ti.value||'').trim();
+  if(!text){ if(ti) ti.focus(); return; }
+  const sel=document.getElementById('task_for'); const forId=sel?sel.value:'';
+  const forU=((state.auth&&state.auth.users)||[]).find(u=>u.id===forId);
+  const pel=document.getElementById('task_pri'); const pri=!!(pel&&pel.checked);
+  if(!state.tasks) state.tasks=[];
+  state.tasks.push({id:uid(),text,forId:forId||'',forName:forU?forU.name:'Anyone',byId:SESSION?SESSION.userId:'',byName:SESSION?SESSION.name:'',priority:pri,ts:Date.now()});
+  if(ti) ti.value=''; if(pel) pel.checked=false;
+  save('Added task'+(forU?(' for '+forU.name):'')+' — '+text.slice(0,40)); refreshAll(); flash('Task added'+(forU?(' for '+forU.name):'')+'.');
+}
+function completeTask(id){
+  const i=(state.tasks||[]).findIndex(t=>t.id===id); if(i<0)return;
+  const t=state.tasks[i]; state.tasks.splice(i,1);
+  save('Completed task — '+((t.text||'').slice(0,40))); refreshAll(); flash('Task completed.');
+}
+function renderLrs(){
+  try{
+    const yr=state.settings.year;
+    const ytd=taxablePG(e=>yearOf(e.date)===yr); const {tax:ytdTax}=cbmaTax(0,ytd);
+    const bal=balances(); bal.Storage=round1(bal.Storage+agingBarrelPG()); const onHand=round1(bal.Production+bal.Storage+bal.Processing);
+    const kyYtd=kyYearTotal(yr);
+    const aging=(state.barrels||[]).filter(b=>b.status==='Aging'); const agingCount=aging.reduce((s,b)=>s+barrelCount(b),0);
+    const cards=[kpi('copper','Bulk on Hand',numf(onHand)+' PG','across all accounts'),kpi('barrel','Barrels Aging',agingCount.toLocaleString(),'in inventory')];
+    if(!isManager()){ cards.push(kpi('green','Federal Excise '+yr,money(ytdTax),'tax-determined YTD')); cards.push(kpi('ky','Kentucky Tax '+yr,money(kyYtd),'year-to-date')); }
+    const box=document.getElementById('lrsKpis'); if(box) box.innerHTML=cards.join('');
+  }catch(e){}
 }
 function renderDashboard(){
   const yr=state.settings.year;
@@ -2279,10 +2385,10 @@ function loadSample(){
 }
 
 /* ================= UI plumbing ================= */
-function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
+function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderHome();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
