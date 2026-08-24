@@ -33,7 +33,7 @@ import {
   enqueueVip,
   listVipQueue,
   markVipSent,
-  markVipMember,
+  markVipMembers,
   getVipMembers,
   getMember,
   unsubToken,
@@ -139,8 +139,8 @@ async function runBackfill(state) {
 async function refreshMembers() {
   try {
     const emails = await fetchSubscriptionMembers();
-    for (const e of emails) await markVipMember(e);
-    console.log(`[vip] member refresh — ${emails.length} active subscribers found in recent orders`);
+    await markVipMembers(emails);   // one write, not one per address
+    console.log(`[vip] member refresh — ${emails.length} active subscribers found by tag`);
     return emails.length;
   } catch (err) {
     console.error(`[vip] member refresh FAILED (invites may reach existing members): ${err?.message || err}`);
