@@ -329,7 +329,7 @@
       <div class="grid g3">
         <div><label class="fld">Company</label><select id="lbl_company" onchange="labelsSkuOptions()"></select></div>
         <div><label class="fld">Product</label><select id="lbl_product"></select></div>
-        <div><label class="fld">Case pack</label><select id="lbl_pack"><option value="12">12-pack</option><option value="6">6-pack</option></select></div>
+        <div><label class="fld">Case pack</label><select id="lbl_pack"><option value="6">6-pack</option><option value="12">12-pack</option></select></div>
         <div><label class="fld">Barrel #</label><input id="lbl_barrel" placeholder="2868"></div>
         <div><label class="fld">Proof</label><input id="lbl_proof" inputmode="decimal" placeholder="132.80" oninput="lblUpdAbv()"></div>
         <div style="display:flex;align-items:flex-end"><span id="lbl_abv" style="color:var(--copper);font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:10px"></span></div>
@@ -1427,7 +1427,7 @@ function lblUpdAbv(){ const pe=document.getElementById('lbl_proof'); const out=d
 function renderLabels(){
   const cos=companyList();
   const csel=document.getElementById('lbl_company');
-  if(csel){ const cur=csel.value; csel.innerHTML=cos.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&cos.includes(cur)) csel.value=cur; }
+  if(csel){ const cur=csel.value; csel.innerHTML='<option value="">— select company —</option>'+cos.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&cos.includes(cur)) csel.value=cur; }
   labelsSkuOptions(); lblUpdAbv();
   const tb=document.getElementById('skuBody');
   if(tb){ const rows=(state.skus||[]); tb.innerHTML=rows.length?rows.map(s=>`<tr><td>${esc(s.company||'')}</td><td><b>${esc(s.product||'')}</b></td><td class="num">${esc(s.size||'')}</td><td style="font-family:monospace">${esc(s.scc6||'—')}</td><td style="font-family:monospace">${esc(pack12scc(s)||'—')}</td><td class="noprint">${can('write')?`<button class="link" onclick="skuEdit('${s.id}')">Edit</button> · <button class="del" onclick="skuDel('${s.id}')">Del</button>`:''}</td></tr>`).join(''):'<tr><td colspan="6" class="empty" style="padding:24px">No products yet — add one below.</td></tr>'; }
@@ -1436,10 +1436,10 @@ function renderLabels(){
 }
 function labelsSkuOptions(){
   const co=document.getElementById('lbl_company'); const ss=document.getElementById('lbl_product'); if(!ss) return;
-  const cur=ss.value; const list=(state.skus||[]).filter(s=>!co||!co.value||s.company===co.value);
-  ss.innerHTML=list.length?list.map(s=>`<option value="${s.id}">${esc(s.product||'')}</option>`).join(''):'<option value="">— no products for this company —</option>';
+  const cur=ss.value; const hasco=!!(co&&co.value); const list=hasco?(state.skus||[]).filter(s=>s.company===co.value):[];
+  ss.innerHTML=!hasco?'<option value="">— select a company first —</option>':(list.length?list.map(s=>`<option value="${s.id}">${esc(s.product||'')}</option>`).join(''):'<option value="">— no products for this company —</option>');
   if(cur) ss.value=cur;
-  const lg=document.getElementById('lbl_logo'); if(lg){ const src=co?companyLogo(co.value):''; lg.innerHTML=src?`<img src="${src}" style="height:44px">`:'<span style="color:var(--muted);font-size:13px">No logo for this company — upload one in the Company logos section below.</span>'; }
+  const lg=document.getElementById('lbl_logo'); if(lg){ const src=hasco?companyLogo(co.value):''; lg.innerHTML=src?`<img src="${src}" style="height:44px">`:(hasco?'<span style="color:var(--muted);font-size:13px">No logo for this company — upload one in the Company logos section below.</span>':''); }
 }
 let editingSku=null;
 function skuBlank(){ return {id:uid(),company:(document.getElementById('lbl_company')||{}).value||LABEL_BRANDS[0],product:'',size:'750ml',scc6:'',scc12:''}; }
@@ -1479,9 +1479,10 @@ function labelHTML(s,ctx){
   </div>`;
 }
 function printCaseLabels(){
+  const co=(document.getElementById('lbl_company')||{}).value; if(!co){ alert('Choose a company.'); return; }
   const ps=document.getElementById('lbl_product'); const id=ps?ps.value:''; const s=(state.skus||[]).find(x=>x.id===id);
   if(!s){ alert('Choose a product to print.'); return; }
-  const pack=(document.getElementById('lbl_pack')||{}).value||'12';
+  const pack=(document.getElementById('lbl_pack')||{}).value; if(!pack){ alert('Choose the case pack — 6-pack or 12-pack.'); return; }
   const scc = pack==='6' ? (s.scc6||'') : pack12scc(s);
   const ctx={pack, scc, barrel:(document.getElementById('lbl_barrel')||{}).value.trim(), proof:(document.getElementById('lbl_proof')||{}).value.trim()};
   const one=labelHTML(s,ctx);
