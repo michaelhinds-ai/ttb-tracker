@@ -1214,7 +1214,7 @@ async function loadHomeSales(force){
   const _d=new Date(), pad=n=>String(n).padStart(2,'0'), dstr=x=>x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate());
   const today=dstr(_d), nowISO=_d.toISOString();
   const wk=new Date(_d); wk.setDate(_d.getDate()-7); const wkday=dstr(wk), wkISO=wk.toISOString();
-  const ly=new Date(_d); ly.setFullYear(_d.getFullYear()-1); const lyday=dstr(ly), lyISO=ly.toISOString();
+  const ly=new Date(_d); ly.setDate(_d.getDate()-364); const lyday=dstr(ly), lyISO=ly.toISOString();
   const P=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()).catch(()=>null);
   let sq=null,sqW=null,sqY=null,sh=null,shW=null,shY=null;
   try{ [sq,sqW,sqY,sh,shW,shY]=await Promise.all([
