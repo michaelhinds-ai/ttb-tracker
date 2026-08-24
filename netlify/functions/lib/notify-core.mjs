@@ -539,14 +539,31 @@ export async function enqueueVip({ email, firstName = '', source, sendAfter }) {
   return { queued: true };
 }
 
-export async function listVipQueue({ limit = 5000 } = {}) {
+/**
+ * Read the whole queue.
+ *
+ * Parallelised deliberately: the backfill puts thousands of entries in here
+ * and this runs daily. Fetching them one at a time took minutes of pure
+ * waiting — the job appeared to hang.
+ */
+export async function listVipQueue({ limit = 20000, concurrency = 25 } = {}) {
   const s = vipStore();
   const { blobs } = await s.list({ prefix: VIP_PREFIX });
+  const keys = blobs.map((b) => b.key).filter((k) => k !== VIP_MEMBERS_KEY).slice(0, limit);
+
   const out = [];
-  for (const b of blobs.slice(0, limit)) {
-    const rec = await s.get(b.key, { type: 'json' });
-    if (rec) out.push(rec);
-  }
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, keys.length) }, async () => {
+      while (i < keys.length) {
+        const key = keys[i++];
+        try {
+          const rec = await s.get(key, { type: 'json' });
+          if (rec?.email) out.push(rec);
+        } catch { /* a single unreadable record must not sink the run */ }
+      }
+    })
+  );
   return out;
 }
 
@@ -566,11 +583,26 @@ export async function markVipSent(email) {
 const VIP_MEMBERS_KEY = 'members';
 
 export async function markVipMember(email) {
-  if (!email) return;
+  return markVipMembers([email]);
+}
+
+/**
+ * Batch version — one read and one write for the whole set.
+ *
+ * The per-email version was doing a read-modify-write of the same growing blob
+ * for every address, which is both slow and a lost-update risk when two of
+ * them overlap.
+ */
+export async function markVipMembers(emails) {
+  const list = (Array.isArray(emails) ? emails : [emails]).filter(Boolean);
+  if (!list.length) return 0;
+
   const s = vipStore();
   const set = (await s.get(VIP_MEMBERS_KEY, { type: 'json' })) || {};
-  set[String(email).trim().toLowerCase()] = new Date().toISOString();
+  const stamp = new Date().toISOString();
+  for (const e of list) set[String(e).trim().toLowerCase()] = stamp;
   await s.setJSON(VIP_MEMBERS_KEY, set);
+  return list.length;
 }
 
 export async function getVipMembers() {
