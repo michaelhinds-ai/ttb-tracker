@@ -1181,7 +1181,17 @@ async function cloudLoad(){
     const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{cache:'no-store'});
     if(r.ok){
       const d=await r.json();
-      if(d && (d.entries||d.settings)){ state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return; }
+      if(d && (d.entries||d.settings)){
+        // Protect unsynced local work: if the local copy is substantially bigger than the
+        // cloud copy, it has changes that never uploaded — keep it and push it up instead of
+        // being overwritten by the older cloud version.
+        const cache=localStorage.getItem(cacheKey());
+        if(cache && cache.length > JSON.stringify(d).length*1.2){
+          try{ state=normalize(JSON.parse(cache)); }catch(e){ state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return; }
+          cloudAvailable=true; setSync('saving'); cloudSave(); return;
+        }
+        state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return;
+      }
       // no cloud record yet — seed from local cache if present
       const c=localStorage.getItem(cacheKey());
       if(c){ state=normalize(JSON.parse(c)); await cloudSave(true); } else { setSync('synced'); }
@@ -1198,7 +1208,17 @@ async function cloudLoad(){
 let saveTimer=null, saving=false, pending=false;
 let lastSnap=null; const HIST_MAX=25;
 // data-only snapshot (excludes the history log itself, so snapshots never nest)
-function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; return JSON.stringify(c); }
+function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; delete c.brandLogos; return JSON.stringify(c); }
+function resizeDataURL(dataURL,maxW,cb){ try{ const img=new Image(); img.onload=function(){ let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height; if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; } const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h); let out; try{ out=cv.toDataURL('image/png'); }catch(e){ out=dataURL; } cb(out||dataURL); }; img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); } }
+// One-time repair: strip logo images out of undo snapshots and shrink stored logos, then push the smaller state to the cloud so sync recovers.
+function runSyncRepair(){ try{
+  let changed=false;
+  (state.history||[]).forEach(h=>{ if(h && typeof h.snap==='string' && h.snap.indexOf('\"brandLogos\"')>=0){ try{ const o=JSON.parse(h.snap); if(o.brandLogos!==undefined){ delete o.brandLogos; h.snap=JSON.stringify(o); changed=true; } }catch(e){} } });
+  const bl=state.brandLogos||{}; const big=Object.keys(bl).filter(k=>typeof bl[k]==='string' && bl[k].indexOf('data:')===0 && bl[k].length>60000);
+  const finish=()=>{ try{ localStorage.setItem(cacheKey(),JSON.stringify(state)); }catch(e){} lastSnap=dataOnly(); if(location.protocol!=='file:'){ cloudAvailable=true; setSync('saving'); cloudSave(); } };
+  if(!big.length){ if(changed) finish(); return; }
+  let pending=big.length; big.forEach(k=>{ resizeDataURL(bl[k],460,(out)=>{ if(out && out.length<bl[k].length){ state.brandLogos[k]=out; changed=true; } if(--pending===0) finish(); }); });
+}catch(e){} }
 function save(label,ref){
   if(!state.history) state.history=[];
   // record the just-completed action, storing the PRE-action state for rewind
@@ -1224,7 +1244,7 @@ function rewindTo(id){
   if(ans.trim().toUpperCase()!=='REWIND'){ flash('Rewind cancelled — you must type REWIND to confirm.'); return; }
   const data=JSON.parse(hist[i].snap);
   const keep=hist.slice(0,i);            // keep actions that came before this one
-  state=normalize(Object.assign(data,{history:keep}));
+  state=normalize(Object.assign(data,{history:keep, brandLogos:state.brandLogos}));
   lastSnap=dataOnly();
   updateUndoBtn(); persist(); refreshAll();
   flash('Rewound.');
@@ -1470,7 +1490,7 @@ function skuSave(){
 function skuDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this product?'))return; state.skus=(state.skus||[]).filter(x=>x.id!==id); save('Deleted a case-label product'); refreshAll(); }
 function brandLogoUpload(coEnc,input){
   if(!requireCap('write'))return; const co=decodeURIComponent(coEnc); const f=input.files&&input.files[0]; if(!f)return;
-  const r=new FileReader(); r.onload=()=>{ if(!state.brandLogos) state.brandLogos={}; state.brandLogos[co]=r.result; save('Set logo for '+co); refreshAll(); flash('Logo updated for '+co+'.'); }; r.readAsDataURL(f);
+  const r=new FileReader(); r.onload=()=>{ resizeDataURL(String(r.result),460,(out)=>{ if(!state.brandLogos) state.brandLogos={}; state.brandLogos[co]=out; save('Set logo for '+co); refreshAll(); flash('Logo updated for '+co+'.'); }); }; r.readAsDataURL(f);
 }
 function labelHTML(s,ctx){
   const logo=companyLogo(s.company); const scc=ctx.scc||''; const {p,abv}=labelProof(ctx.proof);
@@ -2622,7 +2642,7 @@ function renderCrumb(v){
 function switchView(v){renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
