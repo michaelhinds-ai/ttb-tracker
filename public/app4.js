@@ -244,7 +244,7 @@ function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
   const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'home',salesrpt:'home',data:'home',compliance:'home',marketing:'home'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales Report',data:'Setup & Sync',compliance:'Compliance',marketing:'Marketing'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales Report',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing'};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
