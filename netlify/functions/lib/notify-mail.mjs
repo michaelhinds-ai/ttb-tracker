@@ -430,6 +430,125 @@ export function buildRecoveryEmail({ step, items, recoverUrl, unsubUrl, firstNam
   return { html, text, subject: copy.subject(firstItem) };
 }
 
+/**
+ * The VIP invite — sent after someone's second order.
+ *
+ * The pitch is taken from what the subscription actually promises rather than
+ * invented: a monthly box that always contains a bottle, and early access to
+ * special releases and limited editions before they go public. For a repeat
+ * buyer of single barrels that second point is the whole offer, so it leads.
+ *
+ * The excluded-states line is deliberately near the top rather than buried.
+ * Tennessee is on that list, which will surprise a chunk of this audience, and
+ * finding out at checkout after being sold on the idea is worse than knowing.
+ */
+const VIP_URL =
+  process.env.NOTIFY_VIP_URL || 'https://buyspiritsdirect.myshopify.com/pages/subscriptions';
+const VIP_IMAGE =
+  process.env.NOTIFY_VIP_IMAGE ||
+  'https://cdn.shopify.com/s/files/1/0601/6509/5682/products/nbc-vip.png?v=1642008187';
+const VIP_PRICE = process.env.NOTIFY_VIP_PRICE || '$179.99';
+const VIP_EXCLUDED_STATES =
+  process.env.NOTIFY_VIP_EXCLUDED_STATES ||
+  'Iowa, Maine, Mississippi, New Hampshire, North Dakota, South Dakota, Tennessee, Utah and Vermont';
+
+export function buildVipEmail({ firstName, unsubUrl }) {
+  const hi = firstName ? `${escapeHtml(firstName)}, you` : 'You';
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0a0806;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0806;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#12100d;border:1px solid #33291B;border-radius:6px;">
+      <tr><td style="padding:30px 30px 8px;text-align:center;">
+        ${mastheadHtml(FROM_NAME)}
+        <div style="width:40px;height:1px;background:#D4A53A;opacity:.55;margin:20px auto 0;"></div>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;text-align:center;">
+        <div style="font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#D4A53A;margin-bottom:12px;">
+          An invitation
+        </div>
+        <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:25px;line-height:1.25;color:#F4EFE6;font-weight:700;">
+          ${hi}&rsquo;ve bought twice. Want first look at the good stuff?
+        </h1>
+        <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.65;color:#A79C8C;">
+          Subscription members usually get access to special releases and limited edition
+          bottles <strong style="color:#F4EFE6;">before they are offered to the public</strong>.
+          When a barrel is small, that is the difference between getting one and reading about it.
+        </p>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;text-align:center;">
+        <img src="${escapeHtml(VIP_IMAGE)}" alt="NBC Subscription" width="200"
+          style="width:200px;max-width:60%;height:auto;display:block;margin:0 auto;border:0;border-radius:4px;">
+      </td></tr>
+
+      <tr><td style="padding:20px 30px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+          style="background:rgba(212,165,58,.06);border:1px solid rgba(212,165,58,.22);border-radius:4px;">
+          <tr><td style="padding:18px 20px;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;line-height:1.75;color:#A79C8C;">
+            <div style="font-size:15px;font-weight:600;color:#F4EFE6;margin-bottom:10px;">
+              What turns up each month
+            </div>
+            &bull; Always a bottle &mdash; a different one every time<br>
+            &bull; Sometimes apparel, glassware or other extras<br>
+            &bull; Early access to limited releases before they go public<br>
+            &bull; ${escapeHtml(VIP_PRICE)} a month, shipped to your door
+          </td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;text-align:center;">
+        <a href="${escapeHtml(VIP_URL)}" style="display:inline-block;background:#D4A53A;color:#0a0806;font-family:Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;padding:15px 34px;border-radius:4px;">
+          See how it works
+        </a>
+      </td></tr>
+
+      <tr><td style="padding:18px 30px 0;text-align:center;">
+        <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:11.5px;line-height:1.6;color:#6E6558;">
+          One thing worth knowing up front: our fulfilment partner cannot ship subscriptions to
+          ${escapeHtml(VIP_EXCLUDED_STATES)}.
+        </p>
+      </td></tr>
+
+      <tr><td style="padding:26px 30px 30px;">
+        <div style="border-top:1px solid #241d14;padding-top:18px;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.7;color:#6E6558;text-align:center;">
+          <p style="margin:0 0 10px;">${COMPLIANCE_HTML}</p>
+          <p style="margin:0 0 10px;">Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.</p>
+          <p style="margin:0;"><a href="${escapeHtml(unsubUrl)}" style="color:#8A8175;">Unsubscribe</a></p>
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+
+  const text =
+    `You've bought twice. Want first look at the good stuff?\n\n` +
+    `Subscription members usually get access to special releases and limited edition bottles ` +
+    `before they are offered to the public.\n\n` +
+    `Each month:\n` +
+    `- Always a bottle, a different one every time\n` +
+    `- Sometimes apparel, glassware or other extras\n` +
+    `- Early access to limited releases\n` +
+    `- ${VIP_PRICE} a month, shipped to your door\n\n` +
+    `${VIP_URL}\n\n` +
+    `Our fulfilment partner cannot ship subscriptions to ${VIP_EXCLUDED_STATES}.\n\n` +
+    `${htmlToText(COMPLIANCE_HTML)}\n` +
+    `Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.\n\n` +
+    `Unsubscribe: ${unsubUrl}\n`;
+
+  return {
+    html,
+    text,
+    subject: firstName
+      ? `${firstName}, first look at the bottles that sell out`
+      : 'First look at the bottles that sell out'
+  };
+}
+
 /** Send one message. Throws on transport failure, returns Mandrill's per-recipient result. */
 export async function sendMandrill({ to, subject, html, text, tags = [], unsubUrl = null }) {
   const key = process.env.MANDRILL_API_KEY;

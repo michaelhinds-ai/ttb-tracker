@@ -500,6 +500,83 @@ export async function recordCheckoutSend(token, step) {
   await s.setJSON(key, rec);
 }
 
+/* ------------------------------------------------------------------ *
+ * VIP invite queue
+ * ------------------------------------------------------------------ *
+ * Two sources feed the same queue: a live trigger when someone places their
+ * second order, and a one-time backfill of everyone who already had two or
+ * more. Both are drip-released by the scheduled sender, so the backfill cannot
+ * dump thousands of messages onto a sending domain with almost no history.
+ */
+function vipStore() {
+  return getStore({ name: 'notify-vip', consistency: 'strong' });
+}
+
+const VIP_PREFIX = 'vip/';
+const vipKey = (email) => VIP_PREFIX + subscriberHash(email);
+
+/**
+ * Add someone to the queue. Never overwrites an existing entry, so a live
+ * second-order trigger and the backfill cannot double-enqueue the same person,
+ * and a re-run of the backfill is harmless.
+ */
+export async function enqueueVip({ email, firstName = '', source, sendAfter }) {
+  if (!email) return { queued: false, reason: 'no email' };
+  const s = vipStore();
+  const key = vipKey(email);
+
+  const existing = await s.get(key, { type: 'json' });
+  if (existing) return { queued: false, reason: 'already queued or sent' };
+
+  await s.setJSON(key, {
+    email,
+    firstName,
+    source,
+    enqueuedAt: new Date().toISOString(),
+    sendAfter: sendAfter || new Date().toISOString(),
+    sentAt: null
+  });
+  return { queued: true };
+}
+
+export async function listVipQueue({ limit = 5000 } = {}) {
+  const s = vipStore();
+  const { blobs } = await s.list({ prefix: VIP_PREFIX });
+  const out = [];
+  for (const b of blobs.slice(0, limit)) {
+    const rec = await s.get(b.key, { type: 'json' });
+    if (rec) out.push(rec);
+  }
+  return out;
+}
+
+export async function markVipSent(email) {
+  const s = vipStore();
+  const key = vipKey(email);
+  const rec = await s.get(key, { type: 'json' });
+  if (!rec) return;
+  await s.setJSON(key, { ...rec, sentAt: new Date().toISOString() });
+}
+
+/**
+ * Known subscription members, so the invite is never sent to someone who has
+ * already joined. Populated from order webhooks whenever a subscription line
+ * item goes through.
+ */
+const VIP_MEMBERS_KEY = 'members';
+
+export async function markVipMember(email) {
+  if (!email) return;
+  const s = vipStore();
+  const set = (await s.get(VIP_MEMBERS_KEY, { type: 'json' })) || {};
+  set[String(email).trim().toLowerCase()] = new Date().toISOString();
+  await s.setJSON(VIP_MEMBERS_KEY, set);
+}
+
+export async function getVipMembers() {
+  return (await vipStore().get(VIP_MEMBERS_KEY, { type: 'json' })) || {};
+}
+
 export async function getJobState(key) {
   return (await metaStore().get(`state/${key}`, { type: 'json' })) || null;
 }
