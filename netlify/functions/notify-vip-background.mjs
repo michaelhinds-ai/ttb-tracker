@@ -33,6 +33,7 @@ import {
   enqueueVip,
   listVipQueue,
   markVipSent,
+  markVipMember,
   getVipMembers,
   getMember,
   unsubToken,
