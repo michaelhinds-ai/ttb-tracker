@@ -26,8 +26,23 @@ import {
   markCheckoutRecovered,
   deleteCheckout,
   findCheckoutByCartToken,
+  enqueueVip,
+  markVipMember,
+  getVipMembers,
   safeProductImage
 } from './lib/notify-core.mjs';
+
+/** The subscription, so we can tell members from prospects. */
+const VIP_VARIANT_ID = process.env.NOTIFY_VIP_VARIANT_ID || '42045781410050';
+const VIP_DELAY_HOURS = Number(process.env.NOTIFY_VIP_DELAY_H ?? 24);
+
+function orderContainsSubscription(order) {
+  return (order.line_items || []).some(
+    (li) =>
+      String(li.variant_id) === VIP_VARIANT_ID ||
+      /subscription/i.test(li.title || '')
+  );
+}
 
 function verify(rawBody, header) {
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -67,6 +82,43 @@ export default async (req) => {
           console.log(`[checkout] order matched via cart_token -> ${rec.token}`);
         }
       }
+
+      /* ---- VIP invite on the second order ---- */
+      try {
+        const email = (p.email || p.customer?.email || '').trim();
+        if (email) {
+          if (orderContainsSubscription(p)) {
+            // They just joined. Record it so they never get invited to
+            // something they are already in.
+            await markVipMember(email);
+            console.log(`[vip] ${email} is now a member — invite suppressed`);
+          } else {
+            const count = p.customer?.orders_count;
+            const members = await getVipMembers();
+
+            if (count === 2 && !members[email.toLowerCase()]) {
+              // Delayed so it does not land alongside the order confirmation.
+              const sendAfter = new Date(Date.now() + VIP_DELAY_HOURS * 3600000).toISOString();
+              const q = await enqueueVip({
+                email,
+                firstName: p.customer?.first_name || '',
+                source: 'second-order',
+                sendAfter
+              });
+              console.log(
+                `[vip] second order from ${email} — ${q.queued ? 'queued' : 'skipped: ' + q.reason}`
+              );
+            } else if (count === undefined) {
+              // orders_count is not guaranteed present; protected customer
+              // data rules can redact it. Say so rather than failing quietly.
+              console.warn('[vip] orders_count absent on orders/create — live trigger inactive');
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[vip] second-order check failed: ${err?.message || err}`);
+      }
+
       return new Response('ok', { status: 200 });
     }
 
