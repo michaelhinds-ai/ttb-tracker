@@ -163,6 +163,8 @@
   body:not(.perm-users) .cap-users{display:none!important}
   body:not(.perm-reports) .cap-reports{display:none!important}
   body.role-manager .mgr-hide{display:none!important}
+  body.role-production #homeKpis,body.role-production #view-home .card{display:none!important}
+  body.role-production #view-home .apptile:not(.prod-ok){display:none!important}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -238,7 +240,7 @@
         <div><div class="an">Nashville Barrel Systems <span style="font-size:11px;font-weight:600;background:#efe7d8;color:var(--muted);padding:2px 8px;border-radius:999px;vertical-align:middle">Coming soon</span></div><div class="ad">TN reporting, production &amp; sales for Nashville Barrel Co.</div></div>
         <div class="applinks"><span class="applink" style="cursor:default;background:#f4ecdb;color:var(--muted);border-style:dashed">Coming soon</span></div>
       </div>
-      <div class="apptile" style="cursor:pointer" onclick="switchView('labels')">
+      <div class="apptile prod-ok" style="cursor:pointer" onclick="switchView('labels')">
         <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M7 8.5v7M10 8.5v7M13 8.5v7M16.5 8.5v7"/></svg></div>
         <div><div class="an">Print Case Labels</div><div class="ad">Master-carton GS1-128 labels &mdash; pick product, pack &amp; barrel, print a sheet.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
@@ -938,7 +940,7 @@
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
@@ -1000,8 +1002,8 @@ function cacheKey(){ return 'ttb_cache_'+WS; }
 function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
-const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], reports:['reports'], viewer:[] };
-const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', reports:'Reports', viewer:'Viewer' };
+const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], production:[], reports:['reports'], viewer:[] };
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', production:'Production', reports:'Reports', viewer:'Viewer' };
 let SESSION=null; // {userId,name,role}
 function authOn(){ return !!(state.auth&&state.auth.enabled&&(state.auth.users||[]).length); }
 function currentRole(){ if(!authOn()) return 'admin'; return SESSION?SESSION.role:'viewer'; }
@@ -1044,7 +1046,7 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); applyPermissions(); refreshAll();
+    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
@@ -1055,7 +1057,7 @@ function applyPermissions(){
   const role=currentRole();
   const b=document.body;
   ['write','delete','setup','users','reports'].forEach(c=>b.classList.toggle('perm-'+c, can(c)));
-  ['admin','editor','manager','reports','viewer'].forEach(r=>b.classList.toggle('role-'+r, role===r));
+  ['admin','editor','manager','production','reports','viewer'].forEach(r=>b.classList.toggle('role-'+r, role===r));
   const el=$('#whoami'); if(el){
     if(authOn()&&SESSION){ el.style.display=''; el.innerHTML=`<span>${SESSION.name}</span><span class="role">${ROLE_LABEL[role]||role}</span><button class="logout" id="logoutBtn">Sign out</button>`; const lb=$('#logoutBtn'); if(lb) lb.onclick=logout; }
     else { el.style.display='none'; el.innerHTML=''; }
