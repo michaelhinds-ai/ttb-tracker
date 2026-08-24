@@ -372,6 +372,134 @@ export async function markProductsAnnounced(ids) {
   await s.setJSON(PRODUCT_INDEX_KEY, index);
 }
 
+/* ------------------------------------------------------------------ *
+ * Product image cache
+ * ------------------------------------------------------------------ *
+ * Checkout webhooks carry line items with title, price and product_id but NO
+ * image field, and looking each one up live would need a read_products scope
+ * the app may not have. The products/update webhook already delivers images,
+ * so we keep a small id -> image map and read from it when building recovery
+ * emails. A miss just means that line renders without a photo.
+ */
+const IMAGE_CACHE_KEY = 'products/images';
+const IMAGE_CACHE_MAX = 400;
+
+export async function cacheProductImage(productId, imageUrl) {
+  if (!productId || !imageUrl) return;
+  const s = metaStore();
+  const cache = (await s.get(IMAGE_CACHE_KEY, { type: 'json' })) || {};
+  cache[String(productId)] = { url: imageUrl, at: Date.now() };
+
+  // Bound it: drop the oldest entries rather than growing without limit.
+  const keys = Object.keys(cache);
+  if (keys.length > IMAGE_CACHE_MAX) {
+    keys
+      .sort((a, b) => (cache[a].at || 0) - (cache[b].at || 0))
+      .slice(0, keys.length - IMAGE_CACHE_MAX)
+      .forEach((k) => delete cache[k]);
+  }
+  await s.setJSON(IMAGE_CACHE_KEY, cache);
+}
+
+export async function getProductImages(productIds) {
+  const cache = (await metaStore().get(IMAGE_CACHE_KEY, { type: 'json' })) || {};
+  const out = {};
+  for (const id of productIds) {
+    const hit = cache[String(id)];
+    if (hit) out[String(id)] = hit.url;
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Abandoned checkouts
+ * ------------------------------------------------------------------ *
+ * Keyed by the checkout `token`. NOT by `id` — Shopify removed `id` from
+ * checkouts/* webhooks in API 2026-04, and removed `checkout_id` from orders/*
+ * at the same time. `token` on the checkout matches `checkout_token` on
+ * orders/create, and that pairing is how we know to stop emailing.
+ *
+ * One blob per checkout rather than a single index: checkouts/update fires
+ * often and unpredictably (Shopify documents no frequency at all), so
+ * per-record writes avoid two updates clobbering each other.
+ */
+function checkoutStore() {
+  return getStore({ name: 'notify-checkouts', consistency: 'strong' });
+}
+
+const CHECKOUT_PREFIX = 'checkout/';
+
+export async function upsertCheckout(record) {
+  if (!record?.token) return { ok: false, reason: 'no token' };
+  const s = checkoutStore();
+  const key = CHECKOUT_PREFIX + record.token;
+  const existing = (await s.get(key, { type: 'json' })) || {};
+
+  await s.setJSON(key, {
+    ...existing,
+    ...record,
+    // Never let a later webhook undo progress already made.
+    sent: existing.sent || {},
+    firstSeen: existing.firstSeen || new Date().toISOString()
+  });
+  return { ok: true, isNew: !existing.token };
+}
+
+export async function markCheckoutRecovered(token, how) {
+  if (!token) return;
+  const s = checkoutStore();
+  const key = CHECKOUT_PREFIX + token;
+  const existing = await s.get(key, { type: 'json' });
+  if (!existing) return;
+  await s.setJSON(key, { ...existing, recoveredAt: new Date().toISOString(), recoveredHow: how });
+}
+
+export async function deleteCheckout(token) {
+  if (!token) return;
+  await checkoutStore().delete(CHECKOUT_PREFIX + token);
+}
+
+/** Find a checkout by cart_token — checkouts/delete carries no `token`. */
+export async function findCheckoutByCartToken(cartToken) {
+  if (!cartToken) return null;
+  const s = checkoutStore();
+  const { blobs } = await s.list({ prefix: CHECKOUT_PREFIX });
+  for (const b of blobs) {
+    const rec = await s.get(b.key, { type: 'json' });
+    if (rec?.cartToken === cartToken) return rec;
+  }
+  return null;
+}
+
+export async function listOpenCheckouts({ maxAgeDays = 7 } = {}) {
+  const s = checkoutStore();
+  const { blobs } = await s.list({ prefix: CHECKOUT_PREFIX });
+  const out = [];
+  const expired = [];
+
+  for (const b of blobs) {
+    const rec = await s.get(b.key, { type: 'json' });
+    if (!rec) continue;
+    const ageDays = (Date.now() - Date.parse(rec.firstSeen || rec.createdAt)) / 86400000;
+    if (!Number.isFinite(ageDays) || ageDays > maxAgeDays) { expired.push(b.key); continue; }
+    out.push(rec);
+  }
+
+  // Housekeeping, so the store does not grow without bound.
+  for (const key of expired) await s.delete(key);
+
+  return out;
+}
+
+export async function recordCheckoutSend(token, step) {
+  const s = checkoutStore();
+  const key = CHECKOUT_PREFIX + token;
+  const rec = await s.get(key, { type: 'json' });
+  if (!rec) return;
+  rec.sent = { ...(rec.sent || {}), [step]: new Date().toISOString() };
+  await s.setJSON(key, rec);
+}
+
 export async function getJobState(key) {
   return (await metaStore().get(`state/${key}`, { type: 'json' })) || null;
 }

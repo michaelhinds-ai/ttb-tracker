@@ -311,6 +311,125 @@ export function buildDropsEmail({ products, unsubUrl, heading }) {
   return { html, text, subject: title };
 }
 
+/**
+ * Abandoned checkout recovery. Three steps, three different jobs:
+ *
+ *   1 (+1h)   Reminder. They probably got distracted. Short, no discount.
+ *   2 (+24h)  Objection handling. For spirits the objections are specific —
+ *             "can you even ship to me", "what is a single barrel", "is this
+ *             the same bottle in the photo". Answer them.
+ *   3 (+72h)  Scarcity, honestly stated. A single barrel really can sell out.
+ *
+ * Deliberately no discount code in any of them. Discounting a cart someone was
+ * already willing to buy trains people to abandon, and on spirits it drags in
+ * the state-by-state coupon restrictions for no reason.
+ */
+const RECOVERY_COPY = {
+  1: {
+    subject: (n) => (n ? `You left ${n} behind` : 'You left something behind'),
+    heading: 'Still thinking it over?',
+    blurb: 'Your cart is saved and waiting. Pick up right where you left off.',
+    cta: 'Finish checkout'
+  },
+  2: {
+    subject: () => 'A few things worth knowing before you decide',
+    heading: 'Questions people usually have',
+    blurb:
+      'Every bottle is a single barrel, so what is in the photo is what ships. We cannot ship to every state &mdash; if yours is not covered, checkout will tell you before you pay.',
+    cta: 'Go back to your cart'
+  },
+  3: {
+    subject: (n) => (n ? `${n} may not last` : 'Your cart may not last'),
+    heading: 'Last look',
+    blurb:
+      'Single barrels are exactly that &mdash; one barrel. When it is gone we cannot reorder it. Your cart is still here for now.',
+    cta: 'Claim your bottle'
+  }
+};
+
+export function buildRecoveryEmail({ step, items, recoverUrl, unsubUrl, firstName }) {
+  const copy = RECOVERY_COPY[step] || RECOVERY_COPY[1];
+  const firstItem = items[0]?.title || '';
+  const hi = firstName ? `${escapeHtml(firstName)}, ` : '';
+
+  const rows = items
+    .map((it) => {
+      const name = escapeHtml(it.title);
+      const qty = Number(it.quantity) > 1 ? ` &times;${Number(it.quantity)}` : '';
+      const img = it.image
+        ? `<td width="72" style="padding:0 12px 0 0;vertical-align:top;">
+             <img src="${escapeHtml(it.image)}" alt="${name}" width="72"
+               style="width:72px;height:auto;display:block;border:0;border-radius:4px;"></td>`
+        : '';
+      return `<tr><td style="padding:0 0 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+          style="background:rgba(212,165,58,.05);border:1px solid rgba(212,165,58,.18);border-radius:4px;">
+          <tr><td style="padding:12px 14px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              ${img}
+              <td style="vertical-align:middle;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;font-weight:600;color:#F4EFE6;line-height:1.4;">
+                ${name}${qty}
+              </td>
+            </tr></table>
+          </td></tr>
+        </table>
+      </td></tr>`;
+    })
+    .join('');
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0a0806;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0806;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#12100d;border:1px solid #33291B;border-radius:6px;">
+      <tr><td style="padding:30px 30px 8px;text-align:center;">
+        ${mastheadHtml(FROM_NAME)}
+        <div style="width:40px;height:1px;background:#D4A53A;opacity:.55;margin:20px auto 0;"></div>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;text-align:center;">
+        <h1 style="margin:0 0 10px;font-family:Georgia,serif;font-size:24px;line-height:1.25;color:#F4EFE6;font-weight:700;">
+          ${hi}${copy.heading}
+        </h1>
+        <p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#A79C8C;">
+          ${copy.blurb}
+        </p>
+      </td></tr>
+
+      <tr><td style="padding:22px 30px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+      </td></tr>
+
+      <tr><td style="padding:8px 30px 0;text-align:center;">
+        <a href="${escapeHtml(recoverUrl)}" style="display:inline-block;background:#D4A53A;color:#0a0806;font-family:Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;padding:15px 34px;border-radius:4px;">
+          ${copy.cta}
+        </a>
+      </td></tr>
+
+      <tr><td style="padding:26px 30px 30px;">
+        <div style="border-top:1px solid #241d14;padding-top:18px;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.7;color:#6E6558;text-align:center;">
+          <p style="margin:0 0 10px;">${COMPLIANCE_HTML}</p>
+          <p style="margin:0 0 10px;">Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.</p>
+          <p style="margin:0;"><a href="${escapeHtml(unsubUrl)}" style="color:#8A8175;">Unsubscribe</a></p>
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+
+  const text =
+    `${copy.heading}\n\n${htmlToText(copy.blurb)}\n\n` +
+    items.map((it) => `- ${it.title}${Number(it.quantity) > 1 ? ' x' + it.quantity : ''}`).join('\n') +
+    `\n\n${copy.cta}: ${recoverUrl}\n\n` +
+    `${htmlToText(COMPLIANCE_HTML)}\n` +
+    `Please drink responsibly. You must be 21+ to purchase. Shipping restrictions apply by state.\n\n` +
+    `Unsubscribe: ${unsubUrl}\n`;
+
+  return { html, text, subject: copy.subject(firstItem) };
+}
+
 /** Send one message. Throws on transport failure, returns Mandrill's per-recipient result. */
 export async function sendMandrill({ to, subject, html, text, tags = [], unsubUrl = null }) {
   const key = process.env.MANDRILL_API_KEY;
