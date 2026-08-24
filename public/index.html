@@ -258,7 +258,7 @@
           <button class="applink" onclick="switchView('salesrpt')">Sales Report</button>
         </div>
       </div>
-      <div class="apptile mgr-hide" style="cursor:pointer" onclick="switchView('marketing')">
+      <div class="apptile" style="cursor:pointer" onclick="switchView('marketing')">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
         <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
@@ -412,7 +412,7 @@
       <div style="margin:2px 0 12px"><input id="asset_search" placeholder="Search assets — brand or description…" oninput="renderMarketing()"></div>
       <div id="assetGrid"></div>
     </div>
-    <div class="card">
+    <div class="card mgr-hide">
       <h3>Email &amp; audience</h3>
       <p class="hint">The weekly Square &middot; Xola &middot; Shopify &rarr; Mailchimp sync and the walk-in / tour thank-you journey run automatically. Manage connections in Setup.</p>
       <button class="btn ghost" onclick="switchView('data')">Open Setup &amp; Sync</button>
