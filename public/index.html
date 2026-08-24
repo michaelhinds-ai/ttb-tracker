@@ -786,11 +786,13 @@
           <button class="btn ghost sm" id="reconcileDumps">Reconcile past dumps</button>
           <button class="btn ghost sm" id="recalcLoss">Recalculate dump losses</button>
           <button class="btn ghost sm" id="backfillGift">Backfill gift-shop orders</button>
+          <button class="btn ghost sm" id="routeProc">Route bottlings through Processing</button>
         </div>
         <div class="hint" style="line-height:1.7;margin-top:10px">
           <b>Reconcile past dumps</b> — gives every past bottling a searchable "dumped" barrel record on the Barrels page. Tracking only; doesn't change report totals.<br>
           <b>Recalculate dump losses</b> — recomputes angel's-share loss on older bottlings from the source barrel's proof gallons.<br>
-          <b>Backfill gift-shop orders</b> — creates a $0 order trail (and links the GiftShop customer) for past gift-shop bottlings.
+          <b>Backfill gift-shop orders</b> — creates a $0 order trail (and links the GiftShop customer) for past gift-shop bottlings.<br>
+          <b>Route bottlings through Processing</b> — records the bulk transfer into the Processing account (and its angel’s-share loss) for every past bottling, so Processing and Bulk on Hand read correctly. Does not change any tax figure.
         </div>
       </details>
     </div>
@@ -2739,6 +2741,7 @@ function doBottle(){
   }
   else { addToFinishedGoods(cls,b.distillDate,proof,bottles,date); }
   const dumpPG=round1(perBarrelPG*dumpQty); const lossPG=round1(Math.max(0,dumpPG-pg));
+  addProcBulk(date,cls,proof,dumpPG,lossPG,btId);
   state.bottlings.push({id:btId,date,barrelNo,barrelId:b.id,spirit:(b.spiritType?b.spiritType+' / ':'')+cls,distillDate:b.distillDate||'',barrels:dumpQty,proof,bottles,wineGal:wg,pg,dumpPG,lossPG,dumpExact:true,giftShop:gift,entryId,orderId:giftOrderId,qbInvoice:gift?'pending':null});
   save('Bottled '+dumpQty+' barrel(s)'+(barrelNo?(' #'+barrelNo):'')+' → '+bottles+' bottles'+(gift?' (gift shop removal)':''),{type:'bottling',id:btId}); $('#bo_bottles').value=''; $('#bo_barrelno').value=''; $('#bo_giftshop').checked=false; refreshAll(); switchView('bottling');
   if(giftOrderId) autoSyncOrder(giftOrderId);
@@ -2758,6 +2761,32 @@ function addToFinishedGoods(cls,distillDate,proof,bottles,created){
   else state.finishedGoods.push({id:uid(),sku,spirit:cls,distillDate:distillDate||'',proof:+proof||0,bottleSize:750,bottles,created:created||''});
 }
 function addRemovalEntry(date,spirit,wg,proof,ref,src){ const e={id:uid(),date:date||new Date().toISOString().slice(0,10),type:'proc_taxpaid',spirit:spirit||'Other',wg:round2(wg),proof:+proof||0,pg:round1(wg*(+proof||0)/100),ref:ref||'',notes:'',src:src||''}; state.entries.push(e); return e.id; }
+// Route bottled bulk through the Processing account (TTB): the dumped proof gallons
+// transfer IN, the angel's-share posts as a processing loss, and the taxpaid removal
+// (gift shop now, or a later order) draws it back down. Net effect: Processing reflects
+// finished-goods-in-bond and can never go negative. Tagged by bottling id, so it's idempotent.
+function addProcBulk(date,spirit,proof,dumpPG,lossPG,tag){
+  const pr=+proof||0, mk=pg=>({wg:pr>0?round2(pg*100/pr):0,proof:pr,pg:round1(pg)});
+  if(dumpPG>0) state.entries.push({id:uid(),date,type:'proc_deposit',spirit:spirit||'Other',...mk(dumpPG),ref:'Bottling — bulk into processing',notes:'',src:'dump:'+tag});
+  if(lossPG>0) state.entries.push({id:uid(),date,type:'proc_loss',spirit:spirit||'Other',...mk(lossPG),ref:"Bottling — angel's share",notes:'',src:'dumploss:'+tag});
+}
+// One-time backfill: give every PAST bottling the same processing transfer + loss, using the
+// dumpPG / lossPG already stored on the bottling record. Safe to re-run.
+function reconcileProcessing(){
+  if(!requireCap('write'))return;
+  const have=new Set(state.entries.map(e=>e.src).filter(Boolean));
+  let added=0;
+  (state.bottlings||[]).forEach(b=>{
+    const pr=+b.proof||0, spirit=b.spirit||'Other', date=b.date||new Date().toISOString().slice(0,10);
+    const dumpPG=(b.dumpPG!=null&&b.dumpPG!=='')?round1(+b.dumpPG):round1((+b.pg||0)+(+b.lossPG||0));
+    const lossPG=round1(+b.lossPG||0);
+    const mk=pg=>({wg:pr>0?round2(pg*100/pr):0,proof:pr,pg:round1(pg)});
+    if(dumpPG>0&&!have.has('dump:'+b.id)){ state.entries.push({id:uid(),date,type:'proc_deposit',spirit,...mk(dumpPG),ref:'Bottling — bulk into processing',notes:'',src:'dump:'+b.id}); added++; }
+    if(lossPG>0&&!have.has('dumploss:'+b.id)){ state.entries.push({id:uid(),date,type:'proc_loss',spirit,...mk(lossPG),ref:"Bottling — angel's share",notes:'',src:'dumploss:'+b.id}); added++; }
+  });
+  if(added){ save('Routed '+added+' bottling bulk entr'+(added===1?'y':'ies')+' through Processing'); refreshAll(); flash('Added '+added+' processing entr'+(added===1?'y':'ies')+' — Bulk on Hand is now correct.'); }
+  else flash('Already reconciled — every bottling is routed through Processing.');
+}
 function renderFinished(){
   const all=(state.finishedGoods||[]).filter(f=>(+f.bottles||0)>0);
   const totalBottles=all.reduce((s,f)=>s+(+f.bottles||0),0), totalCases=all.reduce((s,f)=>s+fgCases(f),0), totalPG=round1(all.reduce((s,f)=>s+fgPG(f),0));
@@ -3047,7 +3076,7 @@ function wireOnce(){
   document.querySelectorAll('#barrelHead th.bs').forEach(th=>th.onclick=()=>setBarrelSort(th.dataset.bsort));
   $('#bo_do').onclick=doBottle;
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
-  $('#recalcLoss').onclick=recalcLosses; $('#reconcileDumps').onclick=reconcilePastDumps; $('#backfillGift').onclick=runBackfillGift; $('#syncAllQB').onclick=syncAllPendingQB;
+  $('#recalcLoss').onclick=recalcLosses; $('#reconcileDumps').onclick=reconcilePastDumps; $('#backfillGift').onclick=runBackfillGift; $('#routeProc').onclick=reconcileProcessing; $('#syncAllQB').onclick=syncAllPendingQB;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
