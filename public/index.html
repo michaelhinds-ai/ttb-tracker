@@ -258,12 +258,10 @@
           <button class="applink" onclick="switchView('salesrpt')">Sales Report</button>
         </div>
       </div>
-      <div class="apptile mgr-hide">
+      <div class="apptile mgr-hide" style="cursor:pointer" onclick="switchView('marketing')">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
-        <div><div class="an">Marketing</div><div class="ad">Audience sync + the walk-in / tour thank-you journey. Runs weekly, automatically.</div></div>
-        <div class="applinks">
-          <button class="applink" onclick="switchView('data')">Connections</button>
-        </div>
+        <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
       <div class="apptile mgr-hide">
         <div class="ai" style="background:rgba(122,106,86,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a6a56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 7l1-1a3.5 3.5 0 0 1 5 5l-1 1"/><path d="M13 17l-1 1a3.5 3.5 0 0 1-5-5l1-1"/></svg></div>
@@ -394,6 +392,30 @@
       <h3>Your documents</h3>
       <div style="margin:2px 0 12px"><input id="doc_search" placeholder="Search documents — name, note, category or company…" oninput="renderCompliance()"></div>
       <div id="docList"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-marketing">
+    <h2 class="section" style="margin-top:4px">Marketing — assets &amp; audience</h2>
+    <div class="card cap-write">
+      <h3>Upload an asset</h3>
+      <p class="hint">Photos, logos, label art, product shots. Tag the brand and describe it so it&rsquo;s easy to find later.</p>
+      <div class="grid g3">
+        <div><label class="fld">Brand</label><select id="asset_brand"></select></div>
+        <div style="grid-column:span 2"><label class="fld">Image file (up to ~4.5&nbsp;MB)</label><input type="file" id="asset_file" accept="image/*"></div>
+      </div>
+      <div style="margin-top:12px"><label class="fld">Note / description</label><input id="asset_note" placeholder="e.g. 11yr bottle shot on white, transparent-PNG logo, rickhouse photo"></div>
+      <div style="margin-top:12px"><button class="btn" id="asset_upbtn" onclick="assetUpload()">Upload</button></div>
+    </div>
+    <div class="card">
+      <h3>Asset library</h3>
+      <div style="margin:2px 0 12px"><input id="asset_search" placeholder="Search assets — brand or description…" oninput="renderMarketing()"></div>
+      <div id="assetGrid"></div>
+    </div>
+    <div class="card">
+      <h3>Email &amp; audience</h3>
+      <p class="hint">The weekly Square &middot; Xola &middot; Shopify &rarr; Mailchimp sync and the walk-in / tour thank-you journey run automatically. Manage connections in Setup.</p>
+      <button class="btn ghost" onclick="switchView('data')">Open Setup &amp; Sync</button>
     </div>
   </section>
 
@@ -989,7 +1011,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[],skus:[{id:'seed-lrwc-11sib',company:'Louisville Rickhouse Whiskey Co',product:'11 Year Single Barrel Bourbon',size:'750ml',scc6:'',scc12:'10850033780311'}],brandLogos:{},docs:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[],skus:[{id:'seed-lrwc-11sib',company:'Louisville Rickhouse Whiskey Co',product:'11 Year Single Barrel Bourbon',size:'750ml',scc6:'',scc12:'10850033780311'}],brandLogos:{},docs:[],assets:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -999,7 +1021,7 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; s.assets=Array.isArray(d.assets)?d.assets:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
 const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], production:[], reports:['reports'], viewer:[] };
@@ -1580,6 +1602,50 @@ function docView(id,dl){ if(!WS){ alert('No workspace connected.'); return; } wi
 function docDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this document? The file is removed permanently.'))return;
   try{ fetch('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id),{method:'DELETE'}); }catch(e){}
   state.docs=(state.docs||[]).filter(d=>d.id!==id); save('Deleted a compliance document'); refreshAll(); }
+/* ===================== Marketing assets (photos & logos) ===================== */
+function renderMarketing(){
+  const bs=document.getElementById('asset_brand'); if(bs){ const cur=bs.value; bs.innerHTML='<option value="">— brand / general —</option>'+companyList().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) bs.value=cur; }
+  const box=document.getElementById('assetGrid'); if(!box) return;
+  const q=((document.getElementById('asset_search')||{}).value||'').toLowerCase().trim();
+  let a=(state.assets||[]).slice().sort((x,y)=>(y.ts||0)-(x.ts||0));
+  if(q) a=a.filter(x=>(((x.brand||'')+' '+(x.note||'')+' '+(x.name||'')).toLowerCase().indexOf(q)>=0));
+  if(!a.length){ box.innerHTML='<div class="empty" style="padding:24px">'+(q?'No assets match “'+esc(q)+'”.':'No assets yet — upload a photo or logo above.')+'</div>'; return; }
+  const src=id=>'/api/docs?ws='+encodeURIComponent(WS||'')+'&id='+encodeURIComponent(id);
+  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px">'+a.map(x=>`
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)">
+      <div title="Open" onclick="docView('${x.id}')" style="height:150px;cursor:pointer;background:#f4ecdb center/contain no-repeat;background-image:url('${src(x.id)}')"></div>
+      <div style="padding:10px 11px">
+        <div style="font-size:13px;font-weight:700">${x.brand?esc(x.brand):'General'}</div>
+        <div style="color:var(--muted);font-size:12.5px;line-height:1.3;margin-top:1px">${esc(x.note||x.name||'')}</div>
+        <div class="noprint" style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;font-size:13px">
+          <button class="link" onclick="docView('${x.id}',1)">Download</button>${can('write')?`<button class="link" onclick="assetEditNote('${x.id}')">Note</button><button class="del" onclick="assetDel('${x.id}')">Delete</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')+'</div>';
+}
+function assetUpload(){
+  if(!requireCap('write'))return;
+  if(!WS){ alert('Connect a workspace first (Setup & Sync).'); return; }
+  const fi=document.getElementById('asset_file'); const f=fi&&fi.files&&fi.files[0]; if(!f){ alert('Choose an image to upload.'); return; }
+  if(f.size>4.5*1048576){ alert('That file is '+docFmtBytes(f.size)+'. Please keep assets under about 4.5 MB.'); return; }
+  const brand=(document.getElementById('asset_brand')||{}).value||''; const note=(document.getElementById('asset_note')||{}).value.trim();
+  const btn=document.getElementById('asset_upbtn'); if(btn){ btn.disabled=true; btn.textContent='Uploading…'; }
+  const r=new FileReader();
+  r.onload=async()=>{
+    try{
+      const b64=String(r.result).split(',')[1]||''; const id=uid();
+      const res=await fetch('/api/docs?ws='+encodeURIComponent(WS),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name:f.name,type:f.type||'application/octet-stream',dataB64:b64})});
+      const d=await res.json(); if(!d||!d.ok) throw new Error((d&&(d.detail||d.error))||'upload failed');
+      if(!state.assets) state.assets=[];
+      state.assets.push({id,name:f.name,brand,note,type:f.type||'',size:d.size||f.size,ts:Date.now(),by:(SESSION?SESSION.name:'')});
+      if(fi) fi.value=''; const ne=document.getElementById('asset_note'); if(ne) ne.value=''; save('Uploaded marketing asset — '+f.name); refreshAll(); flash('Uploaded '+f.name+'.');
+    }catch(e){ alert('Upload failed: '+((e&&e.message)||e)); }
+    finally{ const b=document.getElementById('asset_upbtn'); if(b){ b.disabled=false; b.textContent='Upload'; } }
+  };
+  r.readAsDataURL(f);
+}
+function assetEditNote(id){ if(!requireCap('write'))return; const a=(state.assets||[]).find(x=>x.id===id); if(!a)return; const v=prompt('Description for this asset:', a.note||''); if(v===null)return; a.note=v.trim(); save('Updated asset note'); refreshAll(); }
+function assetDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this asset? The file is removed permanently.'))return; try{ fetch('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id),{method:'DELETE'}); }catch(e){} state.assets=(state.assets||[]).filter(x=>x.id!==id); save('Deleted a marketing asset'); refreshAll(); }
 function renderLrs(){
   try{
     const yr=state.settings.year;
@@ -2643,8 +2709,8 @@ window.addEventListener('popstate',function(e){ _navPop=true; try{ switchView((e
 function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
-  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'home',salesrpt:'home',data:'home',compliance:'home'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales Report',data:'Setup & Sync',compliance:'Compliance'};
+  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'home',salesrpt:'home',data:'home',compliance:'home',marketing:'home'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales Report',data:'Setup & Sync',compliance:'Compliance',marketing:'Marketing'};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
@@ -2654,10 +2720,10 @@ function renderCrumb(v){
     return `<button onclick="switchView('${t}')">${i===0?'\u2190 ':''}${esc(LABEL[t]||t)}</button><span class="sep">/</span>`;
   }).join('')+'</div>';
 }
-function switchView(v){renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
+function switchView(v){renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
