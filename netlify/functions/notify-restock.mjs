@@ -36,6 +36,7 @@ import {
   peekInterest,
   getMember,
   recordProduct,
+  cacheProductImage,
   safeProductImage,
   SUPPRESSED_STATUSES
 } from './lib/notify-core.mjs';
@@ -123,12 +124,24 @@ export default async (req) => {
    * outside its window, so this cannot resurface the back catalogue.
    */
   if (shape === 'product' && payload.id) {
+    const productImage = safeProductImage(
+      payload.image?.src || payload.images?.[0]?.src || null
+    );
+
+    // Cached for cart-recovery emails: checkout line items carry a product_id
+    // but no image, and looking one up live would need a read_products scope.
+    try {
+      await cacheProductImage(payload.id, productImage);
+    } catch (err) {
+      console.error(`[restock] image cache write failed: ${err?.message || err}`);
+    }
+
     try {
       await recordProduct({
         id: payload.id,
         title: payload.title,
         handle: payload.handle,
-        image: safeProductImage(payload.image?.src || payload.images?.[0]?.src || null),
+        image: productImage,
         inStock: variants.some((v) => v.inStock === true),
         tags: String(payload.tags || '')
           .split(',')
