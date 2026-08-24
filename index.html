@@ -133,9 +133,12 @@
 
   .labelsheet{margin-top:16px}
   .lsheet-page{display:grid;grid-template-columns:4in 4in;column-gap:.19in;justify-content:center;padding:.5in .156in 0;box-sizing:border-box}
-  .clabel{width:4in;height:3.333in;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.1in;padding:.16in;text-align:center;overflow:hidden;color:#000;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
-  .clabel .clogo img{width:1.7in;height:auto;display:block}
-  .clabel .cbrand{font-family:Georgia,serif;font-weight:700;font-size:15pt}
+  .clabel{width:4in;height:3.333in;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.05in;padding:.18in .16in .14in;text-align:center;overflow:hidden;color:#000;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  .clabel .clogo img{width:1.2in;height:auto;display:block}
+  .clabel .cprod{font-size:16pt;font-weight:800;line-height:1.12;margin-top:.05in}
+  .clabel .cdetails{font-size:10.5pt;font-weight:600;color:#222;line-height:1.25}
+  .clabel .cbar{margin-top:auto;width:100%}
+  .clabel .cbrand{font-family:Georgia,serif;font-weight:700;font-size:13pt}
   .clabel .cbar svg{width:2.3in;height:auto;display:block;margin:0 auto}
   .clabel .chr{font-family:monospace;font-size:12pt;letter-spacing:1px;margin-top:1px}
   .clabel .ctext{font-size:10.5pt;font-weight:600;line-height:1.25}
@@ -233,6 +236,11 @@
         <div><div class="an">Nashville Barrel Systems <span style="font-size:11px;font-weight:600;background:#efe7d8;color:var(--muted);padding:2px 8px;border-radius:999px;vertical-align:middle">Coming soon</span></div><div class="ad">TN reporting, production &amp; sales for Nashville Barrel Co.</div></div>
         <div class="applinks"><span class="applink" style="cursor:default;background:#f4ecdb;color:var(--muted);border-style:dashed">Coming soon</span></div>
       </div>
+      <div class="apptile" style="cursor:pointer" onclick="switchView('labels')">
+        <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M7 8.5v7M10 8.5v7M13 8.5v7M16.5 8.5v7"/></svg></div>
+        <div><div class="an">Print Case Labels</div><div class="ad">Master-carton GS1-128 labels &mdash; pick product, pack &amp; barrel, print a sheet.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('compliance')">
         <div class="ai" style="background:rgba(178,58,46,.13)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23a2e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg></div>
         <div><div class="an">Compliance</div><div class="ad">Licenses, DSP permit, sales &amp; use tax, EIN &mdash; upload, find &amp; print.</div></div>
@@ -329,7 +337,7 @@
       <div class="grid g3">
         <div><label class="fld">Company</label><select id="lbl_company" onchange="labelsSkuOptions()"></select></div>
         <div><label class="fld">Product</label><select id="lbl_product"></select></div>
-        <div><label class="fld">Case pack</label><select id="lbl_pack"><option value="">— select 6 or 12-pack —</option><option value="12">12-pack</option><option value="6">6-pack</option></select></div>
+        <div><label class="fld">Case pack</label><select id="lbl_pack"><option value="6">6-pack</option><option value="12">12-pack</option></select></div>
         <div><label class="fld">Barrel #</label><input id="lbl_barrel" placeholder="2868"></div>
         <div><label class="fld">Proof</label><input id="lbl_proof" inputmode="decimal" placeholder="132.80" oninput="lblUpdAbv()"></div>
         <div style="display:flex;align-items:flex-end"><span id="lbl_abv" style="color:var(--copper);font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:10px"></span></div>
@@ -371,13 +379,16 @@
       <h3>Upload a document</h3>
       <p class="hint">Keep your DSP permit, state license, sales &amp; use tax certificate, EIN letter, COLAs, insurance and bond here. Stored securely and available to view or print from any device.</p>
       <div class="grid g3">
+        <div><label class="fld">Company</label><select id="doc_company"></select></div>
         <div><label class="fld">Category</label><select id="doc_cat"></select></div>
-        <div style="grid-column:span 2"><label class="fld">File (PDF or image, up to ~4.5&nbsp;MB)</label><input type="file" id="doc_file" accept="application/pdf,image/*"></div>
+        <div><label class="fld">File (PDF or image, up to ~4.5&nbsp;MB)</label><input type="file" id="doc_file" accept="application/pdf,image/*"></div>
       </div>
+      <div style="margin-top:12px"><label class="fld">Note / description</label><input id="doc_note" placeholder="e.g. Kentucky distiller&rsquo;s license — exp. 6/30/2027, or notes on this filing"></div>
       <div style="margin-top:12px"><button class="btn" id="doc_upbtn" onclick="docUpload()">Upload</button></div>
     </div>
     <div class="card">
       <h3>Your documents</h3>
+      <div style="margin:2px 0 12px"><input id="doc_search" placeholder="Search documents — name, note, category or company…" oninput="renderCompliance()"></div>
       <div id="docList"></div>
     </div>
   </section>
@@ -1177,7 +1188,17 @@ async function cloudLoad(){
     const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{cache:'no-store'});
     if(r.ok){
       const d=await r.json();
-      if(d && (d.entries||d.settings)){ state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return; }
+      if(d && (d.entries||d.settings)){
+        // Protect unsynced local work: if the local copy is substantially bigger than the
+        // cloud copy, it has changes that never uploaded — keep it and push it up instead of
+        // being overwritten by the older cloud version.
+        const cache=localStorage.getItem(cacheKey());
+        if(cache && cache.length > JSON.stringify(d).length*1.2){
+          try{ state=normalize(JSON.parse(cache)); }catch(e){ state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return; }
+          cloudAvailable=true; setSync('saving'); cloudSave(); return;
+        }
+        state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return;
+      }
       // no cloud record yet — seed from local cache if present
       const c=localStorage.getItem(cacheKey());
       if(c){ state=normalize(JSON.parse(c)); await cloudSave(true); } else { setSync('synced'); }
@@ -1194,7 +1215,17 @@ async function cloudLoad(){
 let saveTimer=null, saving=false, pending=false;
 let lastSnap=null; const HIST_MAX=25;
 // data-only snapshot (excludes the history log itself, so snapshots never nest)
-function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; return JSON.stringify(c); }
+function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; delete c.brandLogos; return JSON.stringify(c); }
+function resizeDataURL(dataURL,maxW,cb){ try{ const img=new Image(); img.onload=function(){ let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height; if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; } const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h); let out; try{ out=cv.toDataURL('image/png'); }catch(e){ out=dataURL; } cb(out||dataURL); }; img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); } }
+// One-time repair: strip logo images out of undo snapshots and shrink stored logos, then push the smaller state to the cloud so sync recovers.
+function runSyncRepair(){ try{
+  let changed=false;
+  (state.history||[]).forEach(h=>{ if(h && typeof h.snap==='string' && h.snap.indexOf('\"brandLogos\"')>=0){ try{ const o=JSON.parse(h.snap); if(o.brandLogos!==undefined){ delete o.brandLogos; h.snap=JSON.stringify(o); changed=true; } }catch(e){} } });
+  const bl=state.brandLogos||{}; const big=Object.keys(bl).filter(k=>typeof bl[k]==='string' && bl[k].indexOf('data:')===0 && bl[k].length>60000);
+  const finish=()=>{ try{ localStorage.setItem(cacheKey(),JSON.stringify(state)); }catch(e){} lastSnap=dataOnly(); if(location.protocol!=='file:'){ cloudAvailable=true; setSync('saving'); cloudSave(); } };
+  if(!big.length){ if(changed) finish(); return; }
+  let pending=big.length; big.forEach(k=>{ resizeDataURL(bl[k],460,(out)=>{ if(out && out.length<bl[k].length){ state.brandLogos[k]=out; changed=true; } if(--pending===0) finish(); }); });
+}catch(e){} }
 function save(label,ref){
   if(!state.history) state.history=[];
   // record the just-completed action, storing the PRE-action state for rewind
@@ -1220,7 +1251,7 @@ function rewindTo(id){
   if(ans.trim().toUpperCase()!=='REWIND'){ flash('Rewind cancelled — you must type REWIND to confirm.'); return; }
   const data=JSON.parse(hist[i].snap);
   const keep=hist.slice(0,i);            // keep actions that came before this one
-  state=normalize(Object.assign(data,{history:keep}));
+  state=normalize(Object.assign(data,{history:keep, brandLogos:state.brandLogos}));
   lastSnap=dataOnly();
   updateUndoBtn(); persist(); refreshAll();
   flash('Rewound.');
@@ -1427,7 +1458,7 @@ function lblUpdAbv(){ const pe=document.getElementById('lbl_proof'); const out=d
 function renderLabels(){
   const cos=companyList();
   const csel=document.getElementById('lbl_company');
-  if(csel){ const cur=csel.value; csel.innerHTML=cos.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&cos.includes(cur)) csel.value=cur; }
+  if(csel){ const cur=csel.value; csel.innerHTML='<option value="">— select company —</option>'+cos.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&cos.includes(cur)) csel.value=cur; }
   labelsSkuOptions(); lblUpdAbv();
   const tb=document.getElementById('skuBody');
   if(tb){ const rows=(state.skus||[]); tb.innerHTML=rows.length?rows.map(s=>`<tr><td>${esc(s.company||'')}</td><td><b>${esc(s.product||'')}</b></td><td class="num">${esc(s.size||'')}</td><td style="font-family:monospace">${esc(s.scc6||'—')}</td><td style="font-family:monospace">${esc(pack12scc(s)||'—')}</td><td class="noprint">${can('write')?`<button class="link" onclick="skuEdit('${s.id}')">Edit</button> · <button class="del" onclick="skuDel('${s.id}')">Del</button>`:''}</td></tr>`).join(''):'<tr><td colspan="6" class="empty" style="padding:24px">No products yet — add one below.</td></tr>'; }
@@ -1436,10 +1467,10 @@ function renderLabels(){
 }
 function labelsSkuOptions(){
   const co=document.getElementById('lbl_company'); const ss=document.getElementById('lbl_product'); if(!ss) return;
-  const cur=ss.value; const list=(state.skus||[]).filter(s=>!co||!co.value||s.company===co.value);
-  ss.innerHTML=list.length?list.map(s=>`<option value="${s.id}">${esc(s.product||'')}</option>`).join(''):'<option value="">— no products for this company —</option>';
+  const cur=ss.value; const hasco=!!(co&&co.value); const list=hasco?(state.skus||[]).filter(s=>s.company===co.value):[];
+  ss.innerHTML=!hasco?'<option value="">— select a company first —</option>':(list.length?list.map(s=>`<option value="${s.id}">${esc(s.product||'')}</option>`).join(''):'<option value="">— no products for this company —</option>');
   if(cur) ss.value=cur;
-  const lg=document.getElementById('lbl_logo'); if(lg){ const src=co?companyLogo(co.value):''; lg.innerHTML=src?`<img src="${src}" style="height:44px">`:'<span style="color:var(--muted);font-size:13px">No logo for this company — upload one in the Company logos section below.</span>'; }
+  const lg=document.getElementById('lbl_logo'); if(lg){ const src=hasco?companyLogo(co.value):''; lg.innerHTML=src?`<img src="${src}" style="height:44px">`:(hasco?'<span style="color:var(--muted);font-size:13px">No logo for this company — upload one in the Company logos section below.</span>':''); }
 }
 let editingSku=null;
 function skuBlank(){ return {id:uid(),company:(document.getElementById('lbl_company')||{}).value||LABEL_BRANDS[0],product:'',size:'750ml',scc6:'',scc12:''}; }
@@ -1466,19 +1497,20 @@ function skuSave(){
 function skuDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this product?'))return; state.skus=(state.skus||[]).filter(x=>x.id!==id); save('Deleted a case-label product'); refreshAll(); }
 function brandLogoUpload(coEnc,input){
   if(!requireCap('write'))return; const co=decodeURIComponent(coEnc); const f=input.files&&input.files[0]; if(!f)return;
-  const r=new FileReader(); r.onload=()=>{ if(!state.brandLogos) state.brandLogos={}; state.brandLogos[co]=r.result; save('Set logo for '+co); refreshAll(); flash('Logo updated for '+co+'.'); }; r.readAsDataURL(f);
+  const r=new FileReader(); r.onload=()=>{ resizeDataURL(String(r.result),460,(out)=>{ if(!state.brandLogos) state.brandLogos={}; state.brandLogos[co]=out; save('Set logo for '+co); refreshAll(); flash('Logo updated for '+co+'.'); }); }; r.readAsDataURL(f);
 }
 function labelHTML(s,ctx){
   const logo=companyLogo(s.company); const scc=ctx.scc||''; const {p,abv}=labelProof(ctx.proof);
-  let title=s.product||''; if(ctx.barrel) title+=' - '+ctx.barrel;
-  const line=title+'  |  '+ctx.pack+' x '+(s.size||'')+(p?(' – Proof: '+p+' / '+abv+' % ALC/Vol'):'');
+  const details=[ctx.barrel?('Barrel #'+ctx.barrel):'', ctx.pack+' x '+(s.size||''), (p?('Proof '+p+' / '+abv+'% ALC/Vol'):'')].filter(Boolean).join('  \u00b7  ');
   return `<div class="clabel">
     <div class="clogo">${logo?`<img src="${logo}" alt="">`:`<div class="cbrand">${esc(s.company||'')}</div>`}</div>
+    <div class="cprod">${esc(s.product||'')}</div>
+    <div class="cdetails">${esc(details)}</div>
     <div class="cbar">${scc?gs1128Svg(scc):`<div style="color:#b00;font-size:11pt">No ${ctx.pack}-pack SCC set for this product</div>`}${scc?`<div class="chr">(01)${esc(scc)}</div>`:''}</div>
-    <div class="ctext">${esc(line)}</div>
   </div>`;
 }
 function printCaseLabels(){
+  const co=(document.getElementById('lbl_company')||{}).value; if(!co){ alert('Choose a company.'); return; }
   const ps=document.getElementById('lbl_product'); const id=ps?ps.value:''; const s=(state.skus||[]).find(x=>x.id===id);
   if(!s){ alert('Choose a product to print.'); return; }
   const pack=(document.getElementById('lbl_pack')||{}).value; if(!pack){ alert('Choose the case pack — 6-pack or 12-pack.'); return; }
@@ -1497,21 +1529,24 @@ function doPrintLabels(){
   window.addEventListener('afterprint',done); window.print(); setTimeout(done,1500);
 }
 /* ===================== Compliance document vault ===================== */
-const DOC_CATS=["License / Permit","Federal DSP Permit (TTB)","Sales & Use Tax","EIN Letter","COLA","Insurance","Bond","Other"];
+const DOC_CATS=["License / Permit","Federal DSP Permit (TTB)","Sales & Use Tax","EIN Letter","TIB (Transfer in Bond)","COLA","Insurance","Bond","Other"];
 function docFmtBytes(n){ n=+n||0; return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(Math.round(n/1024)+' KB'):(n+' B'); }
 function docTypeIcon(type){ const pdf=/pdf/i.test(type||''); const img=/image/i.test(type||''); return `<div style="width:34px;height:34px;border-radius:8px;background:${pdf?'#f7e7e4':img?'#eef3ea':'#eee7d7'};display:grid;place-items:center;color:${pdf?'#b23a2e':img?'#3f7d54':'#7a6a56'};font-weight:700;font-size:10.5px;font-family:-apple-system,Segoe UI,sans-serif">${pdf?'PDF':img?'IMG':'DOC'}</div>`; }
 function renderCompliance(){
   const sel=document.getElementById('doc_cat'); if(sel && !sel.dataset.filled){ sel.innerHTML=DOC_CATS.map(c=>`<option>${esc(c)}</option>`).join(''); sel.dataset.filled='1'; }
+  const cco=document.getElementById('doc_company'); if(cco){ const cur=cco.value; cco.innerHTML='<option value="">— company —</option>'+companyList().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) cco.value=cur; }
   const box=document.getElementById('docList'); if(!box) return;
-  const docs=(state.docs||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
-  if(!docs.length){ box.innerHTML='<div class="empty" style="padding:24px">No documents yet — upload your license, DSP permit, EIN letter or tax certificate above.</div>'; return; }
+  const q=((document.getElementById('doc_search')||{}).value||'').toLowerCase().trim();
+  let docs=(state.docs||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  if(q) docs=docs.filter(d=>(((d.name||'')+' '+(d.note||'')+' '+(d.category||'')+' '+(d.company||'')).toLowerCase().indexOf(q)>=0));
+  if(!docs.length){ box.innerHTML='<div class="empty" style="padding:24px">'+(q?('No documents match \u201c'+esc(q)+'\u201d.'):'No documents yet — upload your license, DSP permit, EIN letter or tax certificate above.')+'</div>'; return; }
   const groups={}; docs.forEach(d=>{ const c=d.category||'Other'; (groups[c]=groups[c]||[]).push(d); });
   const order=DOC_CATS.filter(c=>groups[c]).concat(Object.keys(groups).filter(c=>!DOC_CATS.includes(c)));
   box.innerHTML=order.map(cat=>`<div style="margin-bottom:16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;font-family:-apple-system,Segoe UI,sans-serif;margin:0 0 6px">${esc(cat)}</div>`+
     groups[cat].map(d=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)">
       ${docTypeIcon(d.type)}
-      <div style="flex:1;min-width:0"><div style="font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name)}</div><div style="color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${d.size?docFmtBytes(d.size):''}${d.by?(' · '+esc(d.by)):''}${d.ts?(' · '+new Date(d.ts).toLocaleDateString('en-US')):''}</div></div>
-      <div class="noprint" style="display:flex;gap:12px;flex:none"><button class="link" onclick="docView('${d.id}')">View / Print</button><button class="link" onclick="docView('${d.id}',1)">Download</button>${can('write')?`<button class="del" onclick="docDel('${d.id}')">Delete</button>`:''}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name)}</div>${d.note?`<div style="font-size:13px;color:#5a4a38;margin-top:1px">${esc(d.note)}</div>`:''}<div style="color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${d.company?(esc(d.company)+' · '):''}${d.size?docFmtBytes(d.size):''}${d.by?(' · '+esc(d.by)):''}${d.ts?(' · '+new Date(d.ts).toLocaleDateString('en-US')):''}</div></div>
+      <div class="noprint" style="display:flex;gap:12px;flex:none"><button class="link" onclick="docView('${d.id}')">View / Print</button><button class="link" onclick="docView('${d.id}',1)">Download</button>${can('write')?`<button class="link" onclick="docEditNote('${d.id}')">Note</button><button class="del" onclick="docDel('${d.id}')">Delete</button>`:''}</div>
     </div>`).join('')+`</div>`).join('');
 }
 function docUpload(){
@@ -1519,7 +1554,7 @@ function docUpload(){
   if(!WS){ alert('Connect a workspace first (Setup & Sync).'); return; }
   const fi=document.getElementById('doc_file'); const f=fi&&fi.files&&fi.files[0]; if(!f){ alert('Choose a file to upload.'); return; }
   if(f.size>4.5*1048576){ alert('That file is '+docFmtBytes(f.size)+'. Please keep documents under about 4.5 MB (compress the PDF or scan at a lower DPI).'); return; }
-  const cat=(document.getElementById('doc_cat')||{}).value||'Other';
+  const cat=(document.getElementById('doc_cat')||{}).value||'Other'; const note=(document.getElementById('doc_note')||{}).value.trim(); const company=(document.getElementById('doc_company')||{}).value||'';
   const btn=document.getElementById('doc_upbtn'); if(btn){ btn.disabled=true; btn.textContent='Uploading…'; }
   const r=new FileReader();
   r.onload=async()=>{
@@ -1528,13 +1563,14 @@ function docUpload(){
       const res=await fetch('/api/docs?ws='+encodeURIComponent(WS),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name:f.name,type:f.type||'application/octet-stream',dataB64:b64})});
       const d=await res.json(); if(!d||!d.ok) throw new Error((d&&(d.detail||d.error))||'upload failed');
       if(!state.docs) state.docs=[];
-      state.docs.push({id,name:f.name,category:cat,type:f.type||'',size:d.size||f.size,ts:Date.now(),by:(SESSION?SESSION.name:'')});
-      if(fi) fi.value=''; save('Uploaded compliance document — '+f.name); refreshAll(); flash('Uploaded '+f.name+'.');
+      state.docs.push({id,name:f.name,company,category:cat,note,type:f.type||'',size:d.size||f.size,ts:Date.now(),by:(SESSION?SESSION.name:'')});
+      if(fi) fi.value=''; const ne=document.getElementById('doc_note'); if(ne) ne.value=''; save('Uploaded compliance document — '+f.name); refreshAll(); flash('Uploaded '+f.name+'.');
     }catch(e){ alert('Upload failed: '+((e&&e.message)||e)); }
     finally{ const b=document.getElementById('doc_upbtn'); if(b){ b.disabled=false; b.textContent='Upload'; } }
   };
   r.readAsDataURL(f);
 }
+function docEditNote(id){ if(!requireCap('write'))return; const d=(state.docs||[]).find(x=>x.id===id); if(!d)return; const v=prompt('Note / description for this document:', d.note||''); if(v===null)return; d.note=v.trim(); save('Updated document note'); refreshAll(); }
 function docView(id,dl){ if(!WS){ alert('No workspace connected.'); return; } window.open('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id)+(dl?'&dl=1':''),'_blank'); }
 function docDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this document? The file is removed permanently.'))return;
   try{ fetch('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id),{method:'DELETE'}); }catch(e){}
@@ -2616,7 +2652,7 @@ function renderCrumb(v){
 function switchView(v){renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
