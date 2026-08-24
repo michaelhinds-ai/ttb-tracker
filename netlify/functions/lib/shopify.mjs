@@ -63,6 +63,66 @@ export async function shopifyGraphQL(query, variables = {}) {
 }
 
 /**
+ * Everyone who currently has the subscription.
+ *
+ * There is no cheaper way to ask. `subscriptionContracts` is denied to this
+ * app, and no customer tag marks members — a first pass of the backfill
+ * reported "0 skipped", which would have meant inviting every existing member
+ * to join the thing they already pay for.
+ *
+ * So: scan recent orders for the subscription variant. Subscriptions bill
+ * monthly and each renewal creates an order, so a window comfortably longer
+ * than one billing cycle catches every active member.
+ */
+export async function fetchSubscriptionMembers({
+  variantId = process.env.NOTIFY_VIP_VARIANT_ID || '42045781410050',
+  days = Number(process.env.NOTIFY_VIP_MEMBER_WINDOW_DAYS || 45),
+  maxPages = 20
+} = {}) {
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const gid = `gid://shopify/ProductVariant/${variantId}`;
+  const emails = new Set();
+
+  const query = `
+    query SubOrders($cursor: String, $q: String!) {
+      orders(first: 250, after: $cursor, query: $q, sortKey: CREATED_AT, reverse: true) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          customer { email }
+          lineItems(first: 25) { nodes { title variant { id } } }
+        }
+      }
+    }`;
+
+  let cursor = null;
+  let pages = 0;
+
+  while (pages < maxPages) {
+    const data = await shopifyGraphQL(query, { cursor, q: `created_at:>=${since}` });
+    const conn = data?.orders;
+    if (!conn) break;
+
+    for (const o of conn.nodes || []) {
+      const email = o.customer?.email;
+      if (!email) continue;
+      const isSub = (o.lineItems?.nodes || []).some(
+        (li) => li.variant?.id === gid || /subscription/i.test(li.title || '')
+      );
+      if (isSub) emails.add(email.trim().toLowerCase());
+    }
+
+    pages += 1;
+    if (!conn.pageInfo?.hasNextPage) break;
+    cursor = conn.pageInfo.endCursor;
+  }
+
+  if (pages >= maxPages) {
+    console.warn(`[vip] member scan hit the ${maxPages}-page cap — some members may be missed`);
+  }
+  return [...emails];
+}
+
+/**
  * Everyone with two or more orders.
  *
  * `orders_count:>=2` is search syntax, not a field name, so this does not
