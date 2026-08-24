@@ -63,34 +63,37 @@ export async function shopifyGraphQL(query, variables = {}) {
 }
 
 /**
- * Everyone who currently has the subscription.
+ * Everyone who currently has the subscription, found by customer tag.
  *
- * There is no cheaper way to ask. `subscriptionContracts` is denied to this
- * app, and no customer tag marks members — a first pass of the backfill
- * reported "0 skipped", which would have meant inviting every existing member
- * to join the thing they already pay for.
+ * Reads CUSTOMERS, not orders. An earlier version scanned recent orders for
+ * the subscription variant and failed with "Access denied" — this app has
+ * read_customers but NOT read_orders. `subscriptionContracts` is denied for
+ * the same reason. The tag route is the one that works with the scope we have,
+ * and it is cheaper: a handful of pages instead of scanning every order.
  *
- * So: scan recent orders for the subscription variant. Subscriptions bill
- * monthly and each renewal creates an order, so a window comfortably longer
- * than one billing cycle catches every active member.
+ * Tags confirmed on the live store: `Active Subscriber` and `member-monthly`
+ * travel together on every subscription customer. The separate `vip` tag is
+ * deliberately NOT treated as membership — it appears on plenty of customers
+ * who are not subscribers.
  */
 export async function fetchSubscriptionMembers({
-  variantId = process.env.NOTIFY_VIP_VARIANT_ID || '42045781410050',
-  days = Number(process.env.NOTIFY_VIP_MEMBER_WINDOW_DAYS || 45),
+  tags = (process.env.NOTIFY_VIP_EXCLUDE_TAGS || 'Active Subscriber,member-monthly')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean),
   maxPages = 20
 } = {}) {
-  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const gid = `gid://shopify/ProductVariant/${variantId}`;
+  if (!tags.length) return [];
+
+  // Shopify search syntax needs quotes around any tag containing a space.
+  const q = tags.map((t) => (t.includes(' ') ? `tag:'${t}'` : `tag:${t}`)).join(' OR ');
   const emails = new Set();
 
   const query = `
-    query SubOrders($cursor: String, $q: String!) {
-      orders(first: 250, after: $cursor, query: $q, sortKey: CREATED_AT, reverse: true) {
+    query SubMembers($cursor: String, $q: String!) {
+      customers(first: 250, after: $cursor, query: $q) {
         pageInfo { hasNextPage endCursor }
-        nodes {
-          customer { email }
-          lineItems(first: 25) { nodes { title variant { id } } }
-        }
+        nodes { email }
       }
     }`;
 
@@ -98,17 +101,12 @@ export async function fetchSubscriptionMembers({
   let pages = 0;
 
   while (pages < maxPages) {
-    const data = await shopifyGraphQL(query, { cursor, q: `created_at:>=${since}` });
-    const conn = data?.orders;
+    const data = await shopifyGraphQL(query, { cursor, q });
+    const conn = data?.customers;
     if (!conn) break;
 
-    for (const o of conn.nodes || []) {
-      const email = o.customer?.email;
-      if (!email) continue;
-      const isSub = (o.lineItems?.nodes || []).some(
-        (li) => li.variant?.id === gid || /subscription/i.test(li.title || '')
-      );
-      if (isSub) emails.add(email.trim().toLowerCase());
+    for (const c of conn.nodes || []) {
+      if (c.email) emails.add(c.email.trim().toLowerCase());
     }
 
     pages += 1;
