@@ -86,33 +86,30 @@ function renderPayrollBody(data){
 
   // Combined by-employee (all locations)
   const be=data.byEmployee||[];
-  if(be.length){
-    html+=`<div class="card"><h3>All employees &middot; both accounts</h3>
-      <div class="hint">Everyone who worked or earned tips this pay period, combined across locations.</div>
-      <div class="tablewrap"><table>${payHead({cash:anyCashGrand})}<tbody>
-      ${be.map(e=>`<tr>
-        <td>${esc(e.name)}</td>
-        <td style="color:var(--muted)">${esc(e.title||'')}${e.locations&&e.locations.length>1?` <span style="font-size:11px">(${esc(e.locations.join(', '))})</span>`:''}</td>
-        <td class="num">${payHrs(e.hours)}</td>
-        <td class="num">${payC(e.cardTips)}</td>
-        ${anyCashGrand?`<td class="num">${payC(e.cashTips)}</td>`:''}
-        <td class="num" style="font-weight:700">${payC(e.tips)}</td></tr>`).join('')}
-      ${payTotRow(data.grand,{cash:anyCashGrand,label:'Grand total'})}
-      </tbody></table></div></div>`;
-  }
 
-  // Per account / per location detail
+  // One combined table per Square account — all of that account's locations
+  // (e.g. both Nashville Barrel spots) merged into a single employee list.
   (data.accounts||[]).forEach(a=>{
     if(a.error){ html+=`<div class="note" style="border-left-color:var(--red);background:var(--red-bg)">${esc(a.label||'Account')}: ${esc(a.error)}</div>`; return; }
-    (a.locations||[]).forEach(l=>{
-      const cash=(l.totals&&l.totals.cashTips)>0;
-      html+=`<div class="card"><h3>${esc(l.name)}</h3>
-        <div class="hint">${esc(a.label||'Square account')}</div>
-        <div class="tablewrap"><table>${payHead({cash})}<tbody>
-        ${payEmpRows(l.employees,{cash})}
-        ${payTotRow(l.totals,{cash,label:'Location total'})}
-        </tbody></table></div></div>`;
-    });
+    const locs=a.locations||[]; if(!locs.length) return;
+    const m={};
+    locs.forEach(l=>l.employees.forEach(e=>{
+      const k=e.id||(e.name+'|'+e.title);
+      if(!m[k]) m[k]={name:e.name,title:e.title,hours:0,cardTips:0,cashTips:0,tips:0,open:false};
+      const o=m[k]; o.hours+=e.hours; o.cardTips+=e.cardTips; o.cashTips+=e.cashTips; o.tips+=e.tips; if(e.open)o.open=true;
+    }));
+    const emps=Object.values(m).map(e=>({...e,hours:Math.round(e.hours*100)/100}))
+      .sort((x,y)=>y.hours-x.hours||x.name.localeCompare(y.name));
+    const tot=emps.reduce((t,e)=>({hours:t.hours+e.hours,cardTips:t.cardTips+e.cardTips,cashTips:t.cashTips+e.cashTips,tips:t.tips+e.tips}),{hours:0,cardTips:0,cashTips:0,tips:0});
+    tot.hours=Math.round(tot.hours*100)/100;
+    const cash=tot.cashTips>0;
+    const locNames=locs.map(l=>l.name).join(' · ');
+    html+=`<div class="card"><h3>${esc(a.label||'Square account')}</h3>
+      <div class="hint">${esc(locNames)}</div>
+      <div class="tablewrap"><table>${payHead({cash})}<tbody>
+      ${payEmpRows(emps,{cash})}
+      ${payTotRow(tot,{cash,label:'Total'})}
+      </tbody></table></div></div>`;
   });
 
   if(!be.length){
