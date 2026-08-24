@@ -57,7 +57,7 @@
   .kpi .label{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-weight:600}
   .kpi .val{font-size:25px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
   .kpi .foot{font-size:12px;color:var(--muted);margin-top:3px;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
-  .kpi.copper .val{color:var(--copper)} .kpi.green .val{color:var(--green)} .kpi.blue .val{color:var(--blue)} .kpi.ky .val{color:var(--ky)}
+  .kpi.copper .val{color:var(--copper)} .kpi.green .val{color:var(--green)} .kpi.blue .val{color:var(--blue)} .kpi.ky .val{color:var(--ky)} .kpi.amber .val{color:var(--amber)}
 
   .meter{height:16px;border-radius:9px;background:#eadfca;overflow:hidden;position:relative;margin-top:8px}
   .meter>span{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--copper));border-radius:9px}
@@ -66,6 +66,17 @@
   .grid{display:grid;gap:14px}
   .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
   @media(max-width:760px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .apptile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;transition:border-color .15s,transform .1s}
+  .apptile:hover{border-color:var(--copper);transform:translateY(-1px)}
+  .apptile .ai{width:44px;height:44px;border-radius:11px;display:grid;place-items:center}
+  .apptile .an{font-size:17px;font-weight:700}
+  .apptile .ad{color:var(--muted);font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-top:2px}
+  .applinks{display:flex;flex-wrap:wrap;gap:7px;margin-top:auto}
+  .applink{background:#f4ecdb;border:1px solid var(--line);color:var(--copper-dk);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  .applink:hover{background:#fff;border-color:var(--copper)}
+  .entsw{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px}
+  .entpill{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;font-size:13.5px;font-weight:600;font-family:-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;white-space:nowrap}
   label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;text-transform:uppercase;letter-spacing:.4px}
   input,select,textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:15px;color:var(--ink)}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px #c98a2b33}
@@ -154,7 +165,8 @@
   </div>
 </header>
 <nav class="tabs"><div class="wrap" id="tabs">
-  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="home" class="active">Home</button>
+  <button data-view="dashboard">Louisville Rickhouse Systems</button>
   <button data-view="entry">Add Entry</button>
   <button data-view="ledger">Ledger</button>
   <button data-view="reports">Federal Reports</button>
@@ -171,7 +183,88 @@
 
 <main>
   <!-- DASHBOARD -->
-  <section class="view active" id="view-dashboard">
+  <section class="view active" id="view-home">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:14px">
+      <div>
+        <h1 style="font-size:29px;margin:0" id="homeHello">Welcome back</h1>
+        <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Today&rsquo;s sales across your locations &mdash; at a glance.</p>
+      </div>
+      <div class="entsw">
+        <div class="entpill" style="background:var(--copper);color:#fff"><span style="width:8px;height:8px;border-radius:50%;background:#fff"></span>Louisville Rickhouse &middot; KY</div>
+        <div class="entpill" style="color:var(--muted)" title="Nashville Barrel Co reporting — coming soon"><span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>Nashville Barrel Co &middot; TN&nbsp;<span style="font-size:11px;opacity:.7">soon</span></div>
+      </div>
+    </div>
+
+    <div class="kpis" id="homeKpis"></div>
+
+    <h2 class="section">Apps</h2>
+    <div class="apps">
+      <div class="apptile">
+        <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div><div class="an">Louisville Rickhouse Systems</div><div class="ad">TTB &amp; Kentucky reporting, ledger, barrels &amp; bottling.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('dashboard')">Dashboard</button>
+          <button class="applink" onclick="switchView('reports')">Federal</button>
+          <button class="applink" onclick="switchView('kentucky')">Kentucky</button>
+          <button class="applink" onclick="switchView('ledger')">Ledger</button>
+          <button class="applink" onclick="switchView('entry')">Add Entry</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(63,125,84,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f7d54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4M10 3v3.5L7 11a3 3 0 0 0-.5 1.7V19a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-6.3A3 3 0 0 0 17 11l-3-4.5V3"/><path d="M6.7 14h10.6"/></svg></div>
+        <div><div class="an">Production</div><div class="ad">Barrels, bottling runs &amp; finished goods.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('barrels')">Barrels</button>
+          <button class="applink" onclick="switchView('bottling')">Bottling</button>
+          <button class="applink" onclick="switchView('finished')">Finished</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(47,111,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6f8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/></svg></div>
+        <div><div class="an">Sales</div><div class="ad">Retail, tour &amp; online &mdash; reports and orders.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('retail')">Retail</button>
+          <button class="applink" onclick="switchView('salesrpt')">Sales Report</button>
+          <button class="applink" onclick="switchView('orders')">Orders</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(90,62,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a3e8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M15 11a3 3 0 1 0-2-5.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M14.5 20a5.5 5.5 0 0 1 6-5.3"/></svg></div>
+        <div><div class="an">Customers</div><div class="ad">Wholesale accounts and contacts.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('customers')">Open Customers</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
+        <div><div class="an">Marketing</div><div class="ad">Audience sync + the walk-in / tour thank-you journey. Runs weekly, automatically.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('data')">Connections</button>
+        </div>
+      </div>
+      <div class="apptile">
+        <div class="ai" style="background:rgba(122,106,86,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a6a56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 7l1-1a3.5 3.5 0 0 1 5 5l-1 1"/><path d="M13 17l-1 1a3.5 3.5 0 0 1-5-5l1-1"/></svg></div>
+        <div><div class="an">Setup &amp; Data</div><div class="ad">Square &middot; Xola &middot; Shopify &middot; QuickBooks &middot; backup &amp; sync.</div></div>
+        <div class="applinks">
+          <button class="applink" onclick="switchView('data')">Setup &amp; Sync</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:18px">
+      <div class="card"><h3>Needs attention</h3><div id="homeAlerts"></div></div>
+      <div class="card"><h3>Quick actions</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
+          <button class="btn" onclick="switchView('entry')">Add Entry</button>
+          <button class="btn ghost" onclick="switchView('bottling')">New Bottling</button>
+          <button class="btn ghost" onclick="switchView('salesrpt')">Sales Report</button>
+          <button class="btn ghost" onclick="switchView('data')">Setup &amp; Sync</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-dashboard">
     <div class="banner noprint" id="syncBanner" style="display:none">
       <div style="font-size:26px">🔗</div>
       <div class="txt"><b>Sync is on.</b> Your data is saved to your private workspace and available on any device that opens your sync link. Open <b>Setup &amp; Sync</b> to copy the link and open it on your phone or other computers.</div>
@@ -1083,6 +1176,45 @@ function cbmaTax(prior,qty){ let rem=qty,base=prior,tax=0,lines=[]; for(const t 
 function ytdTaxableBeforeQuarter(y,q){ return taxablePG(e=>yearOf(e.date)===y&&quarterOf(e.date)<q); }
 
 /* ================= Dashboard ================= */
+function renderHome(){
+  try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', Mike'; }catch(e){}
+  try{
+    const al=[
+      ['green','Email sync active','Square · Xola · Shopify → Mailchimp, every Monday.'],
+      ['amber','Filing deadlines','Review TTB &amp; Kentucky returns in Louisville Rickhouse Systems before each due date.'],
+    ];
+    const box=document.getElementById('homeAlerts');
+    if(box) box.innerHTML=al.map(a=>`<div style="display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)"><span style="margin-top:5px;width:9px;height:9px;border-radius:50%;background:var(--${a[0]});flex:none"></span><div><div style="font-weight:700;font-size:14px">${a[1]}</div><div style="color:var(--muted);font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${a[2]}</div></div></div>`).join('');
+  }catch(e){}
+  loadHomeSales();
+}
+let _homeSalesAt=0,_homeSalesHTML='';
+function homeSalesLoading(){ return [0,1,2,3].map(()=>`<div class="kpi"><div class="label">Today's sales</div><div class="val" style="color:var(--muted);font-size:19px">Loading…</div><div class="foot">&nbsp;</div></div>`).join(''); }
+async function loadHomeSales(force){
+  const box=document.getElementById('homeKpis'); if(!box) return;
+  const fresh=(Date.now()-_homeSalesAt)<60000;
+  if(_homeSalesHTML && fresh && !force){ box.innerHTML=_homeSalesHTML; return; }
+  if(!_homeSalesHTML) box.innerHTML=homeSalesLoading();
+  const today=new Date().toISOString().slice(0,10); const nowISO=new Date().toISOString();
+  let sq=null,sh=null;
+  try{ [sq,sh]=await Promise.all([
+    fetch('/api/square/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:today,endDate:today,endCapISO:nowISO})}).then(r=>r.json()).catch(()=>null),
+    fetch('/api/shopify/summary',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:today,endDate:today})}).then(r=>r.json()).catch(()=>null),
+  ]); }catch(e){}
+  const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
+  const cards=[]; const colors=['copper','green','blue','ky'];
+  if(sq&&!sq.error){
+    const rows=[]; (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ rows.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); }); });
+    rows.sort((x,y)=>y.net-x.net);
+    if(rows.length) rows.forEach((r,i)=>cards.push(kpi(colors[i%colors.length], esc(r.name), money(r.net), r.orders+' order'+(r.orders===1?'':'s')+' today')));
+    else cards.push(kpi('copper','Store sales',money(0),'no sales yet today'));
+  } else {
+    cards.push(kpi('copper','Store sales','—',(sq&&(sq.detail||sq.error))?'Square unavailable':'Connect Square in Setup'));
+  }
+  if(sh&&sh.ok) cards.push(kpi('amber','Shopify (online)',money(+sh.net||0),(sh.orders||0)+' order'+((sh.orders===1)?'':'s')+' today'));
+  else cards.push(kpi('amber','Shopify (online)','—',(sh&&sh.detail)?'Shopify unavailable':'Connect Shopify'));
+  _homeSalesHTML=cards.join(''); _homeSalesAt=Date.now(); box.innerHTML=_homeSalesHTML;
+}
 function renderDashboard(){
   const yr=state.settings.year;
   $('#tierYear').textContent=yr; $('#qtrYear').textContent=yr;
@@ -2127,10 +2259,10 @@ function loadSample(){
 }
 
 /* ================= UI plumbing ================= */
-function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
+function switchView(v){$$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='data')qbRefresh();}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){updateBadge();fillYearSelects();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){updateBadge();fillYearSelects();renderHome();renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();renderBackups();dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
@@ -2938,3 +3070,4 @@ boot();
 </script>
 </body>
 </html>
+
