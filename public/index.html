@@ -137,6 +137,8 @@
   .clabel .clogo img{width:1.2in;height:auto;display:block}
   .clabel .cprod{font-size:16pt;font-weight:800;line-height:1.12;margin-top:.05in}
   .clabel .cdetails{font-size:10.5pt;font-weight:600;color:#222;line-height:1.25}
+  .clabel .cmeta{font-size:11.5pt;font-weight:700;color:#111;line-height:1.2;margin-top:.03in}
+  .clabel .cproof{font-size:10.5pt;font-weight:600;color:#333;line-height:1.2}
   .clabel .cbar{margin-top:auto;width:100%}
   .clabel .cbrand{font-family:Georgia,serif;font-weight:700;font-size:13pt}
   .clabel .cbar svg{width:2.3in;height:auto;display:block;margin:0 auto}
@@ -235,6 +237,11 @@
         <div class="ai" style="background:rgba(90,160,138,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5aa08a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
         <div><div class="an">Nashville Barrel Systems <span style="font-size:11px;font-weight:600;background:#efe7d8;color:var(--muted);padding:2px 8px;border-radius:999px;vertical-align:middle">Coming soon</span></div><div class="ad">TN reporting, production &amp; sales for Nashville Barrel Co.</div></div>
         <div class="applinks"><span class="applink" style="cursor:default;background:#f4ecdb;color:var(--muted);border-style:dashed">Coming soon</span></div>
+      </div>
+      <div class="apptile" style="cursor:pointer" onclick="switchView('labels')">
+        <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M7 8.5v7M10 8.5v7M13 8.5v7M16.5 8.5v7"/></svg></div>
+        <div><div class="an">Print Case Labels</div><div class="ad">Master-carton GS1-128 labels &mdash; pick product, pack &amp; barrel, print a sheet.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('compliance')">
         <div class="ai" style="background:rgba(178,58,46,.13)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23a2e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg></div>
@@ -1500,7 +1507,8 @@ function labelHTML(s,ctx){
   return `<div class="clabel">
     <div class="clogo">${logo?`<img src="${logo}" alt="">`:`<div class="cbrand">${esc(s.company||'')}</div>`}</div>
     <div class="cprod">${esc(s.product||'')}</div>
-    <div class="cdetails">${esc(details)}</div>
+    <div class="cmeta">${esc([ctx.barrel?('Barrel #'+ctx.barrel):'', ctx.pack+' x '+(s.size||'')].filter(Boolean).join('  ·  '))}</div>
+    ${p?`<div class="cproof">${esc('Proof '+p+'  ·  '+abv+'% ALC/Vol')}</div>`:''}
     <div class="cbar">${scc?gs1128Svg(scc):`<div style="color:#b00;font-size:11pt">No ${ctx.pack}-pack SCC set for this product</div>`}${scc?`<div class="chr">(01)${esc(scc)}</div>`:''}</div>
   </div>`;
 }
