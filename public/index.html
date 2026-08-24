@@ -133,9 +133,12 @@
 
   .labelsheet{margin-top:16px}
   .lsheet-page{display:grid;grid-template-columns:4in 4in;column-gap:.19in;justify-content:center;padding:.5in .156in 0;box-sizing:border-box}
-  .clabel{width:4in;height:3.333in;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.1in;padding:.16in;text-align:center;overflow:hidden;color:#000;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
-  .clabel .clogo img{width:1.7in;height:auto;display:block}
-  .clabel .cbrand{font-family:Georgia,serif;font-weight:700;font-size:15pt}
+  .clabel{width:4in;height:3.333in;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.05in;padding:.18in .16in .14in;text-align:center;overflow:hidden;color:#000;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  .clabel .clogo img{width:1.2in;height:auto;display:block}
+  .clabel .cprod{font-size:16pt;font-weight:800;line-height:1.12;margin-top:.05in}
+  .clabel .cdetails{font-size:10.5pt;font-weight:600;color:#222;line-height:1.25}
+  .clabel .cbar{margin-top:auto;width:100%}
+  .clabel .cbrand{font-family:Georgia,serif;font-weight:700;font-size:13pt}
   .clabel .cbar svg{width:2.3in;height:auto;display:block;margin:0 auto}
   .clabel .chr{font-family:monospace;font-size:12pt;letter-spacing:1px;margin-top:1px}
   .clabel .ctext{font-size:10.5pt;font-weight:600;line-height:1.25}
@@ -374,6 +377,7 @@
         <div><label class="fld">Category</label><select id="doc_cat"></select></div>
         <div style="grid-column:span 2"><label class="fld">File (PDF or image, up to ~4.5&nbsp;MB)</label><input type="file" id="doc_file" accept="application/pdf,image/*"></div>
       </div>
+      <div style="margin-top:12px"><label class="fld">Note / description</label><input id="doc_note" placeholder="e.g. Kentucky distiller&rsquo;s license — exp. 6/30/2027, or notes on this filing"></div>
       <div style="margin-top:12px"><button class="btn" id="doc_upbtn" onclick="docUpload()">Upload</button></div>
     </div>
     <div class="card">
@@ -1470,12 +1474,12 @@ function brandLogoUpload(coEnc,input){
 }
 function labelHTML(s,ctx){
   const logo=companyLogo(s.company); const scc=ctx.scc||''; const {p,abv}=labelProof(ctx.proof);
-  let title=s.product||''; if(ctx.barrel) title+=' - '+ctx.barrel;
-  const line=title+'  |  '+ctx.pack+' x '+(s.size||'')+(p?(' – Proof: '+p+' / '+abv+' % ALC/Vol'):'');
+  const details=[ctx.barrel?('Barrel #'+ctx.barrel):'', ctx.pack+' x '+(s.size||''), (p?('Proof '+p+' / '+abv+'% ALC/Vol'):'')].filter(Boolean).join('  \u00b7  ');
   return `<div class="clabel">
     <div class="clogo">${logo?`<img src="${logo}" alt="">`:`<div class="cbrand">${esc(s.company||'')}</div>`}</div>
+    <div class="cprod">${esc(s.product||'')}</div>
+    <div class="cdetails">${esc(details)}</div>
     <div class="cbar">${scc?gs1128Svg(scc):`<div style="color:#b00;font-size:11pt">No ${ctx.pack}-pack SCC set for this product</div>`}${scc?`<div class="chr">(01)${esc(scc)}</div>`:''}</div>
-    <div class="ctext">${esc(line)}</div>
   </div>`;
 }
 function printCaseLabels(){
@@ -1511,8 +1515,8 @@ function renderCompliance(){
   box.innerHTML=order.map(cat=>`<div style="margin-bottom:16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;font-family:-apple-system,Segoe UI,sans-serif;margin:0 0 6px">${esc(cat)}</div>`+
     groups[cat].map(d=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)">
       ${docTypeIcon(d.type)}
-      <div style="flex:1;min-width:0"><div style="font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name)}</div><div style="color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${d.size?docFmtBytes(d.size):''}${d.by?(' · '+esc(d.by)):''}${d.ts?(' · '+new Date(d.ts).toLocaleDateString('en-US')):''}</div></div>
-      <div class="noprint" style="display:flex;gap:12px;flex:none"><button class="link" onclick="docView('${d.id}')">View / Print</button><button class="link" onclick="docView('${d.id}',1)">Download</button>${can('write')?`<button class="del" onclick="docDel('${d.id}')">Delete</button>`:''}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name)}</div>${d.note?`<div style="font-size:13px;color:#5a4a38;margin-top:1px">${esc(d.note)}</div>`:''}<div style="color:var(--muted);font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${d.size?docFmtBytes(d.size):''}${d.by?(' · '+esc(d.by)):''}${d.ts?(' · '+new Date(d.ts).toLocaleDateString('en-US')):''}</div></div>
+      <div class="noprint" style="display:flex;gap:12px;flex:none"><button class="link" onclick="docView('${d.id}')">View / Print</button><button class="link" onclick="docView('${d.id}',1)">Download</button>${can('write')?`<button class="link" onclick="docEditNote('${d.id}')">Note</button><button class="del" onclick="docDel('${d.id}')">Delete</button>`:''}</div>
     </div>`).join('')+`</div>`).join('');
 }
 function docUpload(){
@@ -1520,7 +1524,7 @@ function docUpload(){
   if(!WS){ alert('Connect a workspace first (Setup & Sync).'); return; }
   const fi=document.getElementById('doc_file'); const f=fi&&fi.files&&fi.files[0]; if(!f){ alert('Choose a file to upload.'); return; }
   if(f.size>4.5*1048576){ alert('That file is '+docFmtBytes(f.size)+'. Please keep documents under about 4.5 MB (compress the PDF or scan at a lower DPI).'); return; }
-  const cat=(document.getElementById('doc_cat')||{}).value||'Other';
+  const cat=(document.getElementById('doc_cat')||{}).value||'Other'; const note=(document.getElementById('doc_note')||{}).value.trim();
   const btn=document.getElementById('doc_upbtn'); if(btn){ btn.disabled=true; btn.textContent='Uploading…'; }
   const r=new FileReader();
   r.onload=async()=>{
@@ -1529,13 +1533,14 @@ function docUpload(){
       const res=await fetch('/api/docs?ws='+encodeURIComponent(WS),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name:f.name,type:f.type||'application/octet-stream',dataB64:b64})});
       const d=await res.json(); if(!d||!d.ok) throw new Error((d&&(d.detail||d.error))||'upload failed');
       if(!state.docs) state.docs=[];
-      state.docs.push({id,name:f.name,category:cat,type:f.type||'',size:d.size||f.size,ts:Date.now(),by:(SESSION?SESSION.name:'')});
-      if(fi) fi.value=''; save('Uploaded compliance document — '+f.name); refreshAll(); flash('Uploaded '+f.name+'.');
+      state.docs.push({id,name:f.name,category:cat,note,type:f.type||'',size:d.size||f.size,ts:Date.now(),by:(SESSION?SESSION.name:'')});
+      if(fi) fi.value=''; const ne=document.getElementById('doc_note'); if(ne) ne.value=''; save('Uploaded compliance document — '+f.name); refreshAll(); flash('Uploaded '+f.name+'.');
     }catch(e){ alert('Upload failed: '+((e&&e.message)||e)); }
     finally{ const b=document.getElementById('doc_upbtn'); if(b){ b.disabled=false; b.textContent='Upload'; } }
   };
   r.readAsDataURL(f);
 }
+function docEditNote(id){ if(!requireCap('write'))return; const d=(state.docs||[]).find(x=>x.id===id); if(!d)return; const v=prompt('Note / description for this document:', d.note||''); if(v===null)return; d.note=v.trim(); save('Updated document note'); refreshAll(); }
 function docView(id,dl){ if(!WS){ alert('No workspace connected.'); return; } window.open('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id)+(dl?'&dl=1':''),'_blank'); }
 function docDel(id){ if(!requireCap('write'))return; if(!confirm('Delete this document? The file is removed permanently.'))return;
   try{ fetch('/api/docs?ws='+encodeURIComponent(WS)+'&id='+encodeURIComponent(id),{method:'DELETE'}); }catch(e){}
