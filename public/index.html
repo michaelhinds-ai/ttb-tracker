@@ -83,6 +83,11 @@
           <button class="applink" onclick="switchView('salesrpt')">Sales Report</button>
         </div>
       </div>
+      <div class="apptile mgr-hide" style="cursor:pointer" onclick="switchView('payroll')">
+        <div class="ai" style="background:rgba(90,62,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a3e8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9.5" r="2"/><path d="M15 19a4 4 0 0 1 6.5-3.1"/></svg></div>
+        <div><div class="an">Payroll</div><div class="ad">Pay-period hours &amp; tips per employee &mdash; both Square accounts, all locations.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('marketing')">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
         <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
@@ -806,9 +811,34 @@
       <div class="disclaimer">This tool is a record-keeping and calculation aid reflecting federal CBMA rates and Kentucky distilled-spirits taxes as researched for 2026. It is not affiliated with or endorsed by the TTB or the Kentucky Department of Revenue and does not file on your behalf. Rates and rules change — always reconcile against the official forms and confirm current figures at ttb.gov and revenue.ky.gov before filing. The barrel tax is a local property tax; rates vary by county/district. Consult your compliance advisor for your permit and locality.</div>
     </div>
   </section>
+
+  <section class="view" id="view-payroll">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px">
+      <div>
+        <h1 style="font-size:29px;margin:0">Payroll</h1>
+        <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Hours worked &amp; tips collected per employee, straight from Square &mdash; both accounts, all locations.</p>
+      </div>
+      <button class="btn ghost noprint" onclick="printPayroll()">Print</button>
+    </div>
+    <div class="card noprint" style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn sm gray" onclick="payShiftPeriod(-1)">&larr; Previous</button>
+          <button class="btn sm gray" onclick="payThisPeriod()">Current</button>
+          <button class="btn sm gray" onclick="payShiftPeriod(1)">Next &rarr;</button>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Pay period</div>
+          <div id="payPeriodLabel" style="font-size:16px;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif"></div>
+        </div>
+      </div>
+    </div>
+    <div id="payrollBody"></div>
+  </section>
 </main>
 
-<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script>
+<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script>
 </body>
 </html>
 
