@@ -30,11 +30,24 @@ import {
 } from './lib/notify-core.mjs';
 import { buildRecoveryEmail, sendMandrill } from './lib/notify-mail.mjs';
 
+/**
+ * Send times, in hours after the checkout was created.
+ *
+ * Set any of these to 0 to switch that step off. That exists because Shopify's
+ * own abandoned-checkout automation is already running here and performing
+ * well (64.7% open, $24.7k recovered), so the first reminder is covered.
+ * Turning step 1 off and starting at 24h makes this a pure addition rather
+ * than a competing sequence — Shopify does the reminder, these do the
+ * follow-ups Shopify never sends.
+ *
+ * Whatever you set, step 1 must land comfortably AFTER Shopify's own send or
+ * customers get two near-identical emails.
+ */
 const STEPS = [
-  { step: 1, afterHours: Number(process.env.NOTIFY_RECOVER_H1 || 1) },
-  { step: 2, afterHours: Number(process.env.NOTIFY_RECOVER_H2 || 24) },
-  { step: 3, afterHours: Number(process.env.NOTIFY_RECOVER_H3 || 72) }
-];
+  { step: 1, afterHours: Number(process.env.NOTIFY_RECOVER_H1 ?? 1) },
+  { step: 2, afterHours: Number(process.env.NOTIFY_RECOVER_H2 ?? 24) },
+  { step: 3, afterHours: Number(process.env.NOTIFY_RECOVER_H3 ?? 72) }
+].filter((s) => Number.isFinite(s.afterHours) && s.afterHours > 0);
 
 const MAX_SENDS_PER_RUN = 200;
 
