@@ -851,12 +851,17 @@
       <h3>Add a barrel</h3>
       <div class="grid g2">
         <div><label class="fld">DSP</label><select id="bp_dsp"><option value="">— select DSP —</option><option>Nashville Barrel Co</option><option>Louisville Rickhouse</option></select></div>
-        <div><label class="fld">Brand</label><select id="bp_brand"></select></div>
+        <div><label class="fld">Brand</label><select id="bp_brand" onchange="bpBrandToggle()"></select></div>
+        <div id="bp_labelchoice_wrap" style="display:none"><label class="fld">Label (Nashville Barrel)</label><select id="bp_labelchoice"><option value="">— select —</option><option>Collab</option><option>Split label</option></select></div>
         <div><label class="fld">Barrel #</label><input id="bp_barrel" placeholder="e.g. 24-0140"></div>
         <div><label class="fld">Spirit type</label><input id="bp_spirit" placeholder="e.g. Bourbon"></div>
         <div><label class="fld">Age</label><input id="bp_age" placeholder="e.g. 5 years"></div>
         <div><label class="fld">Retailer / Group</label><input id="bp_retailer" placeholder="e.g. Total Wine — Bourbon Club"></div>
         <div><label class="fld">Wholesaler</label><input id="bp_wholesaler" placeholder="e.g. Republic National"></div>
+        <div style="grid-column:1/-1;border-top:1px solid var(--line2);margin-top:4px;padding-top:8px"><label class="fld" style="margin:0">Buyer contact</label></div>
+        <div><label class="fld">Name</label><input id="bp_buyer_name" placeholder="Buyer name"></div>
+        <div><label class="fld">Phone #</label><input id="bp_buyer_phone" placeholder="(555) 555-5555"></div>
+        <div><label class="fld">Email</label><input id="bp_buyer_email" type="email" placeholder="name@email.com"></div>
         <div><label class="fld">Label art</label><select id="bp_arttype" onchange="bpArtToggle()"><option value="logo">Logo (upload)</option><option value="text">Text</option></select></div>
       </div>
       <div id="bp_logo_wrap" style="margin-top:12px"><label class="fld">Logo image</label><input type="file" id="bp_logo_file" accept="image/*"></div>

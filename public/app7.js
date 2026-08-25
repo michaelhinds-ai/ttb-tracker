@@ -19,7 +19,14 @@ function renderBarrelsProc(){
   const bs=document.getElementById('bp_brand');
   if(bs){ const cur=bs.value; bs.innerHTML='<option value="">— select brand —</option>'+bpBrands().map(c=>`<option>${esc(c)}</option>`).join(''); bs.value=cur||''; }
   bpArtToggle();
+  bpBrandToggle();
   bpRenderList();
+}
+function bpIsNashville(brand){ return /nashville\s*barrel/i.test(brand||''); }
+function bpBrandToggle(){
+  const brand=(document.getElementById('bp_brand')||{}).value||'';
+  const w=document.getElementById('bp_labelchoice_wrap');
+  if(w){ const show=bpIsNashville(brand); w.style.display=show?'':'none'; if(!show){ const s=document.getElementById('bp_labelchoice'); if(s) s.value=''; } }
 }
 function bpArtToggle(){
   const t=(document.getElementById('bp_arttype')||{}).value||'logo';
@@ -44,12 +51,17 @@ function bpAdd(){
   const age=((document.getElementById('bp_age')||{}).value||'').trim();
   const retailer=((document.getElementById('bp_retailer')||{}).value||'').trim();
   const wholesaler=((document.getElementById('bp_wholesaler')||{}).value||'').trim();
+  const buyerName=((document.getElementById('bp_buyer_name')||{}).value||'').trim();
+  const buyerPhone=((document.getElementById('bp_buyer_phone')||{}).value||'').trim();
+  const buyerEmail=((document.getElementById('bp_buyer_email')||{}).value||'').trim();
   const artType=(document.getElementById('bp_arttype')||{}).value||'logo';
+  const labelChoice=bpIsNashville(brand)?((document.getElementById('bp_labelchoice')||{}).value||''):'';
   if(!dsp){ alert('Pick a DSP.'); return; }
   if(!brand){ alert('Pick a brand.'); return; }
   if(!barrelNo){ alert('Enter a barrel #.'); return; }
 
-  const base={ id:uid(), dsp, brand, barrelNo, spirit, age, retailer, wholesaler, artType,
+  const base={ id:uid(), dsp, brand, barrelNo, spirit, age, retailer, wholesaler,
+    buyerName, buyerPhone, buyerEmail, labelChoice, artType,
     artText:'', logoId:'', logoName:'', stages:{}, ts:Date.now(), by:(SESSION?SESSION.name:'') };
 
   if(artType==='text'){
@@ -83,7 +95,7 @@ function bpAdd(){
   r.readAsDataURL(f);
 }
 function bpClearForm(){
-  ['bp_barrel','bp_spirit','bp_age','bp_retailer','bp_wholesaler','bp_text'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['bp_barrel','bp_spirit','bp_age','bp_retailer','bp_wholesaler','bp_buyer_name','bp_buyer_phone','bp_buyer_email','bp_labelchoice','bp_text'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const fi=document.getElementById('bp_logo_file'); if(fi) fi.value='';
 }
 function bpToggleStage(id,key){
@@ -127,6 +139,14 @@ function bpCard(b){
   const meta=[];
   if(b.retailer) meta.push('<b>Retailer / group:</b> '+esc(b.retailer));
   if(b.wholesaler) meta.push('<b>Wholesaler:</b> '+esc(b.wholesaler));
+  if(b.labelChoice) meta.push('<b>Label:</b> '+esc(b.labelChoice));
+  if(b.buyerName||b.buyerPhone||b.buyerEmail){
+    const parts=[];
+    if(b.buyerName) parts.push(esc(b.buyerName));
+    if(b.buyerPhone) parts.push('<a href="tel:'+esc(b.buyerPhone.replace(/[^0-9+]/g,''))+'" style="color:var(--copper);font-weight:600">'+esc(b.buyerPhone)+'</a>');
+    if(b.buyerEmail) parts.push('<a href="mailto:'+esc(b.buyerEmail)+'" style="color:var(--copper);font-weight:600">'+esc(b.buyerEmail)+'</a>');
+    meta.push('<b>Buyer:</b> '+parts.join(' &middot; '));
+  }
   return `<div class="card" style="${st.complete?'opacity:.72;':''}margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
