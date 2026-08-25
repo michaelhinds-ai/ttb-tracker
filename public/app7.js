@@ -17,7 +17,7 @@ function bpBrands(){ try{ return companyList(); }catch(e){ return ["Louisville R
 function renderBarrelsProc(){
   // Brand dropdown (DSP + art-type are static in the HTML).
   const bs=document.getElementById('bp_brand');
-  if(bs){ const cur=bs.value; bs.innerHTML=bpBrands().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)bs.value=cur; }
+  if(bs){ const cur=bs.value; bs.innerHTML='<option value="">— select brand —</option>'+bpBrands().map(c=>`<option>${esc(c)}</option>`).join(''); bs.value=cur||''; }
   bpArtToggle();
   bpRenderList();
 }
@@ -40,13 +40,16 @@ function bpAdd(){
   const dsp=(document.getElementById('bp_dsp')||{}).value||'';
   const brand=(document.getElementById('bp_brand')||{}).value||'';
   const barrelNo=((document.getElementById('bp_barrel')||{}).value||'').trim();
+  const spirit=((document.getElementById('bp_spirit')||{}).value||'').trim();
+  const age=((document.getElementById('bp_age')||{}).value||'').trim();
   const retailer=((document.getElementById('bp_retailer')||{}).value||'').trim();
   const wholesaler=((document.getElementById('bp_wholesaler')||{}).value||'').trim();
   const artType=(document.getElementById('bp_arttype')||{}).value||'logo';
-  if(!barrelNo){ alert('Enter a barrel #.'); return; }
+  if(!dsp){ alert('Pick a DSP.'); return; }
   if(!brand){ alert('Pick a brand.'); return; }
+  if(!barrelNo){ alert('Enter a barrel #.'); return; }
 
-  const base={ id:uid(), dsp, brand, barrelNo, retailer, wholesaler, artType,
+  const base={ id:uid(), dsp, brand, barrelNo, spirit, age, retailer, wholesaler, artType,
     artText:'', logoId:'', logoName:'', stages:{}, ts:Date.now(), by:(SESSION?SESSION.name:'') };
 
   if(artType==='text'){
@@ -80,7 +83,7 @@ function bpAdd(){
   r.readAsDataURL(f);
 }
 function bpClearForm(){
-  ['bp_barrel','bp_retailer','bp_wholesaler','bp_text'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['bp_barrel','bp_spirit','bp_age','bp_retailer','bp_wholesaler','bp_text'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const fi=document.getElementById('bp_logo_file'); if(fi) fi.value='';
 }
 function bpToggleStage(id,key){
@@ -100,8 +103,9 @@ function bpDelete(id){
 }
 
 function bpDspPill(dsp){
-  const ky=dsp==='KY';
-  return `<span class="pill" style="background:${ky?'var(--ky-bg)':'#e7eef4'};color:${ky?'var(--ky)':'#2f6f8f'}">${ky?'Kentucky · KY':(dsp==='TN'?'Tennessee · TN':esc(dsp||'—'))}</span>`;
+  if(!dsp) return `<span class="pill" style="background:#efe7d8;color:var(--muted)">No DSP</span>`;
+  const nash=/nashville/i.test(dsp);
+  return `<span class="pill" style="background:${nash?'#e7eef4':'var(--ky-bg)'};color:${nash?'#2f6f8f':'var(--ky)'}">${esc(dsp)}${nash?' · TN':' · KY'}</span>`;
 }
 function bpArtPreview(b){
   if(b.artType==='logo' && b.logoId){
@@ -127,6 +131,7 @@ function bpCard(b){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
         <div style="font-size:17px;font-weight:700">${esc(b.brand||'')} &middot; Barrel #${esc(b.barrelNo||'')}</div>
+        ${(b.spirit||b.age)?`<div style="color:var(--muted);font-size:13.5px;font-family:-apple-system,Segoe UI,sans-serif;margin-top:2px">${[esc(b.spirit||''),esc(b.age||'')].filter(Boolean).join(' &middot; ')}</div>`:''}
         <div style="display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap">${bpDspPill(b.dsp)}
           <span class="pill ${st.complete?'tax':''}" style="${st.complete?'':'background:#f4ecdb;color:var(--copper-dk)'}">${st.complete?'✓ Complete':esc(st.label)}</span></div>
       </div>
