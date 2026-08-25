@@ -70,6 +70,11 @@
         <div><div class="an">Print Case Labels</div><div class="ad">Master-carton GS1-128 labels &mdash; pick product, pack &amp; barrel, print a sheet.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
+      <div class="apptile" style="cursor:pointer" onclick="switchView('barrelsproc')">
+        <div class="ai" style="background:rgba(122,90,43,.15)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a5a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
+        <div><div class="an">Barrels in Process</div><div class="ad">Single-barrel selections &mdash; track logo/text approval &amp; bottling for each barrel.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('compliance')">
         <div class="ai" style="background:rgba(178,58,46,.13)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b23a2e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg></div>
         <div><div class="an">Licenses and Forms</div><div class="ad">Licenses, DSP permit, sales &amp; use tax, EIN &mdash; upload, find &amp; print.</div></div>
@@ -836,9 +841,32 @@
     </div>
     <div id="payrollBody"></div>
   </section>
+
+  <section class="view" id="view-barrelsproc">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h1 style="font-size:29px;margin:0">Barrels in Process</h1>
+    <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Log a single-barrel selection and track it through to bottling. Standalone for now &mdash; it&rsquo;ll link to real barrel inventory once the Nashville Barrel inventory is loaded.</p>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Add a barrel</h3>
+      <div class="grid g2">
+        <div><label class="fld">DSP</label><select id="bp_dsp"><option value="KY">Kentucky &mdash; DSP-KY-20181</option><option value="TN">Tennessee (TN)</option></select></div>
+        <div><label class="fld">Brand</label><select id="bp_brand"></select></div>
+        <div><label class="fld">Barrel #</label><input id="bp_barrel" placeholder="e.g. 24-0140"></div>
+        <div><label class="fld">Retailer / Group</label><input id="bp_retailer" placeholder="e.g. Total Wine — Bourbon Club"></div>
+        <div><label class="fld">Wholesaler</label><input id="bp_wholesaler" placeholder="e.g. Republic National"></div>
+        <div><label class="fld">Label art</label><select id="bp_arttype" onchange="bpArtToggle()"><option value="logo">Logo (upload)</option><option value="text">Text</option></select></div>
+      </div>
+      <div id="bp_logo_wrap" style="margin-top:12px"><label class="fld">Logo image</label><input type="file" id="bp_logo_file" accept="image/*"></div>
+      <div id="bp_text_wrap" style="margin-top:12px;display:none"><label class="fld">Label text</label><input id="bp_text" placeholder="Text to print on the label"></div>
+      <div class="row-actions" style="margin-top:14px"><button class="btn" id="bp_addbtn" onclick="bpAdd()">Add barrel</button></div>
+    </div>
+
+    <div id="bpList"></div>
+  </section>
 </main>
 
-<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script>
+<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script>
 </body>
 </html>
 
