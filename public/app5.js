@@ -195,6 +195,20 @@ function doBottle(){
 function bpc(){ return Math.max(1,+state.settings.bottlesPerCase||6); }
 function fgCases(f){ return Math.floor((+f.bottles||0)/bpc()); }
 function fgSingles(f){ return (+f.bottles||0)%bpc(); }
+// ---- 6-pack / 12-pack packing. pack12 = how many 12-count cases the user has
+// designated; the rest of the bottles fall into 6-packs + loose singles. Bottles
+// are conserved, so repacking never changes the bottle count or proof gallons.
+const FG_SIX=6, FG_TW=12;
+function fgTwelve(f){ const b=+f.bottles||0; return Math.max(0, Math.min(Math.floor(b/FG_TW), +f.pack12||0)); }
+function fgRemainB(f){ return (+f.bottles||0) - FG_TW*fgTwelve(f); }
+function fgSix(f){ return Math.floor(fgRemainB(f)/FG_SIX); }
+function fgLoose(f){ return fgRemainB(f)%FG_SIX; }
+function fgMake12(id){ if(!requireCap('write'))return; const f=(state.finishedGoods||[]).find(x=>x.id===id); if(!f)return;
+  if(fgSix(f)<2){ alert('Need at least two 6-packs (12 bottles) free to make a 12-pack.'); return; }
+  f.pack12=fgTwelve(f)+1; save('Repacked into a 12-pack — '+f.sku); refreshAll(); flash('Made a 12-pack from two 6-packs.'); }
+function fgSplit12(id){ if(!requireCap('write'))return; const f=(state.finishedGoods||[]).find(x=>x.id===id); if(!f)return;
+  if(fgTwelve(f)<1){ alert('No 12-packs to split on this SKU.'); return; }
+  f.pack12=fgTwelve(f)-1; save('Split a 12-pack into two 6-packs — '+f.sku); refreshAll(); flash('Split a 12-pack back into two 6-packs.'); }
 function fgPG(f){ return round1(bottlesToWG(+f.bottles||0,f.bottleSize)*(+f.proof||0)/100); }
 function skuFor(cls,distillDate){ const yr=(distillDate||'').slice(0,4); return ((cls||'Spirit')+(yr?' '+yr:'')).trim(); }
 function addToFinishedGoods(cls,distillDate,proof,bottles,created){
@@ -241,25 +255,51 @@ function renderFinished(){
   ].join('');
   const q=($('#fgSearch').value||'').toLowerCase();
   const rows=all.filter(f=>!q||`${f.sku} ${f.spirit}`.toLowerCase().includes(q)).sort((a,b)=>a.sku.localeCompare(b.sku));
-  $('#fgBody').innerHTML=rows.map(f=>{const a=[];if(can('write'))a.push(`<button class="link" onclick="editFgSku('${f.id}')">Rename</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteFg('${f.id}')">Del</button>`);return `<tr><td><b>${f.sku}</b></td><td>${f.spirit||''}</td><td>${f.distillDate?fmtDate(f.distillDate):'—'}</td><td class="num">${numf(f.proof,1)}</td><td class="num">${fgCases(f)}</td><td class="num">${fgSingles(f)}</td><td class="num">${(+f.bottles||0).toLocaleString()}</td><td class="num">${numf(fgPG(f))}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
+  $('#fgBody').innerHTML=rows.map(f=>{
+    const a=[];if(can('write'))a.push(`<button class="link" onclick="editFgSku('${f.id}')">Rename</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteFg('${f.id}')">Del</button>`);
+    let repack='—';
+    if(can('write')){
+      const canMake=fgSix(f)>=2, canSplit=fgTwelve(f)>=1;
+      repack=`<button class="link" title="Combine two 6-packs into one 12-pack" onclick="fgMake12('${f.id}')" ${canMake?'':'disabled style=\"opacity:.35;cursor:default\"'}>+12&#8209;pk</button> &middot; <button class="link" title="Split a 12-pack back into two 6-packs" onclick="fgSplit12('${f.id}')" ${canSplit?'':'disabled style=\"opacity:.35;cursor:default\"'}>&minus;12&#8209;pk</button>`;
+    }
+    return `<tr><td><b>${f.sku}</b></td><td>${f.spirit||''}</td><td>${f.distillDate?fmtDate(f.distillDate):'—'}</td><td class="num">${numf(f.proof,1)}</td><td class="num">${fgSix(f)}</td><td class="num">${fgTwelve(f)}</td><td class="num">${fgLoose(f)}</td><td class="num">${(+f.bottles||0).toLocaleString()}</td><td class="num">${numf(fgPG(f))}</td><td class="noprint">${repack}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
   $('#fgEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">🍾</div>No finished goods in bond yet. Bottle a barrel with Gift Shop unchecked to create some.</div>`;
 }
 function editFgSku(id){ if(!requireCap('write'))return; const f=state.finishedGoods.find(x=>x.id===id); if(!f)return; const v=prompt('SKU name:',f.sku); if(v===null)return; f.sku=(v.trim()||f.sku); save('Renamed a finished-goods SKU'); renderFinished(); }
 function deleteFg(id){ if(!requireCap('delete'))return; if(!confirm('Delete this finished-goods line? Use only to fix an error — it does not record a removal.'))return; state.finishedGoods=state.finishedGoods.filter(x=>x.id!==id); save('Deleted a finished-goods line'); refreshAll(); }
-function exportFgCsv(){ const head=['SKU','Spirit','DistillationDate','Proof','Cases','Singles','Bottles','ProofGallons']; const rows=(state.finishedGoods||[]).filter(f=>+f.bottles>0).map(f=>[f.sku,f.spirit,f.distillDate,f.proof,fgCases(f),fgSingles(f),f.bottles,fgPG(f)].map(csv).join(',')); const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='finished-goods.csv';a.click();URL.revokeObjectURL(a.href); }
+function exportFgCsv(){ const head=['SKU','Spirit','DistillationDate','Proof','SixPackCases','TwelvePackCases','Singles','Bottles','ProofGallons']; const rows=(state.finishedGoods||[]).filter(f=>+f.bottles>0).map(f=>[f.sku,f.spirit,f.distillDate,f.proof,fgSix(f),fgTwelve(f),fgLoose(f),f.bottles,fgPG(f)].map(csv).join(',')); const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='finished-goods.csv';a.click();URL.revokeObjectURL(a.href); }
 
 /* ---- Customers ---- */
 let editingCustId=null;
-function readCust(){ return {name:$('#c_name').value.trim(),contact:$('#c_contact').value.trim(),email:$('#c_email').value.trim(),phone:$('#c_phone').value.trim(),terms:$('#c_terms').value.trim(),notes:$('#c_notes').value.trim()}; }
+function readCust(){
+  const pcName=$('#c_pc_name').value.trim(), pcPhone=$('#c_pc_phone').value.trim(), pcEmail=$('#c_pc_email').value.trim();
+  return { name:$('#c_name').value.trim(), terms:$('#c_terms').value.trim(), address:$('#c_addr').value.trim(), notes:$('#c_notes').value.trim(),
+    pcName, pcPhone, pcEmail,
+    acName:$('#c_ac_name').value.trim(), acPhone:$('#c_ac_phone').value.trim(), acEmail:$('#c_ac_email').value.trim(),
+    // keep legacy fields in sync (used by QuickBooks + older records) — mirror the personal contact
+    contact:pcName, email:pcEmail, phone:pcPhone };
+}
 function saveCust(){ if(!requireCap('write'))return; const d=readCust(); if(!d.name){alert('Enter a customer name.');return;} if(editingCustId){const i=state.customers.findIndex(c=>c.id===editingCustId);if(i>=0)state.customers[i]=Object.assign(state.customers[i],d);cancelCust();} else state.customers.push(Object.assign({id:uid(),qbId:null},d)); const cl=(d.name?(' — '+d.name):''); clearCust(); save('Saved a customer'+cl); refreshAll(); flash('Customer saved.'); }
-function clearCust(){ ['c_name','c_contact','c_email','c_phone','c_terms','c_notes'].forEach(i=>$('#'+i).value=''); }
-function editCust(id){ if(!requireCap('write'))return; const c=state.customers.find(x=>x.id===id); if(!c)return; editingCustId=id; $('#c_name').value=c.name||'';$('#c_contact').value=c.contact||'';$('#c_email').value=c.email||'';$('#c_phone').value=c.phone||'';$('#c_terms').value=c.terms||'';$('#c_notes').value=c.notes||''; $('#custFormTitle').textContent='Edit Customer'; $('#custCancel').style.display='inline-block'; switchView('customers'); window.scrollTo({top:0,behavior:'smooth'}); }
+function clearCust(){ ['c_name','c_terms','c_addr','c_notes','c_pc_name','c_pc_phone','c_pc_email','c_ac_name','c_ac_phone','c_ac_email'].forEach(i=>{const el=$('#'+i);if(el)el.value='';}); }
+function editCust(id){ if(!requireCap('write'))return; const c=state.customers.find(x=>x.id===id); if(!c)return; editingCustId=id;
+  $('#c_name').value=c.name||''; $('#c_terms').value=c.terms||''; $('#c_addr').value=c.address||''; $('#c_notes').value=c.notes||'';
+  $('#c_pc_name').value=c.pcName||c.contact||''; $('#c_pc_phone').value=c.pcPhone||c.phone||''; $('#c_pc_email').value=c.pcEmail||c.email||'';
+  $('#c_ac_name').value=c.acName||''; $('#c_ac_phone').value=c.acPhone||''; $('#c_ac_email').value=c.acEmail||'';
+  $('#custFormTitle').textContent='Edit Customer'; $('#custCancel').style.display='inline-block'; switchView('customers'); window.scrollTo({top:0,behavior:'smooth'}); }
 function cancelCust(){ editingCustId=null; clearCust(); $('#custCancel').style.display='none'; $('#custFormTitle').textContent='Add Customer'; }
 function deleteCust(id){ if(!requireCap('delete'))return; if(!confirm('Delete this customer?'))return; state.customers=state.customers.filter(x=>x.id!==id); save('Deleted a customer'); refreshAll(); }
+function custContactCell(name,phone,email){
+  const bits=[];
+  if(name) bits.push(`<div style="font-weight:600">${esc(name)}</div>`);
+  if(phone) bits.push(`<a href="tel:${esc(String(phone).replace(/[^0-9+]/g,''))}" style="color:var(--copper);font-size:12.5px">${esc(phone)}</a>`);
+  if(email) bits.push(`<a href="mailto:${esc(email)}" style="color:var(--copper);font-size:12.5px">${esc(email)}</a>`);
+  return bits.length?bits.join('<div style="height:1px"></div>'):'<span style="color:var(--muted)">—</span>';
+}
 function renderCustomers(){
   const q=($('#custSearch').value||'').toLowerCase();
-  const rows=[...state.customers].filter(c=>!q||`${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(q)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  $('#custBody').innerHTML=rows.map(c=>{const a=[];if(can('write'))a.push(`<button class="link" onclick="editCust('${c.id}')">Edit</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteCust('${c.id}')">Del</button>`);return `<tr><td><b>${c.name||''}</b></td><td>${c.contact||''}</td><td>${c.email||''}</td><td>${c.phone||''}</td><td>${c.terms||''}</td><td>${c.qbId?`<span class="pill tax">linked</span>`:'—'}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
+  const rows=[...state.customers].filter(c=>!q||`${c.name} ${c.pcName||c.contact||''} ${c.pcEmail||c.email||''} ${c.acName||''} ${c.acEmail||''}`.toLowerCase().includes(q)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  $('#custBody').innerHTML=rows.map(c=>{const a=[];if(can('write'))a.push(`<button class="link" onclick="editCust('${c.id}')">Edit</button>`);if(can('delete'))a.push(`<button class="del" onclick="deleteCust('${c.id}')">Del</button>`);
+    return `<tr><td><b>${esc(c.name||'')}</b>${c.address?`<div style="font-size:11px;color:var(--muted)">${esc(c.address)}</div>`:''}</td><td>${custContactCell(c.pcName||c.contact,c.pcPhone||c.phone,c.pcEmail||c.email)}</td><td>${custContactCell(c.acName,c.acPhone,c.acEmail)}</td><td>${esc(c.terms||'')}</td><td>${c.qbId?`<span class="pill tax">linked</span>`:'—'}</td><td class="noprint">${a.join(' · ')}</td></tr>`;}).join('');
   $('#custEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">👤</div>No customers yet. Add one above.</div>`;
 }
 
@@ -292,10 +332,50 @@ function findOrCreateCustomer(name){
   if(!c){ c={id:uid(),qbId:null,name}; state.customers.push(c); }
   return c;
 }
+// Live check as they type the customer — pulls from the database, or flags a new one.
+function orderCustCheck(){
+  const el=$('#o_custstatus'); if(!el) return;
+  const name=($('#o_customer').value||'').trim();
+  if(!name){ el.innerHTML=''; return; }
+  const c=state.customers.find(x=>(x.name||'').trim().toLowerCase()===name.toLowerCase());
+  if(c){ el.innerHTML='<span style="color:var(--green);font-weight:700">✓ On file</span>'; hideNewCust(); }
+  else { el.innerHTML='<span style="color:var(--amber);font-weight:700">New — we’ll grab their details when you create the order</span>'; }
+}
+function hideNewCust(){ const p=$('#o_newcust'); if(p) p.style.display='none'; }
+function orderCancelNewCust(){ hideNewCust(); }
+function orderShowNewCust(name){
+  const p=$('#o_newcust'); if(!p){ return; }
+  const t=$('#on_title'); if(t) t.textContent='New customer — '+name;
+  p.style.display=''; try{ p.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  const f=$('#on_pc_name'); if(f) f.focus();
+  flash('“'+name+'” isn’t on file yet — add their details to continue.');
+}
+function orderSaveNewCust(){
+  if(!requireCap('write'))return;
+  const name=($('#o_customer').value||'').trim();
+  if(!name){ alert('Type the customer name in the order first.'); return; }
+  const pcName=$('#on_pc_name').value.trim();
+  if(!pcName){ alert('Add at least a personal contact name.'); $('#on_pc_name').focus(); return; }
+  const pcPhone=$('#on_pc_phone').value.trim(), pcEmail=$('#on_pc_email').value.trim();
+  const cust={ id:uid(), qbId:null, name, terms:$('#on_terms').value.trim(), address:$('#on_addr').value.trim(), notes:'',
+    pcName, pcPhone, pcEmail,
+    acName:$('#on_ac_name').value.trim(), acPhone:$('#on_ac_phone').value.trim(), acEmail:$('#on_ac_email').value.trim(),
+    contact:pcName, email:pcEmail, phone:pcPhone };
+  state.customers.push(cust);
+  ['on_terms','on_addr','on_pc_name','on_pc_phone','on_pc_email','on_ac_name','on_ac_phone','on_ac_email'].forEach(i=>{const el=$('#'+i);if(el)el.value='';});
+  hideNewCust();
+  save('Added customer — '+name);
+  const dl=$('#custList'); if(dl) dl.innerHTML=[...state.customers].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}"></option>`).join('');
+  orderCustCheck();
+  flash('Customer “'+name+'” saved to your database.');
+  orderCreate();
+}
 function orderCreate(){
   if(!requireCap('write'))return;
-  const cust=findOrCreateCustomer($('#o_customer').value);
-  if(!cust){ alert('Enter a customer name.'); return; }
+  const cname=($('#o_customer').value||'').trim();
+  if(!cname){ alert('Enter a customer name.'); $('#o_customer').focus(); return; }
+  const cust=state.customers.find(x=>(x.name||'').trim().toLowerCase()===cname.toLowerCase());
+  if(!cust){ orderShowNewCust(cname); return; }
   const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
   if(!valid.length){ alert('Add at least one line with a product and case count.'); return; }
   for(const l of valid){ if(l.cases>fgCases(l.fg)){ alert(`Only ${fgCases(l.fg)} cases of ${l.fg.sku} on hand.`); return; } }
@@ -480,10 +560,12 @@ async function sendOrderToQB(id,silent){
   const o=state.orders.find(x=>x.id===id); if(!o)return;
   if(location.protocol==='file:'){ if(!silent)alert('QuickBooks works only on the hosted site.'); return; }
   const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
+  const billEmail=cust.acEmail||cust.pcEmail||cust.email||''; // invoices go to the accounting contact when we have one
+  const billPhone=cust.acPhone||cust.pcPhone||cust.phone||'';
   const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku,qty:l.cases,unitPrice:l.price}));
   if(!silent) flash('Sending order #'+o.num+' to QuickBooks…');
   try{
-    const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:cust.email,phone:cust.phone},lines,docNumber:o.num,txnDate:o.date,privateNote:'TTB Tracker order #'+o.num})});
+    const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:billEmail,phone:billPhone},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});
     const d=await r.json();
     if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash((o.giftShop?'Gift shop order #':'Order #')+o.num+' invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
     else if(d.error==='not_connected'){ if(!silent)alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
@@ -522,6 +604,7 @@ function wireOnce(){
   $('#recalcLoss').onclick=recalcLosses; $('#reconcileDumps').onclick=reconcilePastDumps; $('#backfillGift').onclick=runBackfillGift; $('#routeProc').onclick=reconcileProcessing; $('#syncAllQB').onclick=syncAllPendingQB;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
   $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
+  { const oc=$('#o_customer'); if(oc) oc.oninput=orderCustCheck; const sn=$('#orderSaveNewCust'); if(sn) sn.onclick=orderSaveNewCust; const cn=$('#orderCancelNewCust'); if(cn) cn.onclick=orderCancelNewCust; }
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
   $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv; $('#sqPdf').onclick=sqPdf;
   $('#stxRun').onclick=stxRun; $('#stxCsv').onclick=stxCsv;

@@ -621,9 +621,9 @@
         <div class="grow"><label class="fld">Search</label><input type="text" id="fgSearch" placeholder="SKU, spirit…"></div>
         <button class="btn ghost sm" id="fgExport">Export CSV</button>
       </div>
-      <div class="tablewrap"><table><thead><tr><th>SKU</th><th>Spirit</th><th>Distilled</th><th class="num">Proof</th><th class="num">Cases</th><th class="num">Singles</th><th class="num">Bottles</th><th class="num">PG</th><th class="noprint"></th></tr></thead><tbody id="fgBody"></tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>SKU</th><th>Spirit</th><th>Distilled</th><th class="num">Proof</th><th class="num">6-pk cases</th><th class="num">12-pk cases</th><th class="num">Singles</th><th class="num">Bottles</th><th class="num">PG</th><th class="noprint">Repack</th><th class="noprint"></th></tr></thead><tbody id="fgBody"></tbody></table></div>
       <div id="fgEmpty"></div>
-      <div class="disclaimer">Finished goods are bottled and held <b>in bond</b> — no federal excise has been determined yet. Cases pack at your case size (default 6 bottles, editable in Setup); leftover bottles show as singles. Removing them via an <b>order</b> or a gift-shop bottling is what records the taxpaid removal.</div>
+      <div class="disclaimer">Finished goods are bottled and held <b>in bond</b> — no federal excise has been determined yet. Bottles pack into <b>6-packs</b> and <b>12-packs</b>; leftover bottles show as singles. Use <b>Repack</b> to combine two 6-packs into a 12-pack (or split one back) — it just re-labels how the same bottles are cased, so the bottle count and proof gallons don't change. Removing them via an <b>order</b> or a gift-shop bottling is what records the taxpaid removal.</div>
     </div>
   </section>
 
@@ -632,11 +632,38 @@
     <h2 class="section">Orders</h2>
     <div class="card cap-write">
       <h3 id="orderFormTitle">New Order</h3>
-      <p class="hint">Pick a customer and add cases of finished goods (only items with stock on hand appear). Enter the case price for this customer — it can differ per account. Creating the order removes the cases from bond, records the federal excise proof gallons, and is ready to invoice in QuickBooks.</p>
+      <p class="hint">Pick a customer and add cases of finished goods (only items with stock on hand appear). Enter the case price for this customer — it can differ per account. Creating the order removes the cases from bond, records the federal excise proof gallons, and syncs to QuickBooks as an invoice. The Mikey Systems order number becomes the invoice number, and the customer PO carries onto the invoice.</p>
       <div class="grid g3">
-        <div><label class="fld">Customer</label><input type="text" id="o_customer" list="custList" placeholder="Type or pick a customer…" autocomplete="off"><datalist id="custList"></datalist></div>
+        <div><label class="fld">Customer</label><input type="text" id="o_customer" list="custList" placeholder="Type or pick a customer…" autocomplete="off"><datalist id="custList"></datalist><div id="o_custstatus" style="margin-top:5px;font-size:12.5px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;min-height:16px"></div></div>
         <div><label class="fld">Order Date</label><input type="date" id="o_date"></div>
-        <div><label class="fld">PO / Reference</label><input type="text" id="o_ref" placeholder="Optional"></div>
+        <div><label class="fld">Customer PO #</label><input type="text" id="o_ref" placeholder="From the customer — flows to QuickBooks"></div>
+      </div>
+
+      <div class="card" id="o_newcust" style="display:none;background:#fbf6ec;border-color:var(--amber);margin-top:14px">
+        <h3 id="on_title" style="margin-top:0">New customer</h3>
+        <p class="hint" style="margin-top:0">This account isn&rsquo;t on file yet. Add their details once and they&rsquo;ll be in your customer database for next time.</p>
+        <div class="grid g3">
+          <div><label class="fld">Payment terms</label><input type="text" id="on_terms" placeholder="e.g. Net 30"></div>
+          <div style="grid-column:span 2"><label class="fld">Billing address</label><input type="text" id="on_addr" placeholder="Street, city, state, ZIP"></div>
+        </div>
+        <div style="border-top:1px solid var(--line2);margin-top:12px;padding-top:10px"><label class="fld" style="margin:0 0 8px">Personal contact</label>
+          <div class="grid g3">
+            <div><label class="fld">Name</label><input type="text" id="on_pc_name" placeholder="Buyer / rep"></div>
+            <div><label class="fld">Phone</label><input type="text" id="on_pc_phone"></div>
+            <div><label class="fld">Email</label><input type="email" id="on_pc_email"></div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--line2);margin-top:12px;padding-top:10px"><label class="fld" style="margin:0 0 8px">Accounting contact</label>
+          <div class="grid g3">
+            <div><label class="fld">Name</label><input type="text" id="on_ac_name" placeholder="AP / billing"></div>
+            <div><label class="fld">Phone</label><input type="text" id="on_ac_phone"></div>
+            <div><label class="fld">Email</label><input type="email" id="on_ac_email" placeholder="For invoices"></div>
+          </div>
+        </div>
+        <div class="row-actions" style="margin-top:14px">
+          <button class="btn" id="orderSaveNewCust">Save customer &amp; create order</button>
+          <button class="btn gray" id="orderCancelNewCust">Cancel</button>
+        </div>
       </div>
       <div class="tablewrap" style="margin-top:14px">
         <table><thead><tr><th>Finished Good (SKU)</th><th class="num">On hand</th><th class="num">Cases</th><th class="num">Case Price</th><th class="num">Line Total</th><th class="noprint"></th></tr></thead><tbody id="orderLines"></tbody></table>
@@ -663,14 +690,24 @@
       <h3 id="custFormTitle">Add Customer</h3>
       <div class="grid g3">
         <div><label class="fld">Name / Account</label><input type="text" id="c_name" placeholder="Account or business name"></div>
-        <div><label class="fld">Contact</label><input type="text" id="c_contact" placeholder="Person"></div>
-        <div><label class="fld">Email</label><input type="email" id="c_email"></div>
+        <div><label class="fld">Payment terms</label><input type="text" id="c_terms" placeholder="e.g. Net 30"></div>
+        <div><label class="fld">Billing address</label><input type="text" id="c_addr" placeholder="Street, city, state, ZIP"></div>
       </div>
-      <div class="grid g3" style="margin-top:14px">
-        <div><label class="fld">Phone</label><input type="text" id="c_phone"></div>
-        <div><label class="fld">Terms</label><input type="text" id="c_terms" placeholder="e.g. Net 30"></div>
-        <div><label class="fld">Notes</label><input type="text" id="c_notes"></div>
+      <div style="border-top:1px solid var(--line2);margin-top:14px;padding-top:10px"><label class="fld" style="margin:0 0 8px">Personal contact</label>
+        <div class="grid g3">
+          <div><label class="fld">Name</label><input type="text" id="c_pc_name" placeholder="Buyer / rep"></div>
+          <div><label class="fld">Phone</label><input type="text" id="c_pc_phone"></div>
+          <div><label class="fld">Email</label><input type="email" id="c_pc_email"></div>
+        </div>
       </div>
+      <div style="border-top:1px solid var(--line2);margin-top:14px;padding-top:10px"><label class="fld" style="margin:0 0 8px">Accounting contact</label>
+        <div class="grid g3">
+          <div><label class="fld">Name</label><input type="text" id="c_ac_name" placeholder="AP / billing"></div>
+          <div><label class="fld">Phone</label><input type="text" id="c_ac_phone"></div>
+          <div><label class="fld">Email</label><input type="email" id="c_ac_email" placeholder="For invoices"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px"><label class="fld">Notes</label><input type="text" id="c_notes"></div>
       <div class="row-actions" style="margin-top:14px">
         <button class="btn" id="custSave">Save Customer</button>
         <button class="btn gray" id="custCancel" style="display:none">Cancel Edit</button>
@@ -678,7 +715,7 @@
     </div>
     <div class="card">
       <div class="toolbar"><div class="grow"><label class="fld">Search</label><input type="text" id="custSearch" placeholder="Name, contact, email…"></div></div>
-      <div class="tablewrap"><table><thead><tr><th>Name / Account</th><th>Contact</th><th>Email</th><th>Phone</th><th>Terms</th><th>QuickBooks</th><th class="noprint"></th></tr></thead><tbody id="custBody"></tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>Name / Account</th><th>Personal contact</th><th>Accounting contact</th><th>Terms</th><th>QuickBooks</th><th class="noprint"></th></tr></thead><tbody id="custBody"></tbody></table></div>
       <div id="custEmpty"></div>
     </div>
   </section>
