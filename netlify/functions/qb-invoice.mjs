@@ -1,7 +1,9 @@
 import { qbFetch, qbQuery, QBError, escapeQ, round2, MINOR_VERSION } from "./lib/qb.mjs";
 
 // POST body:
-// { customer:{name,email,phone}, lines:[{sku,description,qty,unitPrice}], docNumber, txnDate, privateNote }
+// { customer:{name,email,phone}, lines:[{sku,description,qty,unitPrice}], docNumber, txnDate, privateNote, poNumber }
+// docNumber becomes the QuickBooks invoice number (requires "Custom transaction numbers" ON in QBO,
+// otherwise QBO auto-assigns). poNumber is written to the invoice's customer-facing memo.
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   let p;
@@ -28,6 +30,7 @@ export default async (req) => {
     if (p.docNumber) invoice.DocNumber = String(p.docNumber).slice(0, 21);
     if (p.txnDate) invoice.TxnDate = p.txnDate;
     if (p.privateNote) invoice.PrivateNote = String(p.privateNote).slice(0, 4000);
+    if (p.poNumber) invoice.CustomerMemo = { value: ("PO #: " + String(p.poNumber)).slice(0, 1000) };
     const created = await qbFetch(`/invoice?minorversion=${MINOR_VERSION}`, { method: "POST", body: JSON.stringify(invoice) });
     const inv = created.json && created.json.Invoice;
     return json({ ok: true, invoiceId: inv && inv.Id, docNumber: inv && inv.DocNumber, total: inv && inv.TotalAmt, customerId: custId, tid: created.tid });
