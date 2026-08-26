@@ -305,22 +305,25 @@ function renderCustomers(){
 
 /* ---- Orders ---- */
 let orderLines=[];
-function orderNewLine(){ return {fgId:'',cases:'',price:''}; }
+function orderNewLine(){ return {fgId:'',pack:'6',cases:'',price:''}; }
 function initOrders(){ if(!orderLines.length) orderLines=[orderNewLine()]; if(!$('#o_date').value)$('#o_date').value=new Date().toISOString().slice(0,10); }
-function fgOnHand(){ return (state.finishedGoods||[]).filter(f=>fgCases(f)>0); }
+function fgOnHand(){ return (state.finishedGoods||[]).filter(f=>(+f.bottles||0)>0); }
+function packAvail(f,pack){ return pack==='12'?fgTwelve(f):fgSix(f); }
 function renderOrderLines(){
   const body=$('#orderLines'); if(!body)return; const avail=fgOnHand();
-  body.innerHTML=orderLines.map((ln,i)=>{ const f=state.finishedGoods.find(x=>x.id===ln.fgId); const onHand=f?fgCases(f):'—'; const lt=(+ln.cases||0)*(+ln.price||0);
+  body.innerHTML=orderLines.map((ln,i)=>{ const f=state.finishedGoods.find(x=>x.id===ln.fgId); const pack=ln.pack==='12'?'12':'6'; const onHand=f?packAvail(f,pack):'—'; const lt=(+ln.cases||0)*(+ln.price||0);
     return `<tr>
-      <td><select data-i="${i}" data-k="fgId"><option value="">— choose —</option>${avail.map(x=>`<option value="${x.id}" ${x.id===ln.fgId?'selected':''}>${x.sku} — ${numf(x.proof,0)} pf (${fgCases(x)} cs)</option>`).join('')}</select></td>
+      <td><select data-i="${i}" data-k="fgId"><option value="">— choose —</option>${avail.map(x=>`<option value="${x.id}" ${x.id===ln.fgId?'selected':''}>${esc(x.sku)} — ${numf(x.proof,0)} pf</option>`).join('')}</select></td>
+      <td><select data-i="${i}" data-k="pack" style="max-width:110px"><option value="6" ${pack==='6'?'selected':''}>6-pack</option><option value="12" ${pack==='12'?'selected':''}>12-pack</option></select></td>
       <td class="num">${onHand}</td>
       <td><input type="number" step="1" min="1" data-i="${i}" data-k="cases" value="${ln.cases||''}" style="max-width:80px"></td>
-      <td><input type="number" step="0.01" min="0" data-i="${i}" data-k="price" value="${ln.price||''}" style="max-width:110px"></td>
+      <td><input type="number" step="0.01" min="0" data-i="${i}" data-k="price" placeholder="$ / case" value="${ln.price||''}" style="max-width:110px"></td>
       <td class="num">${money(lt)}</td>
       <td class="noprint">${orderLines.length>1?`<button class="del" data-del="${i}">✕</button>`:''}</td></tr>`;
   }).join('');
-  body.querySelectorAll('select[data-k="fgId"]').forEach(el=>el.onchange=e=>{orderLines[+e.target.dataset.i].fgId=e.target.value;renderOrderLines();});
-  body.querySelectorAll('input[data-k]').forEach(el=>el.oninput=e=>{const i=+e.target.dataset.i;orderLines[i][e.target.dataset.k]=e.target.value;const lt=(+orderLines[i].cases||0)*(+orderLines[i].price||0);const cell=e.target.closest('tr').querySelector('td:nth-child(5)');if(cell)cell.textContent=money(lt);updateOrderTotal();});
+  body.querySelectorAll('select[data-k="fgId"]').forEach(el=>el.onchange=e=>{const i=+e.target.dataset.i; orderLines[i].fgId=e.target.value; const f=state.finishedGoods.find(x=>x.id===e.target.value); if(f) orderLines[i].pack=(fgTwelve(f)>0&&fgSix(f)===0)?'12':(fgTwelve(f)>0?'12':'6'); renderOrderLines();});
+  body.querySelectorAll('select[data-k="pack"]').forEach(el=>el.onchange=e=>{orderLines[+e.target.dataset.i].pack=e.target.value; renderOrderLines();});
+  body.querySelectorAll('input[data-k]').forEach(el=>el.oninput=e=>{const i=+e.target.dataset.i;orderLines[i][e.target.dataset.k]=e.target.value;const lt=(+orderLines[i].cases||0)*(+orderLines[i].price||0);const cell=e.target.closest('tr').querySelector('td:nth-child(6)');if(cell)cell.textContent=money(lt);updateOrderTotal();});
   body.querySelectorAll('[data-del]').forEach(el=>el.onclick=e=>{orderLines.splice(+e.target.dataset.del,1);renderOrderLines();});
   updateOrderTotal();
 }
@@ -376,15 +379,16 @@ function orderCreate(){
   if(!cname){ alert('Enter a customer name.'); $('#o_customer').focus(); return; }
   const cust=state.customers.find(x=>(x.name||'').trim().toLowerCase()===cname.toLowerCase());
   if(!cust){ orderShowNewCust(cname); return; }
-  const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
+  const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,pack:(l.pack==='12'?12:6),fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
   if(!valid.length){ alert('Add at least one line with a product and case count.'); return; }
-  for(const l of valid){ if(l.cases>fgCases(l.fg)){ alert(`Only ${fgCases(l.fg)} cases of ${l.fg.sku} on hand.`); return; } }
+  for(const l of valid){ const availP=l.pack===12?fgTwelve(l.fg):fgSix(l.fg); if(l.cases>availP){ alert(`Only ${availP} ${l.pack}-pack case${availP===1?'':'s'} of ${l.fg.sku} on hand.`); return; } }
   const date=$('#o_date').value; const num=(state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1;
   const lines=[],entryIds=[]; let total=0,pgTotal=0,casesTotal=0;
-  valid.forEach(l=>{ const bottles=l.cases*bpc(); const wg=bottlesToWG(bottles); const pg=round1(wg*(l.fg.proof||0)/100);
+  valid.forEach(l=>{ const bottles=l.cases*l.pack; const wg=bottlesToWG(bottles); const pg=round1(wg*(l.fg.proof||0)/100);
     l.fg.bottles=(+l.fg.bottles||0)-bottles;
+    if(l.pack===12) l.fg.pack12=Math.max(0,(+l.fg.pack12||0)-l.cases); // 12-packs physically leave
     entryIds.push(addRemovalEntry(date,l.fg.spirit,wg,l.fg.proof,`Order #${num} · ${cust.name}`,'order:'+num));
-    lines.push({fgId:l.fg.id,sku:l.fg.sku,proof:l.fg.proof,cases:l.cases,price:l.price,bottles,pg,lineTotal:round2(l.cases*l.price)});
+    lines.push({fgId:l.fg.id,sku:l.fg.sku,proof:l.fg.proof,pack:l.pack,cases:l.cases,price:l.price,bottles,pg,lineTotal:round2(l.cases*l.price)});
     total+=l.cases*l.price; pgTotal+=pg; casesTotal+=l.cases; });
   const oid=uid();
   state.orders.push({id:oid,num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
@@ -394,7 +398,7 @@ function orderCreate(){
   flash(`Order #${num} created — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
 }
 function deleteOrder(id){ if(!requireCap('delete'))return; const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
-  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f)f.bottles=(+f.bottles||0)+(+l.bottles||0); });
+  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
   state.orders=state.orders.filter(x=>x.id!==id); save('Reversed order #'+o.num); refreshAll(); flash('Order #'+o.num+' reversed.'); }
 function renderOrders(){
@@ -562,7 +566,7 @@ async function sendOrderToQB(id,silent){
   const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
   const billEmail=cust.acEmail||cust.pcEmail||cust.email||''; // invoices go to the accounting contact when we have one
   const billPhone=cust.acPhone||cust.pcPhone||cust.phone||'';
-  const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku,qty:l.cases,unitPrice:l.price}));
+  const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku+(l.pack?` (${l.pack}-pack case)`:''),qty:l.cases,unitPrice:l.price}));
   if(!silent) flash('Sending order #'+o.num+' to QuickBooks…');
   try{
     const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:billEmail,phone:billPhone},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});

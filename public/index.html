@@ -98,6 +98,11 @@
         <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
+      <div class="apptile" style="cursor:pointer" onclick="switchView('reviews')">
+        <div class="ai" style="background:rgba(224,168,102,.18)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9 6.8 19.2l1-5.8L3.5 9.2l5.9-.9z"/></svg></div>
+        <div><div class="an">Google Reviews</div><div class="ad">Auto-reply weekly &mdash; 4-5★ posted for you, low stars held for approval.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile mgr-hide">
         <div class="ai" style="background:rgba(122,106,86,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a6a56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 7l1-1a3.5 3.5 0 0 1 5 5l-1 1"/><path d="M13 17l-1 1a3.5 3.5 0 0 1-5-5l1-1"/></svg></div>
         <div><div class="an">Setup &amp; Data</div><div class="ad">Square &middot; Xola &middot; Shopify &middot; QuickBooks &middot; backup &amp; sync.</div></div>
@@ -666,7 +671,7 @@
         </div>
       </div>
       <div class="tablewrap" style="margin-top:14px">
-        <table><thead><tr><th>Finished Good (SKU)</th><th class="num">On hand</th><th class="num">Cases</th><th class="num">Case Price</th><th class="num">Line Total</th><th class="noprint"></th></tr></thead><tbody id="orderLines"></tbody></table>
+        <table><thead><tr><th>Finished Good (SKU)</th><th>Pack</th><th class="num">On hand</th><th class="num">Cases</th><th class="num">Case Price</th><th class="num">Line Total</th><th class="noprint"></th></tr></thead><tbody id="orderLines"></tbody></table>
       </div>
       <div class="row-actions" style="margin-top:12px">
         <button class="btn ghost sm" id="orderAddLine">+ Add line</button>
@@ -908,9 +913,16 @@
 
     <div id="bpList"></div>
   </section>
+
+  <section class="view" id="view-reviews">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h1 style="font-size:29px;margin:0">Google Reviews</h1>
+    <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Weekly auto-replies to your Google reviews &mdash; positive ones posted for you, low stars held here for your approval.</p>
+    <div id="reviewsBody" style="margin-top:16px"></div>
+  </section>
 </main>
 
-<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script>
+<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script><script src="app8.js"></script>
 </body>
 </html>
 
