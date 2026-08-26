@@ -685,7 +685,12 @@ async function sendOrderToQB(id,silent){
   try{
     const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:billEmail,phone:billPhone},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});
     const d=await r.json();
-    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash((o.giftShop?'Gift shop order #':'Order #')+o.num+(d.existing?(' — already in QuickBooks, linked to invoice #'+(d.docNumber||d.invoiceId)):(' invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+')'))+'.'); }
+    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders();
+      const used=d.docNumber||d.invoiceId;
+      const msg=d.existing ? (' — already in QuickBooks, linked to invoice #'+used)
+        : (String(used)!==String(o.num) ? (' invoiced in QuickBooks as #'+used+' (your #'+o.num+' was already taken)')
+        : (' invoiced in QuickBooks (#'+used+')'));
+      flash((o.giftShop?'Gift shop order #':'Order #')+o.num+msg+'.'); }
     else if(d.error==='not_connected'){ if(!silent)alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
     else { if(!silent)alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
   }catch(e){ if(!silent)alert('Could not reach QuickBooks: '+e.message); }
