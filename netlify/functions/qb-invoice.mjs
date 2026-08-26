@@ -20,7 +20,7 @@ export default async (req) => {
     //    invoice) → clear our forced number and let QuickBooks assign the next free one, so we
     //    never mis-link a real order onto someone else's invoice or crash on a duplicate number.
     if (p.docNumber) {
-      const dq = await qbQuery(`select Id, DocNumber, CustomerRef, TotalAmt from Invoice where DocNumber = '${escapeQ(String(p.docNumber))}'`);
+      const dq = await qbQuery(`select * from Invoice where DocNumber = '${escapeQ(String(p.docNumber))}'`);
       const existing = dq && dq.QueryResponse && dq.QueryResponse.Invoice && dq.QueryResponse.Invoice[0];
       if (existing) {
         if (existing.CustomerRef && String(existing.CustomerRef.value) === String(custId)) {
