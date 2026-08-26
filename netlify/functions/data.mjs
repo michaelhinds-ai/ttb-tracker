@@ -13,12 +13,17 @@ const ARR_KEYS = [
 function mergeById(cloudArr, incArr) {
   const a = Array.isArray(cloudArr) ? cloudArr : [];
   const b = Array.isArray(incArr) ? incArr : [];
-  const byId = new Map();
-  for (const it of a) { if (it && it.id != null) byId.set(it.id, it); }
-  for (const it of b) { if (it && it.id != null) byId.set(it.id, it); } // incoming wins on conflict
-  const seen = new Set(b.filter((x) => x && x.id != null).map((x) => x.id));
-  const out = [...b];                                   // keep incoming order first…
-  for (const it of a) { if (it && it.id != null && !seen.has(it.id)) out.push(byId.get(it.id)); } // …then append cloud-only records
+  const cloudById = new Map();
+  for (const it of a) { if (it && it.id != null) cloudById.set(it.id, it); }
+  // For a record present on both sides, keep whichever was changed most recently (_upd).
+  // Records that never carry _upd (orders, customers, …) default to 0, so incoming wins —
+  // same as before. Records that DO carry _upd (finished goods) can't be reverted by a
+  // stale device that holds an older copy.
+  const winner = (inc) => { const ex = cloudById.get(inc.id); if (ex && (Number(ex._upd) || 0) > (Number(inc._upd) || 0)) return ex; return inc; };
+  const seen = new Set();
+  const out = [];
+  for (const it of b) { if (it && it.id != null) { seen.add(it.id); out.push(winner(it)); } else if (it) out.push(it); }
+  for (const it of a) { if (it && it.id != null && !seen.has(it.id)) out.push(it); } // append cloud-only records
   return out;
 }
 
