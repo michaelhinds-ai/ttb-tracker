@@ -46,7 +46,18 @@ export default async (req) => {
     if (p.txnDate) invoice.TxnDate = p.txnDate;
     if (p.privateNote) invoice.PrivateNote = String(p.privateNote).slice(0, 4000);
     if (p.poNumber) invoice.CustomerMemo = { value: ("PO #: " + String(p.poNumber)).slice(0, 1000) };
-    const created = await qbFetch(`/invoice?minorversion=${MINOR_VERSION}`, { method: "POST", body: JSON.stringify(invoice) });
+    let created;
+    try {
+      created = await qbFetch(`/invoice?minorversion=${MINOR_VERSION}`, { method: "POST", body: JSON.stringify(invoice) });
+    } catch (e1) {
+      // Bulletproof fallback: if QuickBooks rejects the forced invoice number as a duplicate,
+      // drop it and let QuickBooks assign the next free number, then retry once.
+      const det = JSON.stringify((e1 && e1.detail) || "");
+      if (e1 instanceof QBError && invoice.DocNumber && /Duplicate Document Number/i.test(det)) {
+        delete invoice.DocNumber;
+        created = await qbFetch(`/invoice?minorversion=${MINOR_VERSION}`, { method: "POST", body: JSON.stringify(invoice) });
+      } else { throw e1; }
+    }
     const inv = created.json && created.json.Invoice;
     return json({ ok: true, invoiceId: inv && inv.Id, docNumber: inv && inv.DocNumber, total: inv && inv.TotalAmt, customerId: custId, tid: created.tid });
   } catch (e) {
