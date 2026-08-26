@@ -172,3 +172,37 @@
   .userrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee2d0;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px}
   tr.loclink:hover{background:#f5efe3}
   .cmp-up{color:#3f7d54;font-weight:700}.cmp-down{color:#b23a2e;font-weight:700}.cmp-flat{color:var(--muted)}
+
+  /* ---- Printable invoice ---- */
+  #invoiceOverlay{position:fixed;inset:0;background:rgba(20,12,8,.55);z-index:600;display:none;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+  .inv-modal{background:#fff;max-width:840px;width:100%;border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.45);overflow:hidden}
+  .inv-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  .inv-scroll{max-height:80vh;overflow:auto;padding:30px 34px}
+  .inv{color:#221;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:13.5px}
+  .inv .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .inv-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;border-bottom:3px solid #a8582b;padding-bottom:16px}
+  .inv-co{display:flex;gap:14px;align-items:flex-start}
+  .inv-logo{height:64px;width:auto;max-width:180px;object-fit:contain}
+  .inv-co-name{font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#2b2118}
+  .inv-co-sub{font-size:12px;color:#5a4a38;line-height:1.5;margin-top:4px}
+  .inv-title{font-family:Georgia,serif;font-size:26px;font-weight:700;color:#a8582b;letter-spacing:2px;text-align:right}
+  .inv-metatbl{margin-top:8px;margin-left:auto;border-collapse:collapse;font-size:12.5px}
+  .inv-metatbl td{padding:2px 0 2px 16px;text-align:right}
+  .inv-metatbl td:first-child{color:#7a6a56;text-transform:uppercase;font-size:11px;letter-spacing:.4px;padding-right:10px}
+  .inv-billto{margin:18px 0 14px}
+  .inv-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#7a6a56;font-weight:700;margin-bottom:4px}
+  .inv-bn{font-weight:700;font-size:15px}
+  .inv-lines{width:100%;border-collapse:collapse;margin-top:8px}
+  .inv-lines th{background:#faf5eb;border-bottom:2px solid #e4d9c6;padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#7a6a56}
+  .inv-lines th.r{text-align:right}
+  .inv-lines td{padding:10px;border-bottom:1px solid #efe7d8}
+  .inv-lines tfoot td{border-top:2px solid #a8582b;border-bottom:0;font-weight:800;font-size:15px;padding-top:12px}
+  .inv-foot{margin-top:20px;padding-top:12px;border-top:1px dashed #d8c9ad;font-size:11.5px;color:#7a6a56}
+  @media print{
+    body.printing-invoice > *:not(#invoiceOverlay){display:none!important}
+    body.printing-invoice{background:#fff}
+    body.printing-invoice #invoiceOverlay{position:static;display:block!important;background:#fff;padding:0;overflow:visible}
+    body.printing-invoice #invoiceOverlay .inv-modal{box-shadow:none;max-width:none;border-radius:0}
+    body.printing-invoice #invoiceOverlay .inv-bar{display:none!important}
+    body.printing-invoice #invoiceOverlay .inv-scroll{max-height:none;overflow:visible;padding:0}
+  }

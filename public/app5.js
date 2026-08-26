@@ -382,7 +382,7 @@ function orderCreate(){
   const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,pack:(l.pack==='12'?12:6),fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
   if(!valid.length){ alert('Add at least one line with a product and case count.'); return; }
   for(const l of valid){ const availP=l.pack===12?fgTwelve(l.fg):fgSix(l.fg); if(l.cases>availP){ alert(`Only ${availP} ${l.pack}-pack case${availP===1?'':'s'} of ${l.fg.sku} on hand.`); return; } }
-  const date=$('#o_date').value; const num=(state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1;
+  const date=$('#o_date').value; const num=editingOrderNum||((state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1);
   const lines=[],entryIds=[]; let total=0,pgTotal=0,casesTotal=0;
   valid.forEach(l=>{ const bottles=l.cases*l.pack; const wg=bottlesToWG(bottles); const pg=round1(wg*(l.fg.proof||0)/100);
     l.fg.bottles=(+l.fg.bottles||0)-bottles;
@@ -392,11 +392,79 @@ function orderCreate(){
     total+=l.cases*l.price; pgTotal+=pg; casesTotal+=l.cases; });
   const oid=uid();
   state.orders.push({id:oid,num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
-  orderLines=[orderNewLine()]; $('#o_ref').value=''; $('#o_customer').value='';
-  save('Created order #'+num+' — '+casesTotal+' cases · '+cust.name); refreshAll(); switchView('orders');
+  orderLines=[orderNewLine()]; $('#o_ref').value=''; $('#o_customer').value=''; { const cs2=$('#o_custstatus'); if(cs2) cs2.innerHTML=''; }
+  const wasEdit=editingOrderNum!=null; editingOrderNum=null;
+  { const b=$('#orderCreate'); if(b) b.textContent='Create order & remove from bond'; const t=$('#orderFormTitle'); if(t) t.textContent='New Order'; }
+  save((wasEdit?'Updated':'Created')+' order #'+num+' — '+casesTotal+' cases · '+cust.name); refreshAll(); switchView('orders');
   autoSyncOrder(oid);
-  flash(`Order #${num} created — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
+  flash(`Order #${num} ${wasEdit?'updated':'created'} — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
+  showInvoice(oid);
 }
+let editingOrderNum=null;
+function editOrder(id){
+  if(!requireCap('write'))return;
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  if(o.giftShop){ alert('Gift-shop orders can’t be edited here.'); return; }
+  if(o.qbSynced && !confirm('Order #'+o.num+' is already in QuickBooks. Editing here reverses this order and reloads it so you can re-save it with the SAME invoice number — but it will not change the existing QuickBooks invoice (update or void that one in QuickBooks). Continue?')) return;
+  // Reverse the current order so inventory shows correctly, then load it into the form.
+  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
+  (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
+  state.orders=state.orders.filter(x=>x.id!==id);
+  orderLines=(o.lines||[]).map(l=>({fgId:l.fgId,pack:String(l.pack||6),cases:String(l.cases||''),price:String(l.price||'')}));
+  if(!orderLines.length) orderLines=[orderNewLine()];
+  editingOrderNum=o.num;
+  save('Editing order #'+o.num); refreshAll();
+  $('#o_customer').value=o.customerName||''; orderCustCheck();
+  $('#o_ref').value=o.ref||''; if($('#o_date')) $('#o_date').value=o.date||new Date().toISOString().slice(0,10);
+  { const t=$('#orderFormTitle'); if(t) t.textContent='Edit Order #'+o.num; const b=$('#orderCreate'); if(b) b.textContent='Update order #'+o.num; }
+  switchView('orders'); window.scrollTo({top:0,behavior:'smooth'});
+  flash('Editing order #'+o.num+' — change what you need, then click “Update order #'+o.num+'”.');
+}
+
+/* ---- Printable invoice (Louisville Rickhouse branding) ---- */
+function invoiceHTML(o){
+  const s=state.settings||{};
+  const coName=s.name||'Louisville Rickhouse Whiskey Co';
+  const logo=(typeof companyLogo==='function' && (companyLogo('Louisville Rickhouse Whiskey Co')||companyLogo(coName)))||'';
+  const addr1=s.addr1||'717 E Market St', addr2=s.addr2||'Louisville, KY 40202', permit=s.permit||'DSP-KY-20181';
+  const cust=state.customers.find(c=>c.id===o.customerId)||{name:o.customerName};
+  const terms=cust.terms||'', billName=cust.name||o.customerName||'', billAddr=cust.address||'';
+  const acEmail=cust.acEmail||cust.pcEmail||cust.email||'';
+  const rows=(o.lines||[]).map(l=>`<tr>
+    <td>${esc(l.sku)}${l.pack?` <span style="color:#888">(${l.pack}-pack case)</span>`:''}</td>
+    <td class="r">${l.cases}</td><td class="r">${money(l.price)}</td>
+    <td class="r">${money(l.lineTotal!=null?l.lineTotal:((+l.cases||0)*(+l.price||0)))}</td></tr>`).join('');
+  const totBottles=(o.lines||[]).reduce((a,l)=>a+(+l.bottles||0),0);
+  return `<div class="inv">
+    <div class="inv-head">
+      <div class="inv-co">${logo?`<img src="${logo}" class="inv-logo" alt="">`:''}
+        <div><div class="inv-co-name">${esc(coName)}</div>
+          <div class="inv-co-sub">${esc(addr1)}<br>${esc(addr2)}<br>${esc(permit)}${s.ein?(' &middot; EIN '+esc(s.ein)):''}</div></div></div>
+      <div class="inv-meta"><div class="inv-title">INVOICE</div>
+        <table class="inv-metatbl">
+          <tr><td>Invoice #</td><td><b>${o.num}</b></td></tr>
+          <tr><td>Date</td><td>${o.date?fmtDate(o.date):''}</td></tr>
+          ${o.ref?`<tr><td>PO #</td><td>${esc(o.ref)}</td></tr>`:''}
+          ${terms?`<tr><td>Terms</td><td>${esc(terms)}</td></tr>`:''}
+        </table></div></div>
+    <div class="inv-billto"><div class="inv-lbl">Bill To</div>
+      <div class="inv-bn">${esc(billName)}</div>${billAddr?`<div>${esc(billAddr)}</div>`:''}${acEmail?`<div>${esc(acEmail)}</div>`:''}</div>
+    <table class="inv-lines"><thead><tr><th>Description</th><th class="r">Cases</th><th class="r">Case Price</th><th class="r">Amount</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="4" style="color:#888">No line items</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="3" class="r">Total</td><td class="r">${money(o.total||0)}</td></tr></tfoot></table>
+    <div class="inv-foot">${totBottles} bottles &middot; ${numf(o.removedPG||0)} proof gallons removed from bond. Thank you for your business.</div>
+  </div>`;
+}
+function showInvoice(id){
+  const o=state.orders.find(x=>x.id===id); if(!o){ return; }
+  let ov=document.getElementById('invoiceOverlay');
+  if(!ov){ ov=document.createElement('div'); ov.id='invoiceOverlay'; document.body.appendChild(ov); }
+  ov.innerHTML=`<div class="inv-modal"><div class="inv-bar noprint"><b>Invoice #${o.num}</b><span style="flex:1"></span><button class="btn sm" onclick="window.print()">🖨 Print</button><button class="btn ghost sm" onclick="closeInvoice()">Close</button></div><div class="inv-scroll">${invoiceHTML(o)}</div></div>`;
+  ov.style.display='flex'; document.body.classList.add('printing-invoice');
+  ov.onclick=e=>{ if(e.target===ov) closeInvoice(); };
+}
+function closeInvoice(){ const ov=document.getElementById('invoiceOverlay'); if(ov){ ov.style.display='none'; ov.innerHTML=''; } document.body.classList.remove('printing-invoice'); }
+function printInvoice(id){ showInvoice(id); }
 function deleteOrder(id){ if(!requireCap('delete'))return; const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
   (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
@@ -406,7 +474,7 @@ function renderOrders(){
   const dl=$('#custList'); if(dl) dl.innerHTML=cs.map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}"></option>`).join('');
   renderOrderLines();
   const rows=[...state.orders].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||0)-(a.num||0));
-  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint">${(!o.qbSynced&&can('write'))?`<button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button> · `:''}${can('delete')?`<button class="del" onclick="deleteOrder('${o.id}')">Reverse</button>`:''}</td></tr>`).join('');
+  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint"><button class="link" onclick="printInvoice('${o.id}')">🖨 Invoice</button>${(can('write')&&!o.giftShop)?` · <button class="link" onclick="editOrder('${o.id}')">Edit</button>`:''}${(!o.qbSynced&&can('write'))?` · <button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button>`:''}${can('delete')?` · <button class="del" onclick="deleteOrder('${o.id}')">Reverse</button>`:''}</td></tr>`).join('');
   $('#orderEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">📦</div>No orders yet. Add a customer and some finished goods, then create one above.</div>`;
 }
 
