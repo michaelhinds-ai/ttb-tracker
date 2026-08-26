@@ -13,6 +13,13 @@ export default async (req) => {
   if (!Array.isArray(p.lines) || !p.lines.length) return json({ error: "no_lines" }, 400);
 
   try {
+    // Idempotent: if QuickBooks already has an invoice with this number, link to it
+    // instead of erroring with "Duplicate Document Number".
+    if (p.docNumber) {
+      const dq = await qbQuery(`select Id, DocNumber, TotalAmt from Invoice where DocNumber = '${escapeQ(String(p.docNumber))}'`);
+      const existing = dq && dq.QueryResponse && dq.QueryResponse.Invoice && dq.QueryResponse.Invoice[0];
+      if (existing) return json({ ok: true, invoiceId: existing.Id, docNumber: existing.DocNumber, total: existing.TotalAmt, existing: true });
+    }
     const custId = await findCustomer(custName) || await createCustomer(p.customer);
     const incomeAcct = await defaultIncomeAccount();
     const Line = [];
