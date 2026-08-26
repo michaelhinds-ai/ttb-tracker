@@ -387,7 +387,6 @@ function orderCreate(){
   if(editingOrderId){
     const old=state.orders.find(x=>x.id===editingOrderId);
     if(old){
-      if(old.qbSynced && !confirm('Order #'+old.num+' is already in QuickBooks. Updating here won’t change the existing QuickBooks invoice (update or void it in QuickBooks). Continue?')) return;
       (old.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
       (old.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
       state.orders=state.orders.filter(x=>x.id!==editingOrderId);
@@ -418,6 +417,7 @@ function editOrder(id){
   if(!requireCap('write'))return;
   const o=state.orders.find(x=>x.id===id); if(!o)return;
   if(o.giftShop){ alert('Gift-shop orders can’t be edited here.'); return; }
+  if(o.qbSynced){ alert('Order #'+o.num+' is already synced to QuickBooks, so it’s locked. If you need to change it, Reverse it here (and void/adjust the invoice in QuickBooks), then create a new order.'); return; }
   // NON-destructive: load the order into the form. Nothing changes until you click Update.
   orderLines=(o.lines||[]).map(l=>({fgId:l.fgId,pack:String(l.pack||6),cases:String(l.cases||''),price:String(l.price||'')}));
   if(!orderLines.length) orderLines=[orderNewLine()];
@@ -520,7 +520,7 @@ function renderOrders(){
   const dl=$('#custList'); if(dl) dl.innerHTML=cs.map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}"></option>`).join('');
   renderOrderLines();
   const rows=[...state.orders].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||0)-(a.num||0));
-  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint"><button class="link" onclick="printInvoice('${o.id}')">🖨 Invoice</button>${(can('write')&&!o.giftShop)?` · <button class="link" onclick="editOrder('${o.id}')">Edit</button>`:''}${(!o.qbSynced&&can('write'))?` · <button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button>`:''}${can('delete')?` · <button class="del" onclick="deleteOrder('${o.id}')">Reverse</button>`:''}</td></tr>`).join('');
+  $('#orderBody').innerHTML=rows.map(o=>`<tr><td>#${o.num}</td><td>${o.date?fmtDate(o.date):''}</td><td>${o.customerName||''}${o.giftShop?' <span class="pill" style="background:#efe7d8;color:#7a5a2b">gift shop</span>':''}</td><td class="num">${o.cases||0}</td><td class="num">${numf(o.removedPG||0)}</td><td class="num">${money(o.total||0)}</td><td>${o.qbSynced?`<span class="pill tax">QB #${o.qbDoc||o.qbInvoiceId||'✓'}</span>`:`<span class="pill" style="background:#f2ebdc;color:#7a5a2b">not synced</span>`}</td><td class="noprint"><button class="link" onclick="printInvoice('${o.id}')">🖨 Invoice</button>${(can('write')&&!o.giftShop&&!o.qbSynced)?` · <button class="link" onclick="editOrder('${o.id}')">Edit</button>`:''}${(!o.qbSynced&&can('write'))?` · <button class="link" onclick="sendOrderToQB('${o.id}')">Send to QB</button>`:''}${can('delete')?` · <button class="del" onclick="deleteOrder('${o.id}')">Reverse</button>`:''}</td></tr>`).join('');
   $('#orderEmpty').innerHTML=rows.length?'':`<div class="empty"><div class="big">📦</div>No orders yet. Add a customer and some finished goods, then create one above.</div>`;
 }
 
@@ -685,7 +685,7 @@ async function sendOrderToQB(id,silent){
   try{
     const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer:{name:cust.name,email:billEmail,phone:billPhone},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});
     const d=await r.json();
-    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash((o.giftShop?'Gift shop order #':'Order #')+o.num+' invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+').'); }
+    if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders(); flash((o.giftShop?'Gift shop order #':'Order #')+o.num+(d.existing?(' — already in QuickBooks, linked to invoice #'+(d.docNumber||d.invoiceId)):(' invoiced in QuickBooks (#'+(d.docNumber||d.invoiceId)+')'))+'.'); }
     else if(d.error==='not_connected'){ if(!silent)alert('QuickBooks is not connected. Connect it on the Setup & Sync tab first.'); }
     else { if(!silent)alert('QuickBooks error: '+(d.detail?JSON.stringify(d.detail).slice(0,300):d.error)+(d.tid?(' (ref '+d.tid+')'):'')); }
   }catch(e){ if(!silent)alert('Could not reach QuickBooks: '+e.message); }
