@@ -13,14 +13,22 @@ export default async (req) => {
   if (!Array.isArray(p.lines) || !p.lines.length) return json({ error: "no_lines" }, 400);
 
   try {
-    // Idempotent: if QuickBooks already has an invoice with this number, link to it
-    // instead of erroring with "Duplicate Document Number".
-    if (p.docNumber) {
-      const dq = await qbQuery(`select Id, DocNumber, TotalAmt from Invoice where DocNumber = '${escapeQ(String(p.docNumber))}'`);
-      const existing = dq && dq.QueryResponse && dq.QueryResponse.Invoice && dq.QueryResponse.Invoice[0];
-      if (existing) return json({ ok: true, invoiceId: existing.Id, docNumber: existing.DocNumber, total: existing.TotalAmt, existing: true });
-    }
     const custId = await findCustomer(custName) || await createCustomer(p.customer);
+    // If QuickBooks already has an invoice with this DocNumber:
+    //  • SAME customer  → it's this order already synced → link to it (idempotent, no duplicate).
+    //  • DIFFERENT customer → the number is taken by an unrelated invoice (e.g. an old gift-shop
+    //    invoice) → clear our forced number and let QuickBooks assign the next free one, so we
+    //    never mis-link a real order onto someone else's invoice or crash on a duplicate number.
+    if (p.docNumber) {
+      const dq = await qbQuery(`select Id, DocNumber, CustomerRef, TotalAmt from Invoice where DocNumber = '${escapeQ(String(p.docNumber))}'`);
+      const existing = dq && dq.QueryResponse && dq.QueryResponse.Invoice && dq.QueryResponse.Invoice[0];
+      if (existing) {
+        if (existing.CustomerRef && String(existing.CustomerRef.value) === String(custId)) {
+          return json({ ok: true, invoiceId: existing.Id, docNumber: existing.DocNumber, total: existing.TotalAmt, existing: true });
+        }
+        p.docNumber = null; // taken by a different customer's invoice — QB auto-numbers instead
+      }
+    }
     const incomeAcct = await defaultIncomeAccount();
     const Line = [];
     for (const ln of p.lines) {
