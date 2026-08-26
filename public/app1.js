@@ -222,33 +222,35 @@ function setSync(status){
   dot.className='dot '+status;
   txt.textContent = status==='synced'?'Synced':status==='saving'?'Saving…':status==='offline'?'Offline (saved locally)':'Connecting…';
 }
-let cloudAvailable=true;
+let cloudAvailable=true, cloudBaseSavedAt=null;
+function baseKey(){ return 'ttb_base_'+WS; }
+function adoptCloud(d){ state=normalize(d); cloudBaseSavedAt=d._savedAt||null; try{localStorage.setItem(cacheKey(),JSON.stringify(state));}catch(e){} try{ if(cloudBaseSavedAt) localStorage.setItem(baseKey(),cloudBaseSavedAt); }catch(e){} setSync('synced'); }
 async function cloudLoad(){
   try{
     const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{cache:'no-store'});
     if(r.ok){
       const d=await r.json();
+      const cache=localStorage.getItem(cacheKey());
+      const storedBase=localStorage.getItem(baseKey());
       if(d && (d.entries||d.settings)){
-        // Protect unsynced local work: if the local copy is substantially bigger than the
-        // cloud copy, it has changes that never uploaded — keep it and push it up instead of
-        // being overwritten by the older cloud version.
-        const cache=localStorage.getItem(cacheKey());
-        if(cache && cache.length > JSON.stringify(d).length*1.2){
-          try{ state=normalize(JSON.parse(cache)); }catch(e){ state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return; }
-          cloudAvailable=true; setSync('saving'); cloudSave(); return;
+        // If the cloud advanced since this device last synced, push our local copy so the
+        // SERVER merges the two (union of records) — nothing gets lost, and we pick up
+        // whatever another device added.
+        if(cache && storedBase && String(storedBase)!==String(d._savedAt||'')){
+          try{ state=normalize(JSON.parse(cache)); }catch(e){ adoptCloud(d); return; }
+          cloudBaseSavedAt=storedBase; cloudAvailable=true; setSync('saving'); cloudSave(); return;
         }
-        state=normalize(d); localStorage.setItem(cacheKey(),JSON.stringify(state)); setSync('synced'); return;
+        adoptCloud(d); return;
       }
       // no cloud record yet — seed from local cache if present
-      const c=localStorage.getItem(cacheKey());
-      if(c){ state=normalize(JSON.parse(c)); await cloudSave(true); } else { setSync('synced'); }
+      if(cache){ try{ state=normalize(JSON.parse(cache)); }catch(e){ setSync('synced'); return; } cloudBaseSavedAt=storedBase||null; await cloudSave(true); } else { setSync('synced'); }
       return;
     }
     throw new Error('http '+r.status);
   }catch(e){
     cloudAvailable=false;
     const c=localStorage.getItem(cacheKey());
-    if(c) state=normalize(JSON.parse(c));
+    if(c){ try{ state=normalize(JSON.parse(c)); }catch(e2){} }
     setSync('offline');
   }
 }
@@ -326,9 +328,19 @@ async function cloudSave(silent){
   if(saving){ pending=true; return; }
   saving=true;
   try{
-    const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(state)});
-    if(!silent) setSync(r.ok?'synced':'offline');
-    else setSync('synced');
+    const payload=Object.assign({},state,{_baseSavedAt:cloudBaseSavedAt||null});
+    const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json().catch(()=>null);
+    if(r.ok && d && d.ok){
+      cloudBaseSavedAt=d.savedAt||cloudBaseSavedAt; try{ if(d.savedAt) localStorage.setItem(baseKey(),d.savedAt); }catch(e){}
+      if(d.merged && d.state){ // server reconciled with another device's changes — adopt the merged result
+        try{ state=normalize(d.state); localStorage.setItem(cacheKey(),JSON.stringify(state)); }catch(e){}
+        lastSnap=dataOnly();
+        try{ refreshAll(); }catch(e){}
+        if(!silent) flash('Merged in changes from another device.');
+      }
+      setSync('synced');
+    } else { setSync(r.ok?'synced':'offline'); }
   }catch(e){ cloudAvailable=false; setSync('offline'); }
   saving=false;
   if(pending){ pending=false; cloudSave(silent); }
