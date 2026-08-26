@@ -311,7 +311,7 @@ function fgOnHand(){ return (state.finishedGoods||[]).filter(f=>(+f.bottles||0)>
 function packAvail(f,pack){ return pack==='12'?fgTwelve(f):fgSix(f); }
 function renderOrderLines(){
   const body=$('#orderLines'); if(!body)return; const avail=fgOnHand();
-  body.innerHTML=orderLines.map((ln,i)=>{ const f=state.finishedGoods.find(x=>x.id===ln.fgId); const pack=ln.pack==='12'?'12':'6'; const onHand=f?packAvail(f,pack):'—'; const lt=(+ln.cases||0)*(+ln.price||0);
+  body.innerHTML=orderLines.map((ln,i)=>{ const f=state.finishedGoods.find(x=>x.id===ln.fgId); const pack=ln.pack==='12'?'12':'6'; const onHand=f?(packAvail(f,pack)+fgEditCredit(f.id,pack)):'—'; const lt=(+ln.cases||0)*(+ln.price||0);
     return `<tr>
       <td><select data-i="${i}" data-k="fgId"><option value="">— choose —</option>${avail.map(x=>`<option value="${x.id}" ${x.id===ln.fgId?'selected':''}>${esc(x.sku)} — ${numf(x.proof,0)} pf</option>`).join('')}</select></td>
       <td><select data-i="${i}" data-k="pack" style="max-width:110px"><option value="6" ${pack==='6'?'selected':''}>6-pack</option><option value="12" ${pack==='12'?'selected':''}>12-pack</option></select></td>
@@ -381,7 +381,18 @@ function orderCreate(){
   if(!cust){ orderShowNewCust(cname); return; }
   const valid=orderLines.map(l=>({cases:+l.cases||0,price:+l.price||0,pack:(l.pack==='12'?12:6),fg:state.finishedGoods.find(f=>f.id===l.fgId)})).filter(l=>l.fg&&l.cases>0);
   if(!valid.length){ alert('Add at least one line with a product and case count.'); return; }
-  for(const l of valid){ const availP=l.pack===12?fgTwelve(l.fg):fgSix(l.fg); if(l.cases>availP){ alert(`Only ${availP} ${l.pack}-pack case${availP===1?'':'s'} of ${l.fg.sku} on hand.`); return; } }
+  for(const l of valid){ const availP=(l.pack===12?fgTwelve(l.fg):fgSix(l.fg))+fgEditCredit(l.fg.id,l.pack); if(l.cases>availP){ alert(`Only ${availP} ${l.pack}-pack case${availP===1?'':'s'} of ${l.fg.sku} on hand.`); return; } }
+  // Editing an existing order: now that the new version validated, reverse the old one (restore
+  // inventory + drop its excise entries) so the update replaces it cleanly, reusing its number.
+  if(editingOrderId){
+    const old=state.orders.find(x=>x.id===editingOrderId);
+    if(old){
+      if(old.qbSynced && !confirm('Order #'+old.num+' is already in QuickBooks. Updating here won’t change the existing QuickBooks invoice (update or void it in QuickBooks). Continue?')) return;
+      (old.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
+      (old.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
+      state.orders=state.orders.filter(x=>x.id!==editingOrderId);
+    }
+  }
   const date=$('#o_date').value; const num=editingOrderNum||((state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1);
   const lines=[],entryIds=[]; let total=0,pgTotal=0,casesTotal=0;
   valid.forEach(l=>{ const bottles=l.cases*l.pack; const wg=bottlesToWG(bottles); const pg=round1(wg*(l.fg.proof||0)/100);
@@ -393,32 +404,36 @@ function orderCreate(){
   const oid=uid();
   state.orders.push({id:oid,num,date,ref:$('#o_ref').value.trim(),customerId:cust.id,customerName:cust.name,lines,total:round2(total),removedPG:round1(pgTotal),cases:casesTotal,entryIds,status:'Removed',qbSynced:false,qbInvoiceId:null});
   orderLines=[orderNewLine()]; $('#o_ref').value=''; $('#o_customer').value=''; { const cs2=$('#o_custstatus'); if(cs2) cs2.innerHTML=''; }
-  const wasEdit=editingOrderNum!=null; editingOrderNum=null;
-  { const b=$('#orderCreate'); if(b) b.textContent='Create order & remove from bond'; const t=$('#orderFormTitle'); if(t) t.textContent='New Order'; }
+  const wasEdit=editingOrderNum!=null; editingOrderNum=null; editingOrderId=null;
+  { const b=$('#orderCreate'); if(b) b.textContent='Create order & remove from bond'; const t=$('#orderFormTitle'); if(t) t.textContent='New Order'; const cb=$('#orderCancelEdit'); if(cb) cb.style.display='none'; }
   save((wasEdit?'Updated':'Created')+' order #'+num+' — '+casesTotal+' cases · '+cust.name); refreshAll(); switchView('orders');
   autoSyncOrder(oid);
   flash(`Order #${num} ${wasEdit?'updated':'created'} — ${casesTotal} cases removed from bond (${numf(round1(pgTotal))} PG).`);
   showInvoice(oid);
 }
-let editingOrderNum=null;
+let editingOrderId=null, editingOrderNum=null;
+// While editing, an order's own cases count as available (they haven't left yet).
+function fgEditCredit(fgId,pack){ if(!editingOrderId) return 0; const o=state.orders.find(x=>x.id===editingOrderId); if(!o) return 0; const p=(pack==='12'||pack===12)?12:6; return (o.lines||[]).filter(l=>l.fgId===fgId&&(+l.pack||6)===p).reduce((s,l)=>s+(+l.cases||0),0); }
 function editOrder(id){
   if(!requireCap('write'))return;
   const o=state.orders.find(x=>x.id===id); if(!o)return;
   if(o.giftShop){ alert('Gift-shop orders can’t be edited here.'); return; }
-  if(o.qbSynced && !confirm('Order #'+o.num+' is already in QuickBooks. Editing here reverses this order and reloads it so you can re-save it with the SAME invoice number — but it will not change the existing QuickBooks invoice (update or void that one in QuickBooks). Continue?')) return;
-  // Reverse the current order so inventory shows correctly, then load it into the form.
-  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
-  (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
-  state.orders=state.orders.filter(x=>x.id!==id);
+  // NON-destructive: load the order into the form. Nothing changes until you click Update.
   orderLines=(o.lines||[]).map(l=>({fgId:l.fgId,pack:String(l.pack||6),cases:String(l.cases||''),price:String(l.price||'')}));
   if(!orderLines.length) orderLines=[orderNewLine()];
-  editingOrderNum=o.num;
-  save('Editing order #'+o.num); refreshAll();
+  editingOrderId=o.id; editingOrderNum=o.num;
+  renderOrders();
   $('#o_customer').value=o.customerName||''; orderCustCheck();
   $('#o_ref').value=o.ref||''; if($('#o_date')) $('#o_date').value=o.date||new Date().toISOString().slice(0,10);
-  { const t=$('#orderFormTitle'); if(t) t.textContent='Edit Order #'+o.num; const b=$('#orderCreate'); if(b) b.textContent='Update order #'+o.num; }
+  { const t=$('#orderFormTitle'); if(t) t.textContent='Edit Order #'+o.num; const b=$('#orderCreate'); if(b) b.textContent='Update order #'+o.num; const cb=$('#orderCancelEdit'); if(cb) cb.style.display=''; }
   switchView('orders'); window.scrollTo({top:0,behavior:'smooth'});
-  flash('Editing order #'+o.num+' — change what you need, then click “Update order #'+o.num+'”.');
+  flash('Editing order #'+o.num+' — nothing changes until you click Update.');
+}
+function cancelEditOrder(){
+  editingOrderId=null; editingOrderNum=null; orderLines=[orderNewLine()];
+  $('#o_customer').value=''; { const cs=$('#o_custstatus'); if(cs) cs.innerHTML=''; } $('#o_ref').value='';
+  { const t=$('#orderFormTitle'); if(t) t.textContent='New Order'; const b=$('#orderCreate'); if(b) b.textContent='Create order & remove from bond'; const cb=$('#orderCancelEdit'); if(cb) cb.style.display='none'; }
+  renderOrderLines(); flash('Edit canceled — the order is unchanged.');
 }
 
 /* ---- Printable invoice (Louisville Rickhouse branding) ---- */
@@ -455,15 +470,46 @@ function invoiceHTML(o){
     <div class="inv-foot">${totBottles} bottles &middot; ${numf(o.removedPG||0)} proof gallons removed from bond. Thank you for your business.</div>
   </div>`;
 }
+function invoiceCSS(){ return `<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#efe7d8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#221}
+  .wrap{max-width:840px;margin:22px auto;background:#fff;border-radius:12px;box-shadow:0 12px 44px rgba(0,0,0,.18);overflow:hidden}
+  .bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #e4d9c6}
+  .bar b{flex:1;font-size:15px}
+  .bar button{background:#a8582b;color:#fff;border:0;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+  .bar button.ghost{background:#fff;color:#a8582b;border:1px solid #a8582b}
+  .pad{padding:30px 34px}
+  .inv{font-size:13.5px}
+  .inv .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .inv-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;border-bottom:3px solid #a8582b;padding-bottom:16px}
+  .inv-co{display:flex;gap:14px;align-items:flex-start}
+  .inv-logo{height:64px;width:auto;max-width:180px;object-fit:contain}
+  .inv-co-name{font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#2b2118}
+  .inv-co-sub{font-size:12px;color:#5a4a38;line-height:1.5;margin-top:4px}
+  .inv-title{font-family:Georgia,serif;font-size:26px;font-weight:700;color:#a8582b;letter-spacing:2px;text-align:right}
+  .inv-metatbl{margin-top:8px;margin-left:auto;border-collapse:collapse;font-size:12.5px}
+  .inv-metatbl td{padding:2px 0 2px 16px;text-align:right}
+  .inv-metatbl td:first-child{color:#7a6a56;text-transform:uppercase;font-size:11px;letter-spacing:.4px;padding-right:10px}
+  .inv-billto{margin:18px 0 14px}
+  .inv-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#7a6a56;font-weight:700;margin-bottom:4px}
+  .inv-bn{font-weight:700;font-size:15px}
+  .inv-lines{width:100%;border-collapse:collapse;margin-top:8px}
+  .inv-lines th{background:#faf5eb;border-bottom:2px solid #e4d9c6;padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#7a6a56}
+  .inv-lines th.r{text-align:right}
+  .inv-lines td{padding:10px;border-bottom:1px solid #efe7d8}
+  .inv-lines tfoot td{border-top:2px solid #a8582b;border-bottom:0;font-weight:800;font-size:15px;padding-top:12px}
+  .inv-foot{margin-top:20px;padding-top:12px;border-top:1px dashed #d8c9ad;font-size:11.5px;color:#7a6a56}
+  @media print{ body{background:#fff} .wrap{box-shadow:none;margin:0;max-width:none;border-radius:0} .bar{display:none} .pad{padding:0} }
+</style>`; }
 function showInvoice(id){
-  const o=state.orders.find(x=>x.id===id); if(!o){ return; }
-  let ov=document.getElementById('invoiceOverlay');
-  if(!ov){ ov=document.createElement('div'); ov.id='invoiceOverlay'; document.body.appendChild(ov); }
-  ov.innerHTML=`<div class="inv-modal"><div class="inv-bar noprint"><b>Invoice #${o.num}</b><span style="flex:1"></span><button class="btn sm" onclick="window.print()">🖨 Print</button><button class="btn ghost sm" onclick="closeInvoice()">Close</button></div><div class="inv-scroll">${invoiceHTML(o)}</div></div>`;
-  ov.style.display='flex'; document.body.classList.add('printing-invoice');
-  ov.onclick=e=>{ if(e.target===ov) closeInvoice(); };
+  const o=state.orders.find(x=>x.id===id); if(!o) return;
+  const co=(state.settings&&state.settings.name)||'Louisville Rickhouse';
+  const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice #${o.num} — ${esc(co)}</title>${invoiceCSS()}</head>`+
+    `<body><div class="wrap"><div class="bar"><b>Invoice #${o.num}</b><button onclick="window.print()">Print</button><button class="ghost" onclick="window.close()">Close</button></div><div class="pad">${invoiceHTML(o)}</div></div></body></html>`;
+  const w=window.open('','_blank');
+  if(!w){ alert('Your browser blocked the invoice pop-up. Please allow pop-ups for this site, then click Invoice again.'); return; }
+  w.document.open(); w.document.write(doc); w.document.close(); try{ w.focus(); }catch(e){}
 }
-function closeInvoice(){ const ov=document.getElementById('invoiceOverlay'); if(ov){ ov.style.display='none'; ov.innerHTML=''; } document.body.classList.remove('printing-invoice'); }
 function printInvoice(id){ showInvoice(id); }
 function deleteOrder(id){ if(!requireCap('delete'))return; const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
   (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
@@ -675,7 +721,7 @@ function wireOnce(){
   $('#fgSearch').oninput=renderFinished; $('#fgExport').onclick=exportFgCsv;
   $('#recalcLoss').onclick=recalcLosses; $('#reconcileDumps').onclick=reconcilePastDumps; $('#backfillGift').onclick=runBackfillGift; $('#routeProc').onclick=reconcileProcessing; $('#syncAllQB').onclick=syncAllPendingQB;
   $('#custSave').onclick=saveCust; $('#custCancel').onclick=cancelCust; $('#custSearch').oninput=renderCustomers;
-  $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate;
+  $('#orderAddLine').onclick=orderAddLine; $('#orderCreate').onclick=orderCreate; { const ce=$('#orderCancelEdit'); if(ce) ce.onclick=cancelEditOrder; }
   { const oc=$('#o_customer'); if(oc) oc.oninput=orderCustCheck; const sn=$('#orderSaveNewCust'); if(sn) sn.onclick=orderSaveNewCust; const cn=$('#orderCancelNewCust'); if(cn) cn.onclick=orderCancelNewCust; }
   $('#qbConnect').onclick=qbConnect; $('#qbDisconnect').onclick=qbDisconnect;
   $('#sqRun').onclick=sqRun; $('#sqSetup').onclick=sqSetup; $('#sqCsv').onclick=sqCsv; $('#sqPdf').onclick=sqPdf;
