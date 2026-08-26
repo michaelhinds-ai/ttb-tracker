@@ -205,17 +205,17 @@ function fgSix(f){ return Math.floor(fgRemainB(f)/FG_SIX); }
 function fgLoose(f){ return fgRemainB(f)%FG_SIX; }
 function fgMake12(id){ if(!requireCap('write'))return; const f=(state.finishedGoods||[]).find(x=>x.id===id); if(!f)return;
   if(fgSix(f)<2){ alert('Need at least two 6-packs (12 bottles) free to make a 12-pack.'); return; }
-  f.pack12=fgTwelve(f)+1; save('Repacked into a 12-pack — '+f.sku); refreshAll(); flash('Made a 12-pack from two 6-packs.'); }
+  f.pack12=fgTwelve(f)+1; f._upd=Date.now(); save('Repacked into a 12-pack — '+f.sku); refreshAll(); flash('Made a 12-pack from two 6-packs.'); }
 function fgSplit12(id){ if(!requireCap('write'))return; const f=(state.finishedGoods||[]).find(x=>x.id===id); if(!f)return;
   if(fgTwelve(f)<1){ alert('No 12-packs to split on this SKU.'); return; }
-  f.pack12=fgTwelve(f)-1; save('Split a 12-pack into two 6-packs — '+f.sku); refreshAll(); flash('Split a 12-pack back into two 6-packs.'); }
+  f.pack12=fgTwelve(f)-1; f._upd=Date.now(); save('Split a 12-pack into two 6-packs — '+f.sku); refreshAll(); flash('Split a 12-pack back into two 6-packs.'); }
 function fgPG(f){ return round1(bottlesToWG(+f.bottles||0,f.bottleSize)*(+f.proof||0)/100); }
 function skuFor(cls,distillDate){ const yr=(distillDate||'').slice(0,4); return ((cls||'Spirit')+(yr?' '+yr:'')).trim(); }
 function addToFinishedGoods(cls,distillDate,proof,bottles,created){
   const sku=skuFor(cls,distillDate);
   let f=state.finishedGoods.find(x=>x.sku===sku&&Math.round(+x.proof)===Math.round(+proof));
-  if(f){ f.bottles=(+f.bottles||0)+bottles; }
-  else state.finishedGoods.push({id:uid(),sku,spirit:cls,distillDate:distillDate||'',proof:+proof||0,bottleSize:750,bottles,created:created||''});
+  if(f){ f.bottles=(+f.bottles||0)+bottles; f._upd=Date.now(); }
+  else state.finishedGoods.push({id:uid(),sku,spirit:cls,distillDate:distillDate||'',proof:+proof||0,bottleSize:750,bottles,created:created||'',_upd:Date.now()});
 }
 function addRemovalEntry(date,spirit,wg,proof,ref,src){ const e={id:uid(),date:date||new Date().toISOString().slice(0,10),type:'proc_taxpaid',spirit:spirit||'Other',wg:round2(wg),proof:+proof||0,pg:round1(wg*(+proof||0)/100),ref:ref||'',notes:'',src:src||''}; state.entries.push(e); return e.id; }
 // Route bottled bulk through the Processing account (TTB): the dumped proof gallons
@@ -387,7 +387,7 @@ function orderCreate(){
   if(editingOrderId){
     const old=state.orders.find(x=>x.id===editingOrderId);
     if(old){
-      (old.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
+      (old.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); f._upd=Date.now(); } });
       (old.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
       state.orders=state.orders.filter(x=>x.id!==editingOrderId);
     }
@@ -395,7 +395,7 @@ function orderCreate(){
   const date=$('#o_date').value; const num=editingOrderNum||((state.orders.reduce((m,o)=>Math.max(m,o.num||0),0))+1);
   const lines=[],entryIds=[]; let total=0,pgTotal=0,casesTotal=0;
   valid.forEach(l=>{ const bottles=l.cases*l.pack; const wg=bottlesToWG(bottles); const pg=round1(wg*(l.fg.proof||0)/100);
-    l.fg.bottles=(+l.fg.bottles||0)-bottles;
+    l.fg.bottles=(+l.fg.bottles||0)-bottles; l.fg._upd=Date.now();
     if(l.pack===12) l.fg.pack12=Math.max(0,(+l.fg.pack12||0)-l.cases); // 12-packs physically leave
     entryIds.push(addRemovalEntry(date,l.fg.spirit,wg,l.fg.proof,`Order #${num} · ${cust.name}`,'order:'+num));
     lines.push({fgId:l.fg.id,sku:l.fg.sku,proof:l.fg.proof,pack:l.pack,cases:l.cases,price:l.price,bottles,pg,lineTotal:round2(l.cases*l.price)});
@@ -512,7 +512,7 @@ function showInvoice(id){
 }
 function printInvoice(id){ showInvoice(id); }
 function deleteOrder(id){ if(!requireCap('delete'))return; const o=state.orders.find(x=>x.id===id); if(!o)return; if(!confirm(`Reverse order #${o.num}? Restores the cases to finished goods and removes its excise removal entries.`))return;
-  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); } });
+  (o.lines||[]).forEach(l=>{ const f=state.finishedGoods.find(x=>x.id===l.fgId); if(f){ f.bottles=(+f.bottles||0)+(+l.bottles||0); if((+l.pack||6)===12) f.pack12=(+f.pack12||0)+(+l.cases||0); f._upd=Date.now(); } });
   (o.entryIds||[]).forEach(eid=>{ state.entries=state.entries.filter(e=>e.id!==eid); });
   state.orders=state.orders.filter(x=>x.id!==id); save('Reversed order #'+o.num); refreshAll(); flash('Order #'+o.num+' reversed.'); }
 function renderOrders(){
