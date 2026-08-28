@@ -543,9 +543,35 @@ function homeChip(label,cur,prev){
   const pct=prev>0?Math.round(Math.abs(cur-prev)/prev*100):(cur>0?100:0);
   return `<span style="color:${col};font-weight:700;white-space:nowrap">${label} ${arrow}${pct}%</span>`;
 }
-function homeSalesCard(color,name,net,orders,prevW,prevY){
+function homeSalesCard(color,name,net,orders,prevW,prevY,clickable){
   const chips=isManager()?'':`<div style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${homeChip('wk',net,prevW)}${homeChip('yr',net,prevY)}</div>`;
-  return `<div class="kpi ${color}"><div class="label">${name}</div><div class="val">${money(net)}</div>${chips}<div class="foot">${orders} order${orders===1?'':'s'} today</div></div>`;
+  const click=clickable?` style="cursor:pointer" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')" title="Tap for the employee breakdown"`:'';
+  const hint=clickable?`<div class="foot" style="opacity:.7">${orders} order${orders===1?'':'s'} today · tap for staff ▸</div>`:`<div class="foot">${orders} order${orders===1?'':'s'} today</div>`;
+  return `<div class="kpi ${color}"${click}><div class="label">${esc(name)}</div><div class="val">${money(net)}</div>${chips}${hint}</div>`;
+}
+// Drill-down: per-employee transactions / sales / avg ticket for one location today.
+let _salesDayCache=null,_salesDayAt=0,_salesDayOpen='';
+async function homeShowLocation(name){
+  const box=document.getElementById('homeSalesDetail'); if(!box) return;
+  if(_salesDayOpen===name){ _salesDayOpen=''; box.innerHTML=''; return; } // tap again to close
+  _salesDayOpen=name;
+  box.innerHTML=`<div class="card"><div class="hint">Loading ${esc(name)} employee breakdown…</div></div>`;
+  try{
+    if(!_salesDayCache || (Date.now()-_salesDayAt)>60000){
+      const r=await fetch('/api/sales/day',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})});
+      _salesDayCache=await r.json().catch(()=>null); _salesDayAt=Date.now();
+    }
+    if(_salesDayOpen!==name) return; // user tapped elsewhere while loading
+    const rows=(_salesDayCache&&_salesDayCache.ok&&_salesDayCache.rows)||[];
+    const norm=s=>String(s||'').trim().toLowerCase();
+    const row=rows.find(x=>norm(x.location)===norm(name)) || rows.find(x=>x.location===name);
+    if(!row){ box.innerHTML=`<div class="card"><div class="hint">No Square employee data for <b>${esc(name)}</b> today${(_salesDayCache&&!_salesDayCache.ok)?' — '+esc(_salesDayCache.detail||'Square unavailable'):''}.</div></div>`; return; }
+    const emps=(row.employees||[]);
+    const rowsHtml=emps.length?emps.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${e.txns}</td><td class="num">${money((e.salesCents||0)/100)}</td><td class="num" style="font-weight:700">${money((e.avgCents||0)/100)}</td></tr>`).join(''):`<tr><td colspan="4" style="color:var(--muted)">No attributed transactions yet.</td></tr>`;
+    box.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">${esc(name)} — today</h3><button class="link noprint" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')">Close</button></div>
+      <div class="hint" style="margin:4px 0 8px">${money(row.sales/100)} collected · ${row.txns} transaction${row.txns===1?'':'s'}. Average ticket excludes tips.</div>
+      <div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>${rowsHtml}</tbody></table></div></div>`;
+  }catch(e){ if(_salesDayOpen===name) box.innerHTML=`<div class="card"><div class="hint">Could not load the breakdown: ${esc(e&&e.message||e)}</div></div>`; }
 }
 function homeErrCard(color,label,msg){ return `<div class="kpi ${color}"><div class="label">${label}</div><div class="val">—</div><div class="foot">${msg}</div></div>`; }
 async function loadHomeSales(force){
@@ -574,7 +600,7 @@ async function loadHomeSales(force){
   if(sq&&!sq.error){
     const rows=[]; (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ rows.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); }); });
     rows.sort((x,y)=>y.net-x.net);
-    if(rows.length) rows.forEach((r,i)=>cards.push(homeSalesCard(colors[i%colors.length],esc(r.name),r.net,r.orders,(r.name in wMap)?wMap[r.name]:null,(r.name in yMap)?yMap[r.name]:null)));
+    if(rows.length) rows.forEach((r,i)=>cards.push(homeSalesCard(colors[i%colors.length],r.name,r.net,r.orders,(r.name in wMap)?wMap[r.name]:null,(r.name in yMap)?yMap[r.name]:null,true)));
     else cards.push(homeSalesCard('copper','Store sales',0,0,null,null));
   } else cards.push(homeErrCard('copper','Store sales',(sq&&(sq.detail||sq.error))?'Square unavailable':'Connect Square in Setup'));
   if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null));

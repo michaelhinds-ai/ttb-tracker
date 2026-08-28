@@ -39,6 +39,7 @@
     </div>
 
     <div class="kpis" id="homeKpis"></div>
+    <div id="homeSalesDetail" style="margin-top:12px"></div>
     <div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h3 style="margin:0">Tasks</h3>
@@ -814,6 +815,21 @@
         <button class="btn" onclick="saveSalesEmail()">Save recipients</button>
         <button class="btn gray" onclick="sendSalesTest()">Send test now</button>
         <span id="salesTestMsg" class="hint" style="margin:0"></span>
+      </div>
+    </div>
+
+    <div class="card cap-setup">
+      <h3>Clock-in Alerts</h3>
+      <p class="hint">If someone with a Square <b>scheduled shift</b> hasn't clocked in within the grace window after their start time, email these people. Checks every 15 minutes; each missed shift is emailed once a day.</p>
+      <div class="grid g3">
+        <div style="grid-column:span 2"><label class="fld">Send to <span style="font-weight:400;color:var(--muted)">— emails, comma-separated</span></label><input type="text" id="s_lateEmail" placeholder="you@company.com, gm@company.com"></div>
+        <div><label class="fld">Grace period <span style="font-weight:400;color:var(--muted)">— minutes</span></label><input type="number" id="s_lateThreshold" min="1" step="1" placeholder="15"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px"><input type="checkbox" id="s_lateOn"> Alerts on</label>
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn" onclick="saveLateAlert()">Save</button>
+        <button class="btn gray" onclick="testLateAlert()">Test now</button>
+        <span id="lateTestMsg" class="hint" style="margin:0"></span>
       </div>
     </div>
 

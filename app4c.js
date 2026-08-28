@@ -198,7 +198,23 @@ function rtlCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';}
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);}
+function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
+async function testLateAlert(){
+  if(!requireCap('setup'))return;
+  const to=(($('#s_lateEmail')||{}).value||'').trim(); const threshold=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15);
+  const msg=$('#lateTestMsg'); if(msg){ msg.textContent='Checking…'; msg.style.color='var(--muted)'; }
+  saveLateAlert();
+  try{
+    const r=await fetch('/api/clockin/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({to,threshold})});
+    const d=await r.json().catch(()=>null);
+    if(!d||!d.ok){ if(msg){ msg.textContent='Test failed: '+((d&&(d.detail||d.error))||('HTTP '+r.status)); msg.style.color='var(--red)'; } return; }
+    if(d.schedulingError){ if(msg){ msg.textContent='Square scheduled shifts not readable — check that Team scheduling is on and the token has Timecards/Scheduling access.'; msg.style.color='var(--red)'; } return; }
+    let t = d.lateCount>0 ? (d.lateCount+' currently late: '+d.late.map(x=>x.name+' ('+x.minutesLate+'m)').join(', ')) : 'All clear — nobody is past their grace period right now.';
+    if(to){ t += d.emailed ? ' · test email sent.' : (d.emailError?(' · email error: '+d.emailError):''); }
+    if(msg){ msg.textContent=t; msg.style.color=d.lateCount>0?'var(--amber)':'var(--green)'; }
+  }catch(e){ if(msg){ msg.textContent='Test failed: '+(e&&e.message||e); msg.style.color='var(--red)'; } }
+}
 function saveSalesEmail(){ if(!requireCap('setup'))return; const el=$('#s_salesEmail'); if(!el)return; state.settings.salesEmailTo=(el.value||'').trim(); save('Updated nightly sales email recipients'); flash('Recipients saved.'); }
 async function sendSalesTest(){
   if(!requireCap('setup'))return;
