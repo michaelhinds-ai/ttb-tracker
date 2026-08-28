@@ -105,7 +105,15 @@ async function gapi(url, opts = {}) {
   const r = await fetch(url, { ...opts, headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", ...(opts.headers || {}) } });
   const text = await r.text();
   let json = null; try { json = text ? JSON.parse(text) : null; } catch (e) {}
-  if (!r.ok) throw new GBPError("google_api_error", r.status, (json && (json.error || json)) || text);
+  if (!r.ok) {
+    // Always surface a READABLE reason (Google returns { error: { code, message, status } }).
+    let detail = text || ("HTTP " + r.status);
+    if (json && json.error) {
+      const ge = json.error;
+      detail = (ge.message || ge.status || (typeof ge === "string" ? ge : JSON.stringify(ge)));
+    }
+    throw new GBPError("google_api_error", r.status, "HTTP " + r.status + ": " + detail);
+  }
   return json;
 }
 
