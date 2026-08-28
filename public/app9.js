@@ -22,13 +22,14 @@ function renderExpenses(){
   if(typeof can==='function' && !can('setup')){ const b=document.getElementById('expBody'); if(b) b.innerHTML='<div class="empty" style="padding:34px"><div class="big">🔒</div>Overhead &amp; expenses are visible to admins only.</div>'; const fc=document.getElementById('expFormCard'); if(fc) fc.style.display='none'; return; }
   const fc=document.getElementById('expFormCard'); if(fc) fc.style.display='';
   const dl=document.getElementById('exLocList'); if(dl) dl.innerHTML=expLocations().map(l=>`<option value="${esc(l)}"></option>`).join('');
+  const lw=document.getElementById('ex_location_wrap'); if(lw && !lw.querySelector('select') && typeof locSelectControl==='function'){ lw.innerHTML=locSelectControl('ex_location',''); }
   const cs=document.getElementById('ex_cat'); if(cs&&!cs._filled){ cs.innerHTML=EXP_CATS.map(c=>`<option>${esc(c)}</option>`).join(''); cs._filled=1; }
   const fs=document.getElementById('ex_freq'); if(fs&&!fs._filled){ fs.innerHTML=EXP_FREQ.map(f=>`<option value="${f.v}">${esc(f.label)}</option>`).join(''); fs._filled=1; }
   expRenderReport();
 }
 function expAdd(){
   if(!requireCap('setup'))return;
-  const location=((document.getElementById('ex_location')||{}).value||'').trim();
+  const location=(typeof locSelectValue==='function')?locSelectValue('ex_location'):((document.getElementById('ex_location')||{}).value||'').trim();
   const category=(document.getElementById('ex_cat')||{}).value||'Other';
   const amount=Math.round((+((document.getElementById('ex_amount')||{}).value)||0)*100)/100;
   const freq=(document.getElementById('ex_freq')||{}).value||'monthly';
@@ -36,7 +37,7 @@ function expAdd(){
   if(!location){ alert('Enter a location.'); return; }
   if(!(amount>0)){ alert('Enter an amount.'); return; }
   if(!state.expenses) state.expenses=[];
-  state.expenses.push({ id:uid(), location, category, amount, freq, note, ts:Date.now(), by:(SESSION?SESSION.name:'') });
+  state.expenses.push({ id:uid(), location, category, amount, freq, note, ts:Date.now(), _upd:Date.now(), by:(SESSION?SESSION.name:'') });
   ['ex_amount','ex_note'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   save('Added expense — '+category+' · '+location); refreshAll(); flash('Expense added.');
 }

@@ -140,26 +140,61 @@ function salPickEmp(sel){
   const t=opt?opt.getAttribute('data-title'):'';
   if(title && t) title.value=t;
 }
+// The location pick-list shared by the salaried and expense forms: the three
+// locations Mike chose, any location already used in saved data, plus an
+// "Other" escape that reveals a text field. Global so app9 (expenses) uses it too.
+const PNL_LOC_CHOICES=['Louisville Rickhouse Whiskey Co','Church S','HQ'];
+function locChoiceList(){
+  const set=[]; const seen={};
+  const add=n=>{ n=(n||'').trim(); if(!n) return; const k=n.toLowerCase(); if(!seen[k]){ seen[k]=1; set.push(n); } };
+  PNL_LOC_CHOICES.forEach(add);
+  (state.salaried||[]).forEach(s=>add(s.location));
+  (state.expenses||[]).forEach(e=>add(e.location));
+  return set;
+}
+// Renders a <select> of locations + an Other-reveals-text-field. `idBase` gives
+// the select id `${idBase}` and the companion text input `${idBase}_other`.
+function locSelectControl(idBase, current){
+  const opts=locChoiceList().map(l=>`<option value="${esc(l)}"${l===current?' selected':''}>${esc(l)}</option>`).join('');
+  const isKnown=locChoiceList().some(l=>l===current);
+  return `<select id="${idBase}" onchange="locPickOther('${idBase}',this)"><option value="">Select location…</option>${opts}<option value="__other">Other (type location)…</option></select>
+    <input id="${idBase}_other" placeholder="Location name" style="display:${current&&!isKnown?'':'none'};margin-top:6px" value="${current&&!isKnown?esc(current):''}">`;
+}
+function locPickOther(idBase, sel){
+  const other=document.getElementById(idBase+'_other');
+  if(!other) return;
+  if(sel.value==='__other'){ other.style.display=''; other.value=''; other.focus(); }
+  else other.style.display='none';
+}
+// Reads the resolved location from a locSelectControl pair.
+function locSelectValue(idBase){
+  const sel=document.getElementById(idBase); if(!sel) return '';
+  let v=(sel.value||'').trim();
+  if(v==='__other'||!v){ const o=document.getElementById(idBase+'_other'); v=(o&&o.value||'').trim(); }
+  return v;
+}
 function paySalariedEditor(data){
   const list=(state.salaried||[]);
-  const rows=list.map(s=>`<tr><td>${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.title||'')}</td><td class="num">${money(s.monthly)}/mo</td><td>${esc(s.location||'HQ')}</td><td class="noprint"><button class="del" onclick="delSalaried('${s.id}')">Del</button></td></tr>`).join('');
-  return `<details id="paySalDetails" class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Salaried staff (monthly) &mdash; admin</summary>
-    <p class="hint" style="margin:8px 0 0">For people who don't clock in. Their monthly salary is charged to a location (default HQ) in the <b>Rough P&amp;L</b> labor &mdash; it doesn't come from timecards, so it isn't in the hourly totals above.</p>
+  const rows=list.map(s=>{ const mo=+s.monthly||0; const isAnnual=(s.basis==='annual'); const amtCell=isAnnual?`${money(mo)}/mo <span style="color:var(--muted)">(${money(mo*12)}/yr)</span>`:`${money(mo)}/mo`;
+    return `<tr><td>${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.title||'')}</td><td class="num">${amtCell}</td><td>${esc(s.location||'HQ')}</td><td class="noprint"><button class="del" onclick="delSalaried('${s.id}')">Del</button></td></tr>`; }).join('');
+  return `<details id="paySalDetails" class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Salaried staff &mdash; admin</summary>
+    <p class="hint" style="margin:8px 0 0">For people who don't clock in. Their pay is charged to a location (default HQ) in the <b>Rough P&amp;L</b> labor &mdash; it doesn't come from timecards, so it isn't in the hourly totals above. Pick <b>Annual</b> or <b>Monthly</b> so the P&amp;L uses the right monthly amount.</p>
     <div class="grid g3" style="margin-top:10px">
       <div><label class="fld">Name</label>${salNameControl(data)}</div>
       <div><label class="fld">Title</label><input id="sal_title" placeholder="e.g. Owner, GM"></div>
-      <div><label class="fld">Monthly salary ($)</label><input id="sal_monthly" type="number" step="0.01" min="0" placeholder="0.00"></div>
+      <div><label class="fld">Pay basis</label><select id="sal_basis"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></div>
     </div>
     <div class="grid g3" style="margin-top:10px">
-      <div><label class="fld">Charge to location</label><input id="sal_loc" list="exLocList" value="HQ" placeholder="HQ"></div>
+      <div><label class="fld">Salary ($)</label><input id="sal_amount" type="number" step="0.01" min="0" placeholder="0.00"></div>
+      <div><label class="fld">Charge to location</label>${locSelectControl('sal_loc','HQ')}</div>
       <div style="align-self:end"><button class="btn sm" onclick="addSalaried()">Add salaried staff</button></div>
     </div>
-    ${list.length?`<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Name</th><th>Title</th><th class="num">Monthly</th><th>Location</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
+    ${list.length?`<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Name</th><th>Title</th><th class="num">Pay</th><th>Location</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
   </details>`;
 }
-function addSalaried(){ if(!requireCap('setup'))return; const g=id=>((document.getElementById(id)||{}).value||''); let name=g('sal_name').trim(); if(name==='__other'||!name) name=g('sal_name_other').trim(); const title=g('sal_title').trim(), monthly=Math.round((+g('sal_monthly')||0)*100)/100, location=(g('sal_loc').trim()||'HQ');
-  if(!name){ alert('Enter a name.'); return; } if(!(monthly>0)){ alert('Enter a monthly salary.'); return; }
-  if(!state.salaried)state.salaried=[]; state.salaried.push({id:uid(),name,title,monthly,location});
+function addSalaried(){ if(!requireCap('setup'))return; const g=id=>((document.getElementById(id)||{}).value||''); let name=g('sal_name').trim(); if(name==='__other'||!name) name=g('sal_name_other').trim(); const title=g('sal_title').trim(); const basis=(g('sal_basis')||'monthly'); const amount=Math.round((+g('sal_amount')||0)*100)/100; const monthly=Math.round((basis==='annual'?amount/12:amount)*100)/100; const location=(locSelectValue('sal_loc')||'HQ');
+  if(!name){ alert('Enter a name.'); return; } if(!(amount>0)){ alert('Enter a salary amount.'); return; }
+  if(!state.salaried)state.salaried=[]; state.salaried.push({id:uid(),name,title,monthly,basis,amount,location,_upd:Date.now()});
   save('Added salaried staff — '+name); const d=_payCache[_payOffset]; if(d) renderPayrollBody(d, _payCache[_payOffset-1]?buildPrior(_payCache[_payOffset-1]):null); const det=document.getElementById('paySalDetails'); if(det) det.open=true; flash('Salaried staff added.'); }
 function delSalaried(id){ if(!requireCap('setup'))return; state.salaried=(state.salaried||[]).filter(x=>x.id!==id); save('Removed salaried staff'); const d=_payCache[_payOffset]; if(d) renderPayrollBody(d, _payCache[_payOffset-1]?buildPrior(_payCache[_payOffset-1]):null); const det=document.getElementById('paySalDetails'); if(det) det.open=true; }
 function payLaborSummary(data){
