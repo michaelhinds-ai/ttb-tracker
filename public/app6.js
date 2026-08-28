@@ -92,9 +92,59 @@ function payDelta(cur,prev){
 function payHrs(h){ return (Math.round((Number(h)||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function payC(cents){ return money((Number(cents)||0)/100); }
 
-function payEmpRows(emps,{cash,prior}){
+// ---- Pay rates & labor cost (dollars = hours × hourly rate). Rates are keyed by
+// name|title so the same person is one rate across both Square accounts. ----
+function wageKey(e){ return (((e&&e.name)||'')+'|'+((e&&e.title)||'')).trim().toLowerCase(); }
+function wageFor(e){ const w=(state.wages||{})[wageKey(e)]; return +w||0; }
+function laborCost(e){ return (Number(e&&e.hours)||0)*wageFor(e); }
+function payCanLabor(){ return (typeof can==='function') && can('setup'); } // admin only
+function setWage(key,val){
+  if(!requireCap('setup'))return;
+  if(!state.wages) state.wages={};
+  const v=Math.round((+val||0)*100)/100;
+  if(v>0) state.wages[key]=v; else delete state.wages[key];
+  save('Updated pay rate'); flash('Pay rate saved.');
+  const d=_payCache[_payOffset]; if(d) renderPayrollBody(d, _payCache[_payOffset-1]?buildPrior(_payCache[_payOffset-1]):null);
+  const det=document.getElementById('payRateDetails'); if(det) det.open=true;
+}
+function payRateEditor(data){
+  const seen={};
+  (data.byEmployee||[]).forEach(e=>{ seen[wageKey(e)]={name:e.name,title:e.title}; });
+  Object.keys(state.wages||{}).forEach(k=>{ if(!seen[k]){ const p=k.split('|'); seen[k]={name:(p[0]||''),title:p[1]||''}; } });
+  const people=Object.entries(seen).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
+  if(!people.length) return '';
+  const rows=people.map(([k,p])=>`<tr><td>${esc(p.name)}</td><td style="color:var(--muted)">${esc(p.title||'')}</td>
+    <td class="num"><span style="color:var(--muted)">$</span> <input type="number" step="0.01" min="0" value="${(state.wages||{})[k]!=null?state.wages[k]:''}" onchange="setWage('${k.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',this.value)" style="max-width:90px;display:inline-block;text-align:right"> <span style="color:var(--muted)">/hr</span></td></tr>`).join('');
+  return `<details id="payRateDetails" class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Pay rates (hourly) &mdash; admin</summary>
+    <p class="hint" style="margin:8px 0 0">Set each person's hourly wage. Labor cost = hours worked &times; this rate. Saved to your workspace only &mdash; never sent to Square.</p>
+    <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Employee</th><th>Title</th><th class="num">Hourly rate</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+function payLaborSummary(data){
+  const locRows=[]; let gHours=0,gLabor=0,anyRate=false;
+  (data.accounts||[]).forEach(a=>{ if(a.error)return; (a.locations||[]).forEach(l=>{
+    const emps=l.employees||[];
+    const h=emps.reduce((s,e)=>s+(+e.hours||0),0);
+    const lc=emps.reduce((s,e)=>s+laborCost(e),0);
+    emps.forEach(e=>{ if(wageFor(e)>0) anyRate=true; });
+    if(h>0||lc>0){ locRows.push({name:l.name,acct:a.label,hours:h,labor:lc}); gHours+=h; gLabor+=lc; }
+  }); });
+  locRows.sort((x,y)=>y.labor-x.labor||y.hours-x.hours);
+  const kpis=`<div class="kpis" style="margin:0 0 16px">`+
+    kpi('barrel','Total Labor Cost',money(gLabor),payHrs(gHours)+' hours worked')+
+    kpi('blue','Locations',String(locRows.length),'with hours this period')+`</div>`;
+  const warn=anyRate?'':`<div class="note">Set hourly rates in <b>Pay rates</b> below to see labor cost — anyone without a rate counts as $0.</div>`;
+  const table=`<div class="card"><h3>Payroll by location</h3><div class="hint">Hours &times; each person's rate, grouped by the Square location they clocked in at.</div>
+    <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Location</th><th>Account</th><th class="num">Hours</th><th class="num">Labor cost</th></tr></thead><tbody>`+
+    (locRows.length?locRows.map(r=>`<tr><td>${esc(r.name)}</td><td style="color:var(--muted)">${esc(r.acct||'')}</td><td class="num">${payHrs(r.hours)}</td><td class="num" style="font-weight:700">${money(r.labor)}</td></tr>`).join(''):'<tr><td colspan="4" style="color:var(--muted)">No hours this period.</td></tr>')+
+    `<tr class="total"><td colspan="2">All locations</td><td class="num">${payHrs(gHours)}</td><td class="num">${money(gLabor)}</td></tr>`+
+    `</tbody></table></div></div>`;
+  return kpis+warn+table;
+}
+
+function payEmpRows(emps,{cash,prior,labor}){
   return emps.map(e=>{
     const pv=prior?prior[e.id||(e.name+'|'+e.title)]:null;
+    const rate=wageFor(e);
     return `<tr>
     <td>${esc(e.name)}${e.open?' <span title="Still clocked in — hours counted through now" style="color:var(--amber)">&bull;</span>':''}</td>
     <td style="color:var(--muted)">${esc(e.title||'')}</td>
@@ -102,17 +152,19 @@ function payEmpRows(emps,{cash,prior}){
     <td class="num">${payC(e.cardTips)}</td>
     ${cash?`<td class="num">${payC(e.cashTips)}</td>`:''}
     <td class="num" style="font-weight:700">${payC(e.tips)}${payDelta(e.tips, pv?pv.tips:null)}</td>
+    ${labor?`<td class="num">${rate>0?money(rate):'<span style="color:var(--red)">— set —</span>'}</td><td class="num" style="font-weight:700">${money(laborCost(e))}</td>`:''}
   </tr>`;}).join('');
 }
-function payTotRow(t,{cash,label,prevHours,prevTips}){
+function payTotRow(t,{cash,label,prevHours,prevTips,labor,laborTotal}){
   return `<tr class="total"><td colspan="2">${esc(label||'Total')}</td>
     <td class="num">${payHrs(t.hours)}${prevHours!=null?payDelta(t.hours,prevHours):''}</td>
     <td class="num">${payC(t.cardTips)}</td>
     ${cash?`<td class="num">${payC(t.cashTips)}</td>`:''}
-    <td class="num">${payC(t.tips)}${prevTips!=null?payDelta(t.tips,prevTips):''}</td></tr>`;
+    <td class="num">${payC(t.tips)}${prevTips!=null?payDelta(t.tips,prevTips):''}</td>
+    ${labor?`<td class="num"></td><td class="num">${money(laborTotal||0)}</td>`:''}</tr>`;
 }
-function payHead({cash}){
-  return `<thead><tr><th>Employee</th><th>Title</th><th class="num">Hours</th><th class="num">Card tips</th>${cash?'<th class="num">Cash tips</th>':''}<th class="num">Total tips</th></tr></thead>`;
+function payHead({cash,labor}){
+  return `<thead><tr><th>Employee</th><th>Title</th><th class="num">Hours</th><th class="num">Card tips</th>${cash?'<th class="num">Cash tips</th>':''}<th class="num">Total tips</th>${labor?'<th class="num">Rate</th><th class="num">Labor $</th>':''}</tr></thead>`;
 }
 
 function renderPayrollBody(data, prior){
@@ -122,13 +174,13 @@ function renderPayrollBody(data, prior){
   let anyOpen=false;
   (data.accounts||[]).forEach(a=>{ (a.locations||[]).forEach(l=>l.employees.forEach(e=>{ if(e.open)anyOpen=true; })); });
 
-  // Combined by-employee (all locations)
   const be=data.byEmployee||[];
+  const showLabor=payCanLabor();
 
-  // One combined table per Square account — all of that account's locations
-  // (e.g. both Nashville Barrel spots) merged into a single employee list.
+  // One combined table per Square account — all of that account's locations merged.
+  let detail='';
   (data.accounts||[]).forEach(a=>{
-    if(a.error){ html+=`<div class="note" style="border-left-color:var(--red);background:var(--red-bg)">${esc(a.label||'Account')}: ${esc(a.error)}</div>`; return; }
+    if(a.error){ detail+=`<div class="note" style="border-left-color:var(--red);background:var(--red-bg)">${esc(a.label||'Account')}: ${esc(a.error)}</div>`; return; }
     const locs=a.locations||[]; if(!locs.length) return;
     const m={};
     locs.forEach(l=>l.employees.forEach(e=>{
@@ -141,23 +193,24 @@ function renderPayrollBody(data, prior){
     const tot=emps.reduce((t,e)=>({hours:t.hours+e.hours,cardTips:t.cardTips+e.cardTips,cashTips:t.cashTips+e.cashTips,tips:t.tips+e.tips}),{hours:0,cardTips:0,cashTips:0,tips:0});
     tot.hours=Math.round(tot.hours*100)/100;
     const cash=tot.cashTips>0;
+    const laborTotal=emps.reduce((s,e)=>s+laborCost(e),0);
     const locNames=locs.map(l=>l.name).join(' · ');
     let prevTot=null;
     if(prior){ prevTot={hours:0,tips:0}; emps.forEach(e=>{ const pv=prior[e.id||(e.name+'|'+e.title)]; if(pv){ prevTot.hours+=pv.hours; prevTot.tips+=pv.tips; } }); }
-    html+=`<div class="card"><h3>${esc(a.label||'Square account')}</h3>
+    detail+=`<div class="card"><h3>${esc(a.label||'Square account')}</h3>
       <div class="hint">${esc(locNames)}</div>
-      <div class="tablewrap"><table>${payHead({cash})}<tbody>
-      ${payEmpRows(emps,{cash,prior})}
-      ${payTotRow(tot,{cash,label:'Total',prevHours:prevTot?prevTot.hours:null,prevTips:prevTot?prevTot.tips:null})}
+      <div class="tablewrap"><table>${payHead({cash,labor:showLabor})}<tbody>
+      ${payEmpRows(emps,{cash,prior,labor:showLabor})}
+      ${payTotRow(tot,{cash,label:'Total',prevHours:prevTot?prevTot.hours:null,prevTips:prevTot?prevTot.tips:null,labor:showLabor,laborTotal})}
       </tbody></table></div></div>`;
   });
 
-  if(!be.length){
-    html=`<div class="empty" style="padding:40px"><div class="big">&#128100;</div>No hours or tips recorded for this pay period yet.</div>`;
-  } else {
-    html+=`<div class="note">Arrows compare each person to the <b>previous pay period</b> &mdash; <span style="color:var(--amber);font-weight:700">amber &ge;25%</span>, <span style="color:var(--red);font-weight:700">red &ge;50%</span>. A big jump in hours often means someone forgot to clock out.</div>`;
-    if(anyOpen) html+=`<div class="note">A <span style="color:var(--amber)">&bull;</span> next to a name means that person is still clocked in &mdash; their hours are counted through right now and will update when they clock out.</div>`;
-  }
+  if(!be.length){ box.innerHTML=`<div class="empty" style="padding:40px"><div class="big">&#128100;</div>No hours or tips recorded for this pay period yet.</div>`; return; }
+
+  if(showLabor) html+=payLaborSummary(data)+payRateEditor(data);
+  html+=detail;
+  html+=`<div class="note">Arrows compare each person to the <b>previous pay period</b> &mdash; <span style="color:var(--amber);font-weight:700">amber &ge;25%</span>, <span style="color:var(--red);font-weight:700">red &ge;50%</span>. A big jump in hours often means someone forgot to clock out.</div>`;
+  if(anyOpen) html+=`<div class="note">A <span style="color:var(--amber)">&bull;</span> next to a name means that person is still clocked in &mdash; their hours are counted through right now and will update when they clock out.</div>`;
   box.innerHTML=html;
 }
 

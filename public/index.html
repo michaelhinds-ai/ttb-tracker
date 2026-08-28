@@ -93,6 +93,16 @@
         <div><div class="an">Payroll</div><div class="ad">Pay-period hours &amp; tips per employee &mdash; both Square accounts, all locations.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
+      <div class="apptile cap-setup" style="cursor:pointer" onclick="switchView('expenses')">
+        <div class="ai" style="background:rgba(63,125,84,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f7d54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div>
+        <div><div class="an">Overhead &amp; Expenses</div><div class="ad">Rent, utilities, insurance &amp; more &mdash; true overhead by location.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
+      <div class="apptile cap-setup" style="cursor:pointer" onclick="switchView('pnl')">
+        <div class="ai" style="background:rgba(90,62,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a3e8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></div>
+        <div><div class="an">Rough P&amp;L</div><div class="ad">Revenue, COGS, overhead &amp; labor &mdash; estimated net by location, by month.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('marketing')">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
         <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
@@ -921,9 +931,47 @@
     <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Weekly auto-replies to your Google reviews &mdash; positive ones posted for you, low stars held here for your approval.</p>
     <div id="reviewsBody" style="margin-top:16px"></div>
   </section>
+
+  <section class="view" id="view-expenses">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h1 style="font-size:29px;margin:0">Overhead &amp; Expenses</h1>
+    <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Track fixed costs per location &mdash; rent, utilities, insurance and the rest &mdash; for true overhead by location. Admin only.</p>
+
+    <div class="card" id="expFormCard" style="margin-top:16px">
+      <h3>Add an expense</h3>
+      <div class="grid g3">
+        <div><label class="fld">Location</label><input type="text" id="ex_location" list="exLocList" placeholder="e.g. Louisville Rickhouse Whiskey Co"><datalist id="exLocList"></datalist></div>
+        <div><label class="fld">Category</label><select id="ex_cat"></select></div>
+        <div><label class="fld">Amount ($)</label><input type="number" step="0.01" min="0" id="ex_amount" placeholder="0.00"></div>
+      </div>
+      <div class="grid g3" style="margin-top:12px">
+        <div><label class="fld">Frequency</label><select id="ex_freq"></select></div>
+        <div style="grid-column:span 2"><label class="fld">Note</label><input type="text" id="ex_note" placeholder="Optional — e.g. landlord, policy #, provider"></div>
+      </div>
+      <div class="row-actions" style="margin-top:14px"><button class="btn" onclick="expAdd()">Add expense</button></div>
+    </div>
+
+    <div id="expBody"></div>
+  </section>
+
+  <section class="view" id="view-pnl">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px">
+      <div>
+        <h1 style="font-size:29px;margin:0">Rough P&amp;L by Location</h1>
+        <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Revenue (Square + Xola) &minus; COGS &minus; overhead &minus; labor, by location, by month. Admin only.</p>
+      </div>
+      <div class="row-actions" style="margin:0">
+        <button class="btn sm gray" onclick="pnlShift(-1)">&larr; Prev</button>
+        <span id="pnlMonthLabel" style="font-weight:700;min-width:130px;text-align:center;font-family:-apple-system,Segoe UI,Roboto,sans-serif"></span>
+        <button class="btn sm gray" onclick="pnlShift(1)">Next &rarr;</button>
+      </div>
+    </div>
+    <div id="pnlBody" style="margin-top:12px"></div>
+  </section>
 </main>
 
-<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script><script src="app8.js"></script>
+<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script><script src="app8.js"></script><script src="app9.js"></script><script src="app10.js"></script>
 </body>
 </html>
 
