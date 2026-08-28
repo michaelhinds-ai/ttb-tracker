@@ -1,6 +1,11 @@
-# Always revalidate the HTML so a new deploy's versioned script tags are picked
-# up immediately (this is what lets iOS Safari escape a stale cached page).
+# Always revalidate the HTML and the app's own JS/CSS so a new deploy is picked
+# up immediately — this is what lets a browser (and Netlify's edge) escape a
+# stale cached copy. Assets are still versioned with ?v=... in index.html.
 /
   Cache-Control: public, max-age=0, must-revalidate
 /index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/*.js
+  Cache-Control: public, max-age=0, must-revalidate
+/*.css
   Cache-Control: public, max-age=0, must-revalidate
