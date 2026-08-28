@@ -15,7 +15,7 @@ const EXP_FREQ = [
 ];
 function expFreqLabel(v){ const f=EXP_FREQ.find(x=>x.v===v); return f?f.label:(v||''); }
 function expPerMonth(e){ const f=EXP_FREQ.find(x=>x.v===(e.freq||'monthly')); return (f?f.pm:1)*(+e.amount||0); }
-function expLocations(){ const set=new Set(['Louisville Rickhouse Whiskey Co','Nashville Barrel Co','Church St','Back Office']); (state.expenses||[]).forEach(e=>{ if(e.location) set.add(e.location); }); return [...set]; }
+function expLocations(){ const set=new Set(Array.isArray(state.pnlLocs)?state.pnlLocs:[]); (state.expenses||[]).forEach(e=>{ if(e.location) set.add(e.location); }); if(!set.size){ ['Louisville Rickhouse Whiskey Co','Nashville Barrel Co'].forEach(x=>set.add(x)); } return [...set]; }
 
 function renderExpenses(){
   // Admin-only page.

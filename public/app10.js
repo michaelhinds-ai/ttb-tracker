@@ -32,7 +32,7 @@ async function loadPnl(force){
   let sq=null,xo=null,pay=null;
   try{ [sq,xo,pay]=await Promise.all([
     P('/api/square/summary',{startDate:start,endDate:end}),
-    P('/api/xola/summary',{startDate:start,endDate:end}),
+    P('/api/xola/booked',{year:_pnlY,month:_pnlM}), // BOOKED basis (sold this month), not redeemed
     P('/api/square/payroll',{start,end:nextStart}),
   ]); }catch(e){}
   const bundle={sq,xo,pay};
@@ -58,14 +58,17 @@ function pnlComputeXola(xo, locKeys, disp){
   });
   return byLoc;
 }
-function pnlComputeLabor(pay, disp){
+// Resolve a location name to a canonical revenue-location key, honoring the saved
+// alias map (so "Church St" the user typed can merge into Square's "Church S").
+function pnlResolve(name, revKeys){ const n=pnlNorm(name); if(revKeys.indexOf(n)>=0) return n; const a=(state.locAlias||{})[n]; if(a) return pnlNorm(a); return n; }
+function pnlComputeLabor(pay, disp, revKeys){
   const byLoc={};
-  if(pay&&pay.ok){ (pay.accounts||[]).forEach(a=>(a.locations||[]).forEach(l=>{ let c=0; (l.employees||[]).forEach(e=>{ c+=laborCost(e); }); const k=pnlNorm(l.name); byLoc[k]=(byLoc[k]||0)+c; if(!disp[k]) disp[k]=l.name; })); }
+  if(pay&&pay.ok){ (pay.accounts||[]).forEach(a=>(a.locations||[]).forEach(l=>{ let c=0; (l.employees||[]).forEach(e=>{ c+=laborCost(e); }); const k=pnlResolve(l.name, revKeys); byLoc[k]=(byLoc[k]||0)+c; if(!disp[k]) disp[k]=l.name; })); }
   return byLoc;
 }
-function pnlComputeOverhead(disp){
+function pnlComputeOverhead(disp, revKeys){
   const byLoc={};
-  (state.expenses||[]).forEach(e=>{ if((e.freq||'')==='onetime') return; const k=pnlNorm(e.location); byLoc[k]=(byLoc[k]||0)+expPerMonth(e); if(!disp[k]) disp[k]=e.location; });
+  (state.expenses||[]).forEach(e=>{ if((e.freq||'')==='onetime') return; const k=pnlResolve(e.location, revKeys); byLoc[k]=(byLoc[k]||0)+expPerMonth(e); if(!disp[k]) disp[k]=e.location; });
   return byLoc;
 }
 
@@ -73,10 +76,13 @@ function renderPnlBody(bundle){
   const box=document.getElementById('pnlBody'); if(!box) return;
   const {sq,xo,pay}=bundle;
   const {byLoc:sqNet, disp}=pnlComputeSquare(sq);
-  const locKeys=Object.keys(sqNet);
-  const xoNet=pnlComputeXola(xo, locKeys, disp);
-  const labor=pnlComputeLabor(pay, disp);
-  const overhead=pnlComputeOverhead(disp);
+  const xoNet=pnlComputeXola(xo, Object.keys(sqNet), disp);
+  const revKeys=[...new Set([...Object.keys(sqNet),...Object.keys(xoNet)])];
+  const labor=pnlComputeLabor(pay, disp, revKeys);
+  // Salaried staff who don't clock in — charge their monthly salary to their location (HQ by default).
+  (state.salaried||[]).forEach(s=>{ const k=pnlResolve(s.location||'HQ', revKeys); labor[k]=(labor[k]||0)+(+s.monthly||0); if(!disp[k]) disp[k]=(s.location||'HQ'); });
+  const overhead=pnlComputeOverhead(disp, revKeys);
+  try{ const names=revKeys.map(k=>disp[k]).filter(Boolean); if(names.length) state.pnlLocs=[...new Set(names)]; }catch(e){}
   const cogsPct=pnlCogsPct();
 
   const allKeys=[...new Set([...Object.keys(sqNet),...Object.keys(xoNet),...Object.keys(labor),...Object.keys(overhead)])];
@@ -133,8 +139,20 @@ function renderPnlBody(bundle){
       `</tbody></table></div></div>`;
   }
 
-  html+=`<div class="disclaimer">Rough operating P&amp;L for ${esc(pnlMonthLabel())}. Revenue = Square net sales + Xola tour revenue for the month. COGS is an assumed % of revenue (edit above) — not your real cost of goods. Overhead = recurring monthly expenses from the Overhead screen; Labor = timecard hours × pay rates. This is a planning snapshot, not accounting — reconcile in QuickBooks.</div>`;
+  // Location matcher — anything with overhead/labor but no matching sales location.
+  const orphans=allKeys.filter(k=>revKeys.indexOf(k)<0 && ((overhead[k]||0)>0 || (labor[k]||0)>0));
+  if(orphans.length && revKeys.length){
+    html+=`<div class="card" style="border-left:3px solid var(--amber)"><h3>Match locations</h3><div class="hint">These have overhead or labor but don’t match a sales location (usually a spelling difference like “Church St” vs Square’s “Church S”). Point each at the right sales location so they merge into one P&amp;L row.</div>
+      <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Unmatched (from expenses / labor)</th><th>Merge into sales location</th></tr></thead><tbody>`+
+      orphans.map(k=>`<tr><td><b>${esc(disp[k]||k)}</b></td><td><select onchange="pnlSetLocAlias('${esc(disp[k]||k).replace(/'/g,"\\'")}',this.value)">
+        <option value="">— keep separate —</option>
+        ${revKeys.map(rk=>`<option value="${esc(disp[rk])}">${esc(disp[rk])}</option>`).join('')}
+      </select></td></tr>`).join('')+
+      `</tbody></table></div></div>`;
+  }
+  html+=`<div class="disclaimer">Rough operating P&amp;L for ${esc(pnlMonthLabel())}. Revenue = Square net sales + Xola tour revenue <b>booked</b> in the month (what sold, whether or not the tour has run yet). COGS is an assumed % of revenue (edit above) — not your real cost of goods. Overhead = recurring monthly expenses from the Overhead screen; Labor = timecard hours × pay rates. This is a planning snapshot, not accounting — reconcile in QuickBooks.</div>`;
   box.innerHTML=html;
 }
 function pnlSetCogs(v){ if(!requireCap('setup'))return; if(!state.settings)state.settings={}; state.settings.cogsPct=Math.max(0,Math.min(100,+v||0)); save('Set COGS %'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
 function pnlSetXolaMap(akey,loc){ if(!requireCap('setup'))return; if(!state.pnlXolaMap)state.pnlXolaMap={}; if(loc) state.pnlXolaMap[akey]=loc; else delete state.pnlXolaMap[akey]; save('Mapped Xola account'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
+function pnlSetLocAlias(orphanName, canonical){ if(!requireCap('setup'))return; if(!state.locAlias)state.locAlias={}; const k=pnlNorm(orphanName); if(canonical) state.locAlias[k]=canonical; else delete state.locAlias[k]; save('Merged a location'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
