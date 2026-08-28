@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mikey Systems — Distilled Spirits Plant</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="appc.css">
 </head>
 <body>
 <header class="app">
@@ -17,7 +17,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828c</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -93,6 +93,16 @@
         <div><div class="an">Payroll</div><div class="ad">Pay-period hours &amp; tips per employee &mdash; both Square accounts, all locations.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
+      <div class="apptile cap-setup" style="cursor:pointer" onclick="switchView('expenses')">
+        <div class="ai" style="background:rgba(63,125,84,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3f7d54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div>
+        <div><div class="an">Overhead &amp; Expenses</div><div class="ad">Rent, utilities, insurance &amp; more &mdash; true overhead by location.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
+      <div class="apptile cap-setup" style="cursor:pointer" onclick="switchView('pnl')">
+        <div class="ai" style="background:rgba(90,62,143,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a3e8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></div>
+        <div><div class="an">Rough P&amp;L</div><div class="ad">Revenue, COGS, overhead &amp; labor &mdash; estimated net by location, by month.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('marketing')">
         <div class="ai" style="background:rgba(201,138,43,.16)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c98a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-6v14L3 13v-2z"/><path d="M7 12v5a1 1 0 0 0 1 1h2"/></svg></div>
         <div><div class="an">Marketing</div><div class="ad">Brand assets &amp; photos, plus the audience sync &amp; thank-you journey.</div></div>
@@ -113,7 +123,15 @@
     </div>
 
     <div class="grid g2" style="margin-top:18px">
-      <div class="card"><h3>Needs attention</h3><div id="homeAlerts"></div></div>
+      <div class="card"><h3>Needs attention</h3>
+        <div class="cap-setup" id="attnForm" style="margin:0 0 12px;display:none">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="attn_text" placeholder="Post an alert…" style="flex:1;min-width:160px">
+            <select id="attn_for" style="max-width:170px"></select>
+            <button class="btn sm" onclick="addAttention()">Post</button>
+          </div>
+        </div>
+        <div id="homeAlerts"></div></div>
       <div class="card"><h3>Quick actions</h3>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
           <button class="btn" onclick="switchView('entry')">Add Entry</button>
@@ -679,6 +697,7 @@
       </div>
       <div class="row-actions" style="margin-top:12px">
         <button class="btn" id="orderCreate">Create order &amp; remove from bond</button>
+        <button class="btn gray" id="orderCancelEdit" style="display:none">Cancel edit</button>
       </div>
     </div>
     <div class="card">
@@ -787,6 +806,17 @@
       </div>
     </div>
 
+    <div class="card cap-setup">
+      <h3>Nightly Sales Email</h3>
+      <p class="hint">A per-location sales summary — each employee's transaction count and average ticket — emails automatically every night (~9&nbsp;PM). Enter who should receive it, comma-separated. Uses your Square accounts and the Resend email set up in Netlify.</p>
+      <div><label class="fld">Send to <span style="font-weight:400;color:var(--muted)">— emails, comma-separated</span></label><input type="text" id="s_salesEmail" placeholder="you@company.com, manager@company.com"></div>
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn" onclick="saveSalesEmail()">Save recipients</button>
+        <button class="btn gray" onclick="sendSalesTest()">Send test now</button>
+        <span id="salesTestMsg" class="hint" style="margin:0"></span>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Support</h3>
       <p class="hint">Questions or an issue with the app or a QuickBooks sync? Contact <a href="mailto:michael.hinds@gmail.com" style="color:var(--copper);font-weight:600">michael.hinds@gmail.com</a>. QuickBooks errors show an Intuit reference id (intuit_tid) to speed up troubleshooting.</p>
@@ -832,19 +862,24 @@
 
     <div class="card cap-users">
       <h3>👤 Users &amp; Access</h3>
-      <p class="hint">Require a login and control what each person can do. Roles: <b>Admin</b> (everything, incl. managing users), <b>Editor</b> (add/edit data &amp; run reports, no deleting/rewind/setup), <b>Reports</b> (view &amp; generate reports only), <b>Viewer</b> (read-only). This is UI-level access control for trusted staff — the data still lives in your synced workspace, so it deters mistakes and casual access but isn't hardened security.</p>
+      <p class="hint">Require a login and control what each person can do. Roles: <b>Admin</b> (everything, incl. managing users), <b>Editor</b> (add/edit data &amp; run reports), <b>Manager</b> / <b>Barrel Manager</b> (add/edit data; no financials — tune per-section access below), <b>Reports</b> (reports only), <b>Viewer</b> (read-only). This is UI-level access control for trusted staff — the data still lives in your synced workspace, so it deters mistakes and casual access but isn't hardened security.</p>
       <div id="authState"></div>
       <div id="userMgmt" style="display:none">
         <div class="tablewrap" style="border:0;box-shadow:none;margin-top:6px"><table><thead><tr><th>Name</th><th>Role</th><th class="noprint"></th></tr></thead><tbody id="userBody"></tbody></table></div>
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
           <button class="btn" id="userSave">Save user</button>
           <button class="btn gray" id="userCancel" style="display:none">Cancel</button>
+        </div>
+        <div class="cap-setup" style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px">
+          <h3 style="font-size:15px;margin:0 0 4px">Roles &amp; access — what each role can see</h3>
+          <p class="hint" style="margin:0 0 12px">Pick a role to see and adjust which sections it can open. For example, <b>Barrel Manager</b> is set up to hide Payroll and the financial reports.</p>
+          <div id="rolePanel"></div>
         </div>
       </div>
     </div>
@@ -920,9 +955,47 @@
     <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Weekly auto-replies to your Google reviews &mdash; positive ones posted for you, low stars held here for your approval.</p>
     <div id="reviewsBody" style="margin-top:16px"></div>
   </section>
+
+  <section class="view" id="view-expenses">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h1 style="font-size:29px;margin:0">Overhead &amp; Expenses</h1>
+    <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Track fixed costs per location &mdash; rent, utilities, insurance and the rest &mdash; for true overhead by location. Admin only.</p>
+
+    <div class="card" id="expFormCard" style="margin-top:16px">
+      <h3>Add an expense</h3>
+      <div class="grid g3">
+        <div><label class="fld">Location</label><span id="ex_location_wrap"></span><datalist id="exLocList"></datalist></div>
+        <div><label class="fld">Category</label><select id="ex_cat"></select></div>
+        <div><label class="fld">Amount ($)</label><input type="number" step="0.01" min="0" id="ex_amount" placeholder="0.00"></div>
+      </div>
+      <div class="grid g3" style="margin-top:12px">
+        <div><label class="fld">Frequency</label><select id="ex_freq"></select></div>
+        <div style="grid-column:span 2"><label class="fld">Note</label><input type="text" id="ex_note" placeholder="Optional — e.g. landlord, policy #, provider"></div>
+      </div>
+      <div class="row-actions" style="margin-top:14px"><button class="btn" onclick="expAdd()">Add expense</button></div>
+    </div>
+
+    <div id="expBody"></div>
+  </section>
+
+  <section class="view" id="view-pnl">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px">
+      <div>
+        <h1 style="font-size:29px;margin:0">Rough P&amp;L by Location</h1>
+        <p style="color:var(--muted);margin:4px 0 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Revenue (Square + Xola) &minus; COGS &minus; overhead &minus; labor, by location, by month. Admin only.</p>
+      </div>
+      <div class="row-actions" style="margin:0">
+        <button class="btn sm gray" onclick="pnlShift(-1)">&larr; Prev</button>
+        <span id="pnlMonthLabel" style="font-weight:700;min-width:130px;text-align:center;font-family:-apple-system,Segoe UI,Roboto,sans-serif"></span>
+        <button class="btn sm gray" onclick="pnlShift(1)">Next &rarr;</button>
+      </div>
+    </div>
+    <div id="pnlBody" style="margin-top:12px"></div>
+  </section>
 </main>
 
-<script src="app1.js"></script><script src="app2.js"></script><script src="app3.js"></script><script src="app4.js"></script><script src="app5.js"></script><script src="app6.js"></script><script src="app7.js"></script><script src="app8.js"></script>
+<script src="app1c.js"></script><script src="app2c.js"></script><script src="app3c.js"></script><script src="app4c.js"></script><script src="app5c.js"></script><script src="app6c.js"></script><script src="app7c.js"></script><script src="app8c.js"></script><script src="app9c.js"></script><script src="app10c.js"></script>
 </body>
 </html>
 
