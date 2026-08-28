@@ -254,7 +254,7 @@ async function cloudLoad(){
     setSync('offline');
   }
 }
-let saveTimer=null, saving=false, pending=false;
+let saveTimer=null, saving=false, pending=false, unsaved=false;
 let lastSnap=null; const HIST_MAX=25;
 // data-only snapshot (excludes the history log itself, so snapshots never nest)
 function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c.dailyBackups; delete c.brandLogos; return JSON.stringify(c); }
@@ -282,6 +282,7 @@ function save(label,ref){
 function persist(){
   try{ localStorage.setItem(cacheKey(),JSON.stringify(state)); }catch(e){}
   if(!cloudAvailable){ setSync('offline'); return; }
+  unsaved=true;
   setSync('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(()=>cloudSave(),650);
 }
 function rewindTo(id){
@@ -339,12 +340,60 @@ async function cloudSave(silent){
         try{ refreshAll(); }catch(e){}
         if(!silent) flash('Merged in changes from another device.');
       }
+      unsaved=false;
       setSync('synced');
     } else { setSync(r.ok?'synced':'offline'); }
   }catch(e){ cloudAvailable=false; setSync('offline'); }
   saving=false;
   if(pending){ pending=false; cloudSave(silent); }
 }
+
+/* ===== Anti-data-loss safeguards ==========================================
+   Four layers so a change (especially expenses/salaried) can't vanish:
+   1) flushSave()  — fire a pending debounced save immediately.
+   2) refresh-on-return — when a backgrounded tab becomes visible again, pull
+      the latest so you never edit (and then save over) stale data.
+   3) flush-on-leave — when the tab is hidden/closed, push any unsaved change
+      right away (sendBeacon survives the page going away).
+   4) background auto-sync — an idle, visible tab quietly re-syncs every ~25s
+      so it can't drift out of date while it sits open. ======================= */
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; } if(unsaved && cloudAvailable && !saving){ cloudSave(true); } }
+async function resync(){
+  if(!WS || !cloudAvailable || saving) return;
+  try{ await cloudLoad(); try{ refreshAll(); }catch(e){} }catch(e){}
+}
+// Best-effort flush that survives the page unloading: send the current state
+// straight to the data endpoint so an in-flight expense isn't lost on close.
+function beaconFlush(){
+  try{
+    if(!unsaved || !cloudAvailable || !WS) return;
+    const payload=Object.assign({},state,{_baseSavedAt:cloudBaseSavedAt||null});
+    const body=new Blob([JSON.stringify(payload)],{type:'application/json'});
+    if(navigator.sendBeacon && navigator.sendBeacon(`${API}?ws=${encodeURIComponent(WS)}`, body)){ unsaved=false; return; }
+    // Fallback: synchronous-ish keepalive fetch.
+    fetch(`${API}?ws=${encodeURIComponent(WS)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});
+    unsaved=false;
+  }catch(e){}
+}
+(function wireSafeguards(){
+  try{
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden'){ flushSave(); beaconFlush(); }
+      else if(document.visibilityState==='visible'){ resync(); }
+    });
+    window.addEventListener('pagehide',beaconFlush);
+    window.addEventListener('beforeunload',()=>{ flushSave(); beaconFlush(); });
+    // Idle background re-sync: only when the tab is visible, nothing is in
+    // flight, and the user isn't actively typing in a field (so it can't wipe
+    // a half-filled form).
+    setInterval(()=>{
+      if(document.visibilityState!=='visible' || saving || unsaved) return;
+      const ae=document.activeElement, tag=ae&&ae.tagName;
+      if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') return;
+      resync();
+    }, 25000);
+  }catch(e){}
+})();
 
 /* ================= Helpers ================= */
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
