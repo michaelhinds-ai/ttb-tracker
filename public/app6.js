@@ -119,13 +119,34 @@ function payRateEditor(data){
     <p class="hint" style="margin:8px 0 0">Set each person's hourly wage. Labor cost = hours worked &times; this rate. Saved to your workspace only &mdash; never sent to Square.</p>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Employee</th><th>Title</th><th class="num">Hourly rate</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
-function paySalariedEditor(){
+// Build the salaried-staff Name control: a dropdown of Square employees (title
+// auto-fills from the pick), plus an "Other" option that reveals a text field
+// for anyone not on Square. Falls back to a plain text input if no roster loaded.
+function salNameControl(data){
+  const seen={};
+  ((data&&data.byEmployee)||[]).forEach(e=>{ const k=((e.name||'')+'|'+(e.title||'')).toLowerCase(); if((e.name||'').trim()&&!seen[k]) seen[k]={name:e.name,title:e.title||''}; });
+  const people=Object.values(seen).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(!people.length){ return `<input id="sal_name" placeholder="Full name">`; }
+  const opts=people.map(p=>`<option value="${esc(p.name)}" data-title="${esc(p.title||'')}">${esc(p.name)}${p.title?' — '+esc(p.title):''}</option>`).join('');
+  return `<select id="sal_name" onchange="salPickEmp(this)"><option value="">Select employee…</option>${opts}<option value="__other">Other (type name)…</option></select>
+    <input id="sal_name_other" placeholder="Full name" style="display:none;margin-top:6px">`;
+}
+function salPickEmp(sel){
+  const other=document.getElementById('sal_name_other');
+  const title=document.getElementById('sal_title');
+  if(sel.value==='__other'){ if(other){ other.style.display=''; other.value=''; other.focus(); } if(title) title.value=''; return; }
+  if(other) other.style.display='none';
+  const opt=sel.options[sel.selectedIndex];
+  const t=opt?opt.getAttribute('data-title'):'';
+  if(title && t) title.value=t;
+}
+function paySalariedEditor(data){
   const list=(state.salaried||[]);
   const rows=list.map(s=>`<tr><td>${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.title||'')}</td><td class="num">${money(s.monthly)}/mo</td><td>${esc(s.location||'HQ')}</td><td class="noprint"><button class="del" onclick="delSalaried('${s.id}')">Del</button></td></tr>`).join('');
   return `<details id="paySalDetails" class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Salaried staff (monthly) &mdash; admin</summary>
     <p class="hint" style="margin:8px 0 0">For people who don't clock in. Their monthly salary is charged to a location (default HQ) in the <b>Rough P&amp;L</b> labor &mdash; it doesn't come from timecards, so it isn't in the hourly totals above.</p>
     <div class="grid g3" style="margin-top:10px">
-      <div><label class="fld">Name</label><input id="sal_name" placeholder="Full name"></div>
+      <div><label class="fld">Name</label>${salNameControl(data)}</div>
       <div><label class="fld">Title</label><input id="sal_title" placeholder="e.g. Owner, GM"></div>
       <div><label class="fld">Monthly salary ($)</label><input id="sal_monthly" type="number" step="0.01" min="0" placeholder="0.00"></div>
     </div>
@@ -136,7 +157,7 @@ function paySalariedEditor(){
     ${list.length?`<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Name</th><th>Title</th><th class="num">Monthly</th><th>Location</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
   </details>`;
 }
-function addSalaried(){ if(!requireCap('setup'))return; const g=id=>((document.getElementById(id)||{}).value||''); const name=g('sal_name').trim(), title=g('sal_title').trim(), monthly=Math.round((+g('sal_monthly')||0)*100)/100, location=(g('sal_loc').trim()||'HQ');
+function addSalaried(){ if(!requireCap('setup'))return; const g=id=>((document.getElementById(id)||{}).value||''); let name=g('sal_name').trim(); if(name==='__other'||!name) name=g('sal_name_other').trim(); const title=g('sal_title').trim(), monthly=Math.round((+g('sal_monthly')||0)*100)/100, location=(g('sal_loc').trim()||'HQ');
   if(!name){ alert('Enter a name.'); return; } if(!(monthly>0)){ alert('Enter a monthly salary.'); return; }
   if(!state.salaried)state.salaried=[]; state.salaried.push({id:uid(),name,title,monthly,location});
   save('Added salaried staff — '+name); const d=_payCache[_payOffset]; if(d) renderPayrollBody(d, _payCache[_payOffset-1]?buildPrior(_payCache[_payOffset-1]):null); const det=document.getElementById('paySalDetails'); if(det) det.open=true; flash('Salaried staff added.'); }
@@ -229,7 +250,7 @@ function renderPayrollBody(data, prior){
 
   if(!be.length){ box.innerHTML=`<div class="empty" style="padding:40px"><div class="big">&#128100;</div>No hours or tips recorded for this pay period yet.</div>`; return; }
 
-  if(showLabor) html+=payLaborSummary(data)+payRateEditor(data)+paySalariedEditor();
+  if(showLabor) html+=payLaborSummary(data)+payRateEditor(data)+paySalariedEditor(data);
   html+=detail;
   html+=`<div class="note">Arrows compare each person to the <b>previous pay period</b> &mdash; <span style="color:var(--amber);font-weight:700">amber &ge;25%</span>, <span style="color:var(--red);font-weight:700">red &ge;50%</span>. A big jump in hours often means someone forgot to clock out.</div>`;
   if(anyOpen) html+=`<div class="note">A <span style="color:var(--amber)">&bull;</span> next to a name means that person is still clocked in &mdash; their hours are counted through right now and will update when they clock out.</div>`;
