@@ -32,11 +32,15 @@ export default async (req) => {
   const today = new Date().toISOString().slice(0, 10);
   const startDate = body.startDate || url.searchParams.get("startDate") || today;
   const endDate = body.endDate || url.searchParams.get("endDate") || startDate;
+  // Optional exact upper bound (ISO datetime) so "today so far" compares fairly to
+  // "same day last year, up to the same time."
+  const endCapISO = body.endCapISO || url.searchParams.get("endCapISO") || "";
 
   let tok; try { tok = await token(); } catch (e) { return json({ ok: false, error: "auth_error", detail: "Shopify auth failed (" + (e.status || "") + ")" }); }
   if (!tok) return json({ ok: false, error: "not_configured", detail: "Set SHOPIFY_CLIENT_ID/SECRET or SHOPIFY_ADMIN_TOKEN." });
 
-  const q = `created_at:>=${startDate} created_at:<=${endDate}`;
+  const upper = endCapISO || endDate;
+  const q = `created_at:>=${startDate} created_at:<=${upper}`;
   const query = `query($cursor: String) {
     orders(first: 250, after: $cursor, query: ${JSON.stringify(q)}) {
       edges { node { subtotalPriceSet { shopMoney { amount } } currentTotalPriceSet { shopMoney { amount currencyCode } } } }
