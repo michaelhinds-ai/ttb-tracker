@@ -59,7 +59,8 @@ function renderReviewsUI(st){
       <button class="btn sm" onclick="reviewsRun(this)">Run weekly now</button>
       <button class="btn ghost sm" onclick="gbpDisconnect()">Disconnect</button>
     </div></div>`;
-  if(st.error) html+=`<div class="note" style="border-left-color:var(--red);background:var(--red-bg)">Couldn’t reach Google: ${esc(st.detail||st.error)}. If you just connected, give the API approval a moment.</div>`;
+  if(st.error){ const d=String(st.detail||st.error||''); const perm=/403|permission|PERMISSION_DENIED|not been used|disabled|SERVICE_DISABLED|has not been used/i.test(d);
+    html+=`<div class="note" style="border-left-color:var(--red);background:var(--red-bg)">${perm?'Google hasn’t granted the review API access yet (or a required API isn’t enabled). This is expected until your Business Profile API request is approved — try again after Google approves it. ':'Couldn’t reach Google — '}<span style="color:var(--muted);font-size:12px">(${esc(d)})</span></div>`; }
   html+=`</div>`;
 
   // Needs-approval queue

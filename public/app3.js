@@ -439,14 +439,14 @@ function renderSalesReportOut(d){
   const from=(d.range&&d.range.from)||d.startDate, to=(d.range&&d.range.to)||d.endDate;
   const period=rtlPeriodLabel(from,to);
   if(!rows.length){ $('#sr_out').innerHTML=reportHeader('Sales by Location','Square retail & gift shop — net sales',period)+'<div class="empty">No sales in this period.</div>'; return; }
-  const totNet=rows.reduce((s,r)=>s+r.net,0), totOrders=rows.reduce((s,r)=>s+r.orders,0), totTax=rows.reduce((s,r)=>s+r.tax,0), totTips=rows.reduce((s,r)=>s+r.tips,0), totUnits=rows.reduce((s,r)=>s+r.units,0);
+  const totNet=rows.reduce((s,r)=>s+r.net,0), totOrders=rows.reduce((s,r)=>s+r.orders,0), totTax=rows.reduce((s,r)=>s+r.tax,0), totTips=rows.reduce((s,r)=>s+r.tips,0), totUnits=rows.reduce((s,r)=>s+r.units,0), totBottles=rows.reduce((s,r)=>s+(+r.bottles||0),0);
   const top=rows[0];
   const kpis=`<div class="kpis" style="margin:14px 0">`+[
     kpi('copper','Net Sales',money(totNet),`${totOrders} order${totOrders===1?'':'s'} · ${rows.length} location${rows.length===1?'':'s'}`),
     kpi('blue','Avg Ticket',money(totOrders?totNet/totOrders:0),'net sales per order'),
     kpi('ky','Sales Tax',money(totTax),'collected'),
     kpi('green','Top Location',money(top.net),esc(top.name)),
-    kpi('barrel','Units Sold',numf(totUnits,0),'line items'),
+    kpi('barrel','Bottles Sold',numf(totBottles,0),'tagged bottles'),
   ].join('')+`</div>`;
   // Legend (one entry per account)
   const legend=ok.length>1?`<div style="display:flex;flex-wrap:wrap;gap:14px;margin:2px 0 10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px">`+
@@ -462,14 +462,14 @@ function renderSalesReportOut(d){
     </div>`;
   }).join('')+`</div>`;
   const table=`<div class="tablewrap"><table><thead><tr>
-      <th>Location</th>${ok.length>1?'<th>Account</th>':''}<th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Units</th>
+      <th>Location</th>${ok.length>1?'<th>Account</th>':''}<th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th><th class="num">Tax</th><th class="num">Tips</th><th class="num">Bottles</th>
     </tr></thead><tbody>`+
-    rows.map(r=>`<tr><td>${esc(r.name)}</td>${ok.length>1?`<td>${esc(r.acct)}</td>`:''}<td class="num">${r.orders}</td><td class="num">${money(r.net)}</td><td class="num">${money(r.avg)}</td><td class="num">${money(r.tax)}</td><td class="num">${money(r.tips)}</td><td class="num">${numf(r.units,0)}</td></tr>`).join('')+
-    `<tr class="total" style="font-weight:700"><td>All locations</td>${ok.length>1?'<td></td>':''}<td class="num">${totOrders}</td><td class="num">${money(totNet)}</td><td class="num">${money(totOrders?totNet/totOrders:0)}</td><td class="num">${money(totTax)}</td><td class="num">${money(totTips)}</td><td class="num">${numf(totUnits,0)}</td></tr>`+
+    rows.map(r=>`<tr><td>${esc(r.name)}</td>${ok.length>1?`<td>${esc(r.acct)}</td>`:''}<td class="num">${r.orders}</td><td class="num">${money(r.net)}</td><td class="num">${money(r.avg)}</td><td class="num">${money(r.tax)}</td><td class="num">${money(r.tips)}</td><td class="num">${r.bottles!=null?numf(r.bottles,0):'—'}</td></tr>`).join('')+
+    `<tr class="total" style="font-weight:700"><td>All locations</td>${ok.length>1?'<td></td>':''}<td class="num">${totOrders}</td><td class="num">${money(totNet)}</td><td class="num">${money(totOrders?totNet/totOrders:0)}</td><td class="num">${money(totTax)}</td><td class="num">${money(totTips)}</td><td class="num">${numf(totBottles,0)}</td></tr>`+
     `</tbody></table></div>`;
   $('#sr_out').innerHTML=reportHeader('Sales by Location','Square retail & gift shop — net sales (after discounts, before tax & tips)',period)+kpis+
     `<h4>Net sales by location</h4>${legend}${chart}<h4 style="margin-top:20px">Detail</h4>${table}`+
-    `<div class="disclaimer">Completed Square orders for the selected period, across all connected accounts and locations. Net sales exclude tax and tips; empty back-office locations are hidden. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
+    `<div class="disclaimer">Completed Square orders for the selected period, across all connected accounts and locations. Net sales exclude tax and tips; empty back-office locations are hidden. <b>Bottles</b> counts line items tagged with <b>TTB Bottle Size (mL)</b> in Square — accounts without those tags show a dash. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
 }
 async function srRunMonthly(){
   if(!requireCap('reports'))return;
