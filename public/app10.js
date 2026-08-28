@@ -55,7 +55,7 @@ function pnlComputeSquare(sq){
   // net sales by location (exclude empty back-office rows)
   const byLoc={}; const disp={};
   const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
-  if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const k=pnlNorm(l.name); byLoc[k]=(byLoc[k]||0)+(+l.netSales||0); disp[k]=disp[k]||l.name; }); }); }
+  if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const k=pnlResolve(l.name); byLoc[k]=(byLoc[k]||0)+(+l.netSales||0); disp[k]=disp[k]||pnlAliasTargetName(l.name); }); }); }
   return { byLoc, disp };
 }
 function pnlXolaAccounts(xo){ return (xo&&!xo.error&&Array.isArray(xo.accounts))?xo.accounts.filter(a=>a.ok!==false):[]; }
@@ -64,22 +64,48 @@ function pnlComputeXola(xo, locKeys, disp){
   const map=state.pnlXolaMap||{}; const byLoc={};
   pnlXolaAccounts(xo).forEach(a=>{ const akey=a.key||a.label; let target=map[akey];
     if(!target){ const n=pnlNorm(a.label); target=locKeys.find(k=>k===n)||locKeys.find(k=>k.includes(n)||n.includes(k))||''; }
-    const k=target?pnlNorm(target):pnlNorm(a.label||'Xola');
-    byLoc[k]=(byLoc[k]||0)+(+a.netSales||0); if(!disp[k]) disp[k]=(target||a.label||'Xola');
+    const raw=target||a.label||'Xola'; const k=pnlResolve(raw);
+    byLoc[k]=(byLoc[k]||0)+(+a.netSales||0); if(!disp[k]) disp[k]=pnlAliasTargetName(raw);
   });
   return byLoc;
 }
-// Resolve a location name to a canonical revenue-location key, honoring the saved
-// alias map (so "Church St" the user typed can merge into Square's "Church S").
-function pnlResolve(name, revKeys){ const n=pnlNorm(name); if(revKeys.indexOf(n)>=0) return n; const a=(state.locAlias||{})[n]; if(a) return pnlNorm(a); return n; }
+// Resolve a location name to its canonical KEY, following the saved alias map
+// (transitively, so A→B→C collapses to C). Alias wins even for a real sales
+// location, so two Square rows (e.g. both "Back Office" spellings) can merge.
+// Extra args are ignored — old callers that passed revKeys still work.
+function pnlResolve(name){
+  let n=pnlNorm(name); const map=state.locAlias||{}; const seen=new Set();
+  while(map[n]!=null && map[n]!=='' && !seen.has(n)){ seen.add(n); n=pnlNorm(map[n]); }
+  return n;
+}
+// The display NAME a location resolves to after following its aliases (so a
+// merged row shows the target's real name, not the source spelling).
+function pnlAliasTargetName(name){
+  let cur=name, n=pnlNorm(name); const map=state.locAlias||{}; const seen=new Set();
+  while(map[n]!=null && map[n]!=='' && !seen.has(n)){ seen.add(n); cur=map[n]; n=pnlNorm(cur); }
+  return cur;
+}
 function pnlComputeLabor(pay, disp, revKeys){
   const byLoc={};
-  if(pay&&pay.ok){ (pay.accounts||[]).forEach(a=>(a.locations||[]).forEach(l=>{ let c=0; (l.employees||[]).forEach(e=>{ c+=laborCost(e); }); const k=pnlResolve(l.name, revKeys); byLoc[k]=(byLoc[k]||0)+c; if(!disp[k]) disp[k]=l.name; })); }
+  if(pay&&pay.ok){ (pay.accounts||[]).forEach(a=>(a.locations||[]).forEach(l=>{ let c=0; (l.employees||[]).forEach(e=>{ c+=laborCost(e); }); const k=pnlResolve(l.name); byLoc[k]=(byLoc[k]||0)+c; if(!disp[k]) disp[k]=pnlAliasTargetName(l.name); })); }
   return byLoc;
+}
+// Distinct RAW locations (pre-merge) across Square, payroll, expenses and
+// salaried — the source list for the Combine-locations tool. Square sales per
+// raw location help tell near-duplicates apart (e.g. BACK-OFFICE vs Back Office).
+function pnlRawLocs(sq, pay){
+  const m=new Map();
+  const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
+  const add=(name,net)=>{ if(!name) return; const k=pnlNorm(name); if(!m.has(k)) m.set(k,{key:k,name:name,sqNet:0}); if(net) m.get(k).sqNet+=(+net||0); };
+  if(sq&&!sq.error) (sq.accounts||[]).filter(a=>a.ok).forEach(a=>(a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>add(l.name,+l.netSales||0)));
+  if(pay&&pay.ok) (pay.accounts||[]).forEach(a=>(a.locations||[]).forEach(l=>add(l.name,0)));
+  (state.expenses||[]).forEach(e=>add(e.location,0));
+  (state.salaried||[]).forEach(s=>add(s.location||'HQ',0));
+  return [...m.values()].sort((a,b)=>b.sqNet-a.sqNet||a.name.localeCompare(b.name));
 }
 function pnlComputeOverhead(disp, revKeys){
   const byLoc={};
-  (state.expenses||[]).forEach(e=>{ if((e.freq||'')==='onetime') return; const k=pnlResolve(e.location, revKeys); byLoc[k]=(byLoc[k]||0)+expPerMonth(e); if(!disp[k]) disp[k]=e.location; });
+  (state.expenses||[]).forEach(e=>{ if((e.freq||'')==='onetime') return; const k=pnlResolve(e.location); byLoc[k]=(byLoc[k]||0)+expPerMonth(e); if(!disp[k]) disp[k]=pnlAliasTargetName(e.location); });
   return byLoc;
 }
 
@@ -91,7 +117,7 @@ function renderPnlBody(bundle){
   const revKeys=[...new Set([...Object.keys(sqNet),...Object.keys(xoNet)])];
   const labor=pnlComputeLabor(pay, disp, revKeys);
   // Salaried staff who don't clock in — charge their monthly salary to their location (HQ by default).
-  (state.salaried||[]).forEach(s=>{ const k=pnlResolve(s.location||'HQ', revKeys); labor[k]=(labor[k]||0)+(+s.monthly||0); if(!disp[k]) disp[k]=(s.location||'HQ'); });
+  (state.salaried||[]).forEach(s=>{ const k=pnlResolve(s.location||'HQ'); labor[k]=(labor[k]||0)+(+s.monthly||0); if(!disp[k]) disp[k]=pnlAliasTargetName(s.location||'HQ'); });
   const overhead=pnlComputeOverhead(disp, revKeys);
   try{ const names=revKeys.map(k=>disp[k]).filter(Boolean); if(names.length) state.pnlLocs=[...new Set(names)]; }catch(e){}
   const cogsPct=pnlCogsPct();
@@ -151,15 +177,19 @@ function renderPnlBody(bundle){
       `</tbody></table></div></div>`;
   }
 
-  // Location matcher — anything with overhead/labor but no matching sales location.
-  const orphans=allKeys.filter(k=>revKeys.indexOf(k)<0 && ((overhead[k]||0)>0 || (labor[k]||0)>0));
-  if(orphans.length && revKeys.length){
-    html+=`<div class="card" style="border-left:3px solid var(--amber)"><h3>Match locations</h3><div class="hint">These have overhead or labor but don’t match a sales location (usually a spelling difference like “Church St” vs Square’s “Church S”). Point each at the right sales location so they merge into one P&amp;L row.</div>
-      <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Unmatched (from expenses / labor)</th><th>Merge into sales location</th></tr></thead><tbody>`+
-      orphans.map(k=>`<tr><td><b>${esc(disp[k]||k)}</b></td><td><select onchange="pnlSetLocAlias('${esc(disp[k]||k).replace(/'/g,"\\'")}',this.value)">
-        <option value="">— keep separate —</option>
-        ${revKeys.map(rk=>`<option value="${esc(disp[rk])}">${esc(disp[rk])}</option>`).join('')}
-      </select></td></tr>`).join('')+
+  // Combine locations — merge ANY location into another (revenue locations too,
+  // so two Square spellings like "BACK-OFFICE" and "Back Office" can both roll
+  // into Nashville Barrel Co). Revenue, overhead and labor all move together.
+  const raws=pnlRawLocs(sq,pay);
+  if(raws.length>1){
+    html+=`<div class="card" style="border-left:3px solid var(--amber)"><h3>Combine locations</h3><div class="hint">Merge any location into another so they share one P&amp;L row. Square sales, overhead and labor all move together. Pick “— keep separate —” to undo a merge.</div>
+      <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Location</th><th class="num">Square sales</th><th>Merge into</th></tr></thead><tbody>`+
+      raws.map(r=>{ const cur=(state.locAlias||{})[r.key]||''; const curK=pnlNorm(cur);
+        const opts=raws.filter(o=>o.key!==r.key).map(o=>`<option value="${esc(o.name)}" ${curK===o.key?'selected':''}>${esc(o.name)}</option>`).join('');
+        return `<tr><td><b>${esc(r.name)}</b></td><td class="num">${r.sqNet?money(r.sqNet):'—'}</td>
+          <td><select onchange="pnlSetLocAlias('${esc(r.name).replace(/'/g,"\\'")}',this.value)">
+            <option value="">— keep separate —</option>${opts}
+          </select></td></tr>`; }).join('')+
       `</tbody></table></div></div>`;
   }
   html+=`<div class="disclaimer">Rough operating P&amp;L for ${esc(pnlMonthLabel())}. Revenue = Square net sales + Xola tour revenue <b>booked</b> in the month (what sold, whether or not the tour has run yet). COGS is an assumed % of revenue (edit above) — not your real cost of goods. Overhead = recurring monthly expenses from the Overhead screen; Labor = timecard hours × pay rates. This is a planning snapshot, not accounting — reconcile in QuickBooks.</div>`;
