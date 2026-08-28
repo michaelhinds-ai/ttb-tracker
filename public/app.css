@@ -161,6 +161,13 @@
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
+  /* When locked (login required / still loading) the whole app is hidden so no
+     data shows until a valid PIN. Only the login card or loading screen shows. */
+  body.locked > header.app, body.locked > main{ display:none !important; }
+  #bootLoading{position:fixed;inset:0;background:#241812;color:#e8dcc8;z-index:480;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:-apple-system,Segoe UI,sans-serif}
+  #bootLoading .sp{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.18);border-top-color:#c9a66b;animation:bootspin 1s linear infinite}
+  #bootLoading .t{font-size:14px;letter-spacing:.02em;opacity:.85}
+  @keyframes bootspin{to{transform:rotate(360deg)}}
   .authwrap{position:fixed;inset:0;background:#241812;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,Segoe UI,sans-serif}
   .authcard{background:#fbf6ec;max-width:400px;width:100%;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.5);overflow:hidden}
   .authcard .hd{background:#3a2a1c;color:#f4e9d6;padding:20px 22px}

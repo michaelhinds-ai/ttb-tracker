@@ -752,6 +752,9 @@ async function boot(rejoin){
   if(!WS){ WS=readWSfromHash()||localStorage.getItem('ttb_ws')||genKey(); }
   writeWStoHash(WS); localStorage.setItem('ttb_ws',WS);
   cloudAvailable=(location.protocol!=='file:');
+  // Lock the screen up front so no dashboard shows before we know whether a
+  // login is required (and while the cloud load is still in flight).
+  try{ lockApp(); showBootLoading(); }catch(e){}
   setSync('connecting');
   await cloudLoad();
   if(!state.history) state.history=[]; lastSnap=dataOnly();

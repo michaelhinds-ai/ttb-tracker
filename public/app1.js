@@ -61,10 +61,15 @@ function loadSession(){
 }
 function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
 function clearSession(){ SESSION=null; try{ localStorage.removeItem(sessKey()); sessionStorage.removeItem(sessKey()); }catch(e){} }
+// Loading screen shown while the app is locked and no login card is up yet.
+function showBootLoading(){ if(document.getElementById('bootLoading')) return; const el=document.createElement('div'); el.id='bootLoading'; el.innerHTML='<div class="sp"></div><div class="t">Loading Mikey Systems…</div>'; document.body.appendChild(el); }
+function hideBootLoading(){ const el=document.getElementById('bootLoading'); if(el) el.remove(); }
+function lockApp(){ document.body.classList.add('locked'); }
+function unlockApp(){ document.body.classList.remove('locked'); hideBootLoading(); }
 function gateBoot(){
   loadSession();
-  if(authOn() && !SESSION){ showLogin(); return false; }
-  applyPermissions(); return true;
+  if(authOn() && !SESSION){ lockApp(); hideBootLoading(); showLogin(); return false; }
+  unlockApp(); applyPermissions(); return true;
 }
 function showLogin(){
   let ov=$('#authWrap'); if(ov) ov.remove();
@@ -82,13 +87,13 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
+    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
   setTimeout(()=>$('#authPin').focus(),50);
 }
-function logout(){ clearSession(); if(authOn()){ showLogin(); } }
+function logout(){ clearSession(); if(authOn()){ lockApp(); showLogin(); } }
 function applyPermissions(){
   const role=currentRole();
   const b=document.body;
@@ -227,8 +232,14 @@ function baseKey(){ return 'ttb_base_'+WS; }
 function adoptCloud(d){ state=normalize(d); cloudBaseSavedAt=d._savedAt||null; try{localStorage.setItem(cacheKey(),JSON.stringify(state));}catch(e){} try{ if(cloudBaseSavedAt) localStorage.setItem(baseKey(),cloudBaseSavedAt); }catch(e){} setSync('synced'); }
 async function cloudLoad(){
   try{
-    const r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{cache:'no-store'});
+    // Hard timeout so a hung request (cold serverless start, flaky iPad/Safari
+    // connection) can't leave startup stuck on "Connecting…". On timeout the
+    // fetch aborts, we fall back to the local cache, and boot proceeds.
+    const ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const to=setTimeout(()=>{ if(ctl){ try{ctl.abort();}catch(e){} } }, 12000);
+    let r; try{ r=await fetch(`${API}?ws=${encodeURIComponent(WS)}`,{cache:'no-store',signal:ctl?ctl.signal:undefined}); } finally { clearTimeout(to); }
     if(r.ok){
+      cloudAvailable=true; // reached the server — (re-)enable saving after any offline spell
       const d=await r.json();
       const cache=localStorage.getItem(cacheKey());
       const storedBase=localStorage.getItem(baseKey());
@@ -359,8 +370,15 @@ async function cloudSave(silent){
       so it can't drift out of date while it sits open. ======================= */
 function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; } if(unsaved && cloudAvailable && !saving){ cloudSave(true); } }
 async function resync(){
-  if(!WS || !cloudAvailable || saving) return;
-  try{ await cloudLoad(); try{ refreshAll(); }catch(e){} }catch(e){}
+  // No cloudAvailable guard here on purpose: after an offline spell we still
+  // want to retry so the app can recover and pull the real workspace.
+  if(!WS || saving) return;
+  try{
+    await cloudLoad();
+    // If the workspace we just loaded requires a login and no one is signed in
+    // (e.g. the first load had timed out to an empty state), gate now.
+    try{ if(typeof authOn==='function' && authOn() && !SESSION && !document.getElementById('authWrap')){ if(typeof gateBoot==='function') gateBoot(); } else { try{ refreshAll(); }catch(e){} } }catch(e){ try{ refreshAll(); }catch(e2){} }
+  }catch(e){}
 }
 // Best-effort flush that survives the page unloading: send the current state
 // straight to the data endpoint so an in-flight expense isn't lost on close.
