@@ -91,10 +91,16 @@ function renderPnlBody(bundle){
 
   const T=rows.reduce((t,r)=>({rev:t.rev+r.rev,square:t.square+r.square,xola:t.xola+r.xola,cogs:t.cogs+r.cogs,gross:t.gross+r.gross,oh:t.oh+r.oh,lab:t.lab+r.lab,net:t.net+r.net}),{rev:0,square:0,xola:0,cogs:0,gross:0,oh:0,lab:0,net:0});
 
-  const errs=[];
-  if(!sq||sq.error) errs.push('Square sales');
-  if(!xo||xo.error) errs.push('Xola');
-  if(!pay||!pay.ok) errs.push('Payroll hours');
+  // Diagnostics — say plainly why a column is $0.
+  const sqSt=(!sq||sq.error)?{loaded:false,ok:0,failed:0}:(()=>{const a=sq.accounts||[];return {loaded:true,ok:a.filter(x=>x.ok).length,failed:a.filter(x=>x.ok===false).length};})();
+  const notes=[];
+  if(!sqSt.loaded) notes.push('Square sales didn’t load — revenue here is Xola-only. Hit Reload.');
+  else if(sqSt.failed>0) notes.push('Square: '+sqSt.failed+' account'+(sqSt.failed===1?'':'s')+' failed to load this month (a whole month is a heavy pull) — Square revenue may be understated. Hit <b>Reload</b> to retry.');
+  else if(sqSt.ok===0) notes.push('Square returned no sales for this month.');
+  if(!xo||xo.error) notes.push('Xola didn’t load.');
+  if(!pay||!pay.ok) notes.push('Payroll hours didn’t load — Labor reads $0.');
+  else if(!(state.wages&&Object.keys(state.wages).length)) notes.push('No pay rates set — set hourly wages in <b>Payroll → Pay rates</b> and Labor fills in.');
+  if(!((state.expenses||[]).length)) notes.push('No expenses entered — add rent/utilities/etc. in <b>Overhead &amp; Expenses</b> and Overhead fills in.');
 
   const netCol=v=>`<td class="num" style="font-weight:700;color:${v>=0?'var(--green)':'var(--red)'}">${money(v)}</td>`;
   let html=`<div class="kpis" style="margin:0 0 16px">`+
@@ -103,10 +109,10 @@ function renderPnlBody(bundle){
     kpi('blue','Overhead + Labor',money(T.oh+T.lab),money(T.oh)+' + '+money(T.lab))+
     kpi(T.net>=0?'green':'red','Rough Net',money(T.net),T.net>=0?'estimated profit':'estimated loss')+`</div>`;
 
-  if(errs.length) html+=`<div class="note">Couldn’t load: ${esc(errs.join(', '))} — those columns may read $0. ${(!pay||!pay.ok)?'(Payroll needs the Business hours in Square; labor also needs pay rates set in Payroll.)':''}</div>`;
+  if(notes.length) html+=`<div class="note">`+notes.map(n=>`<div>&bull; ${n}</div>`).join('')+`</div>`;
 
   html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px"><div><h3 style="margin:0">P&amp;L by location — ${esc(pnlMonthLabel())}</h3><div class="hint">Rough estimate. COGS is an assumption, not actual cost of goods.</div></div>
-    <div style="display:flex;align-items:center;gap:6px"><label class="fld" style="margin:0">COGS %</label><input type="number" step="1" min="0" max="100" value="${cogsPct}" onchange="pnlSetCogs(this.value)" style="max-width:70px;text-align:right"></div></div>
+    <div style="display:flex;align-items:center;gap:10px"><button class="btn ghost sm" onclick="loadPnl(true)">&#8635; Reload</button><label class="fld" style="margin:0">COGS %</label><input type="number" step="1" min="0" max="100" value="${cogsPct}" onchange="pnlSetCogs(this.value)" style="max-width:70px;text-align:right"></div></div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Location</th><th class="num">Square</th><th class="num">Xola</th><th class="num">Revenue</th><th class="num">COGS</th><th class="num">Gross</th><th class="num">Overhead</th><th class="num">Labor</th><th class="num">Net</th></tr></thead><tbody>`+
     rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="num">${money(r.square)}</td><td class="num">${money(r.xola)}</td><td class="num" style="font-weight:600">${money(r.rev)}</td><td class="num">(${money(r.cogs)})</td><td class="num">${money(r.gross)}</td><td class="num">(${money(r.oh)})</td><td class="num">(${money(r.lab)})</td>${netCol(r.net)}</tr>`).join('')+
     `<tr class="total"><td>All locations</td><td class="num">${money(T.square)}</td><td class="num">${money(T.xola)}</td><td class="num">${money(T.rev)}</td><td class="num">(${money(T.cogs)})</td><td class="num">${money(T.gross)}</td><td class="num">(${money(T.oh)})</td><td class="num">(${money(T.lab)})</td>${netCol(T.net)}</tr>`+
