@@ -28,13 +28,24 @@ async function loadPnl(force){
   if(_pnlCache[key]){ renderPnlBody(_pnlCache[key]); return; }
   box.innerHTML=`<div class="empty" style="padding:32px"><div class="big">⏳</div>Pulling Square, Xola &amp; payroll for ${esc(pnlMonthLabel())}…</div>`;
   const {start,end,nextStart}=pnlRange();
-  const P=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()).catch(()=>null);
+  // Each source gets a hard client-side timeout so one slow/hung endpoint can
+  // never leave the page stuck on the spinner — it renders with whatever loaded.
+  const P=(u,b,ms)=>new Promise(res=>{
+    const ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const t=setTimeout(()=>{ if(ctl){try{ctl.abort();}catch(e){}} res({__timeout:true,url:u}); }, ms||22000);
+    fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b),signal:ctl?ctl.signal:undefined})
+      .then(r=>r.json()).then(j=>{clearTimeout(t);res(j);}).catch(()=>{clearTimeout(t);res(null);});
+  });
   let sq=null,xo=null,pay=null;
   try{ [sq,xo,pay]=await Promise.all([
     P('/api/square/summary',{startDate:start,endDate:end}),
     P('/api/xola/booked',{year:_pnlY,month:_pnlM}), // BOOKED basis (sold this month), not redeemed
     P('/api/square/payroll',{start,end:nextStart}),
   ]); }catch(e){}
+  // A timeout sentinel counts as "no data" for that source, not real content.
+  if(sq&&sq.__timeout) sq={error:'timeout',__timeout:true};
+  if(xo&&xo.__timeout) xo={error:'timeout',__timeout:true};
+  if(pay&&pay.__timeout) pay={error:'timeout',__timeout:true,ok:false};
   const bundle={sq,xo,pay};
   _pnlCache[key]=bundle;
   renderPnlBody(bundle);
@@ -103,7 +114,8 @@ function renderPnlBody(bundle){
   if(!sqSt.loaded) notes.push('Square sales didn’t load — revenue here is Xola-only. Hit Reload.');
   else if(sqSt.failed>0) notes.push('Square: '+sqSt.failed+' account'+(sqSt.failed===1?'':'s')+' failed to load this month (a whole month is a heavy pull) — Square revenue may be understated. Hit <b>Reload</b> to retry.');
   else if(sqSt.ok===0) notes.push('Square returned no sales for this month.');
-  if(!xo||xo.error) notes.push('Xola didn’t load.');
+  if(xo&&xo.__timeout) notes.push('Xola tours timed out this month (a heavy booking month is a big pull) — Xola revenue may be missing. Hit <b>Reload</b> to retry.');
+  else if(!xo||xo.error) notes.push('Xola didn’t load.');
   if(!pay||!pay.ok) notes.push('Payroll hours didn’t load — Labor reads $0.');
   else if(!(state.wages&&Object.keys(state.wages).length)) notes.push('No pay rates set — set hourly wages in <b>Payroll → Pay rates</b> and Labor fills in.');
   if(!((state.expenses||[]).length)) notes.push('No expenses entered — add rent/utilities/etc. in <b>Overhead &amp; Expenses</b> and Overhead fills in.');
@@ -127,7 +139,7 @@ function renderPnlBody(bundle){
   // Xola → location mapping (so the 3 Xola accounts line up with the 3 locations)
   const xas=pnlXolaAccounts(xo);
   if(xas.length){
-    const opts=locKeys.map(k=>({k, name:disp[k]}));
+    const opts=revKeys.map(k=>({k, name:disp[k]}));
     html+=`<div class="card"><h3>Xola accounts → location</h3><div class="hint">Assign each Xola tour account to the location it belongs to, so its revenue lands in the right P&amp;L row.</div>
       <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Xola account</th><th class="num">Revenue</th><th>Counts toward</th></tr></thead><tbody>`+
       xas.map(a=>{ const akey=a.key||a.label; const cur=(state.pnlXolaMap||{})[akey]||'';
