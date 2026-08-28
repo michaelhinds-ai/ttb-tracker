@@ -1,0 +1,6 @@
+# Always revalidate the HTML so a new deploy's versioned script tags are picked
+# up immediately (this is what lets iOS Safari escape a stale cached page).
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
