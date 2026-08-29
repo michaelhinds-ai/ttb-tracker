@@ -234,7 +234,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828f</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828h</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1349,7 +1349,7 @@ function showLogin(){
   ov=document.createElement('div'); ov.id='authWrap'; ov.className='authwrap';
   ov.innerHTML=`<div class="authcard"><div class="hd"><h2>Mikey Systems</h2><div style="opacity:.8;font-size:13px;margin-top:4px">${state.settings.name||'Sign in to continue'}</div></div>
   <div class="bd">
-    <label>User</label><select id="authUser">${users.map(u=>`<option value="${u.id}">${u.name} — ${ROLE_LABEL[u.role]||u.role}</option>`).join('')}</select>
+    <label>User</label><select id="authUser"><option value="">— Select your name —</option>${users.map(u=>`<option value="${u.id}">${u.name} — ${ROLE_LABEL[u.role]||u.role}</option>`).join('')}</select>
     <label>PIN</label><input type="password" id="authPin" inputmode="numeric" autocomplete="off" placeholder="Enter your PIN">
     <div class="err" id="authErr"></div>
     <button class="btn" id="authGo" style="width:100%;margin-top:6px">Sign in</button>
@@ -1924,7 +1924,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260828f·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260828h·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3014,7 +3014,8 @@ function renderRetailOut(d){
           +l.topItems.map(it=>`<tr><td>${esc(it.name)}</td><td class="num">${numf(it.qty,0)}</td><td class="num">${money(it.net)}</td></tr>`).join('')
           +`</tbody></table></div>`
         : `<div style="color:var(--muted);font-size:13px">Orders ran here, but no item lines came back.</div>`;
-      return head+`<div style="margin:8px 0 12px">${stats}</div>${items}`;
+      const staff=`<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">Average ticket by employee</summary><div class="rtl-staff" data-loc="${esc(l.name)}" style="margin-top:8px"><div class="hint">Loading…</div></div></details>`;
+      return head+`<div style="margin:8px 0 12px">${stats}</div>${items}${staff}`;
     }).join('');
   }).join('');
 
@@ -3032,6 +3033,29 @@ function renderRetailOut(d){
       <div class="due">${money(cAll.collected)}</div>
       <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(cAll.netSales)} in sales + ${money(cAll.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}${xr?`. Includes Xola experiences redeemed this period.`:'.'}</div></div>
     <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero — except an empty back-office location, which is hidden until it has activity. <b>Tip:</b> click any location to see its individual transactions. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
+  try{ loadRetailStaff(from,to); }catch(e){}
+}
+// Fill each location's "Average ticket by employee" section from the sales digest.
+let _rtlStaffKey='';
+async function loadRetailStaff(from,to){
+  const els=[...document.querySelectorAll('#rtlOut .rtl-staff')]; if(!els.length) return;
+  const key=from+'|'+to; _rtlStaffKey=key;
+  let data=null;
+  try{ const r=await fetch('/api/sales/day',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}); data=await r.json().catch(()=>null); }catch(e){}
+  if(_rtlStaffKey!==key) return; // a newer report replaced this one
+  const rows=(data&&data.ok&&data.rows)||[];
+  const norm=s=>String(s||'').trim().toLowerCase();
+  [...document.querySelectorAll('#rtlOut .rtl-staff')].forEach(el=>{
+    const name=el.getAttribute('data-loc'); const n=norm(name);
+    const row=rows.find(x=>norm(x.location)===n) || rows.find(x=>{const l=norm(x.location); return l&&(l.startsWith(n)||n.startsWith(l));}) || rows.find(x=>{const l=norm(x.location); return l&&n&&(l.indexOf(n)>=0||n.indexOf(l)>=0);});
+    if(!row || !(row.employees||[]).length){
+      const why=(data&&!data.ok)?(' — '+esc(data.detail||'Square unavailable')):'';
+      el.innerHTML=`<div class="hint">No employee-level Square data for this location${why}. (Staff must be signed in individually on the Square device, and the token needs Payments read access.)</div>`; return;
+    }
+    el.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
+      row.employees.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${e.txns}</td><td class="num">${money((e.salesCents||0)/100)}</td><td class="num" style="font-weight:700">${money((e.avgCents||0)/100)}</td></tr>`).join('')+
+      `</tbody></table></div>`;
+  });
 }
 // ---- Location drill-down: individual transactions for one location on the shown day ----
 async function openLocTxns(acctKey, locId, name){

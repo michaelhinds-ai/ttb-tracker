@@ -33,12 +33,15 @@ async function teamNames(acct) {
   return map;
 }
 
-// All COMPLETED payments for one account in [startISO,endISO). Bounded by a page cap.
-async function dayPayments(acct, startISO, endISO) {
+// Payments for one account+location in [startISO,endISO). Bounded by a page cap.
+// NOTE: Square's ListPayments returns ONLY the main location when location_id is
+// omitted, so callers pass a location_id and we loop over every location.
+async function dayPayments(acct, startISO, endISO, locationId) {
   const out = [];
   let cursor = null;
   for (let page = 0; page < 40; page++) {
     const qs = new URLSearchParams({ begin_time: startISO, end_time: endISO, sort_order: "ASC", limit: "100" });
+    if (locationId) qs.set("location_id", locationId);
     if (cursor) qs.set("cursor", cursor);
     let r;
     try { r = await sqFor(acct, "/v2/payments?" + qs.toString()); }
@@ -51,12 +54,21 @@ async function dayPayments(acct, startISO, endISO) {
 }
 
 // Build the digest for one account: [{ location, sales(cents), txns, employees:[{name,txns,salesCents,avgCents}] }]
-export async function accountDigest(acct, ymd) {
+export async function accountDigest(acct, startYmd, endYmd) {
   const tz = acct.tz || sqEnv().tz;
-  const { startISO, endISO } = dayRange(ymd, tz);
-  const [locNames, tmNames, payments] = await Promise.all([
-    locationNames(acct), teamNames(acct), dayPayments(acct, startISO, endISO),
-  ]);
+  const startISO = dayRange(startYmd, tz).startISO;
+  const endISO = dayRange(endYmd || startYmd, tz).endISO;
+  const [locNames, tmNames] = await Promise.all([locationNames(acct), teamNames(acct)]);
+  // Query payments per location (ListPayments only returns the main location
+  // when location_id is omitted), then merge — so every store is covered.
+  const locIds = Object.keys(locNames);
+  let payments = [];
+  if (locIds.length) {
+    const perLoc = await Promise.all(locIds.map((id) => dayPayments(acct, startISO, endISO, id).catch(() => [])));
+    payments = perLoc.flat();
+  } else {
+    payments = await dayPayments(acct, startISO, endISO);
+  }
   const OK = new Set(["COMPLETED", "APPROVED", "CAPTURED"]);
   const byLoc = {};
   for (const p of payments) {
@@ -84,9 +96,9 @@ export async function accountDigest(acct, ymd) {
 }
 
 // Digest across every configured Square account for a given day.
-export async function fullDigest(ymd) {
+export async function fullDigest(startYmd, endYmd) {
   const accts = accounts();
-  const results = await Promise.all(accts.map((a) => accountDigest(a, ymd).then((rows) => ({ rows })).catch((e) => ({ error: String((e && e.message) || e) }))));
+  const results = await Promise.all(accts.map((a) => accountDigest(a, startYmd, endYmd).then((rows) => ({ rows })).catch((e) => ({ error: String((e && e.message) || e) }))));
   const rows = results.flatMap((r) => r.rows || []).sort((a, b) => b.sales - a.sales);
   const errors = results.filter((r) => r.error).map((r) => r.error);
   return { rows, errors };
