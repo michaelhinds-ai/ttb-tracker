@@ -86,8 +86,10 @@ export async function accountDigest(acct, ymd) {
 // Digest across every configured Square account for a given day.
 export async function fullDigest(ymd) {
   const accts = accounts();
-  const parts = await Promise.all(accts.map((a) => accountDigest(a, ymd).catch(() => [])));
-  return parts.flat().sort((a, b) => b.sales - a.sales);
+  const results = await Promise.all(accts.map((a) => accountDigest(a, ymd).then((rows) => ({ rows })).catch((e) => ({ error: String((e && e.message) || e) }))));
+  const rows = results.flatMap((r) => r.rows || []).sort((a, b) => b.sales - a.sales);
+  const errors = results.filter((r) => r.error).map((r) => r.error);
+  return { rows, errors };
 }
 
 export function renderDigestHTML(rows, ymd, tz) {

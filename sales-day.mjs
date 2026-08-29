@@ -9,8 +9,8 @@ export default async (req) => {
   const tz = sqEnv().tz;
   const ymd = /^\d{4}-\d{2}-\d{2}$/.test(p.date || "") ? p.date : todayInTz(tz);
   try {
-    const rows = await fullDigest(ymd);
-    return json({ ok: true, date: ymd, tz, rows });
+    const dig = await fullDigest(ymd);
+    return json({ ok: true, date: ymd, tz, rows: dig.rows, errors: dig.errors || [] });
   } catch (e) {
     return json({ ok: false, error: "square_failed", detail: String((e && e.message) || e) }, 200);
   }
