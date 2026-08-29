@@ -234,7 +234,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828e</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828f</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1804,8 +1804,22 @@ async function homeShowLocation(name){
     if(_salesDayOpen!==name) return; // user tapped elsewhere while loading
     const rows=(_salesDayCache&&_salesDayCache.ok&&_salesDayCache.rows)||[];
     const norm=s=>String(s||'').trim().toLowerCase();
-    const row=rows.find(x=>norm(x.location)===norm(name)) || rows.find(x=>x.location===name);
-    if(!row){ box.innerHTML=`<div class="card"><div class="hint">No Square employee data for <b>${esc(name)}</b> today${(_salesDayCache&&!_salesDayCache.ok)?' — '+esc(_salesDayCache.detail||'Square unavailable'):''}.</div></div>`; return; }
+    const n=norm(name);
+    // Match exact, then tolerate Square's name truncation (e.g. card "Church S"
+    // vs the Payments location "Church Street") with a prefix match, then fall
+    // back to the only row if there's just one.
+    let row=rows.find(x=>norm(x.location)===n)
+          || rows.find(x=>{const l=norm(x.location); return l&&(l.startsWith(n)||n.startsWith(l));})
+          || rows.find(x=>{const l=norm(x.location); return l&&n&&(l.indexOf(n)>=0||n.indexOf(l)>=0);})
+          || (rows.length===1?rows[0]:null);
+    if(!row){
+      if(!_salesDayCache){ box.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">${esc(name)}</h3><button class="link noprint" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')">Close</button></div><div class="hint" style="margin-top:6px">Couldn't reach the sales-breakdown service. Make sure the latest <b>netlify/functions</b> are deployed (this needs <code>/api/sales/day</code>).</div></div>`; return; }
+      const why=(_salesDayCache&&!_salesDayCache.ok)?(' — '+esc(_salesDayCache.detail||'Square unavailable')):'';
+      const errs=(_salesDayCache&&Array.isArray(_salesDayCache.errors)&&_salesDayCache.errors.length)?(' Square said: '+esc(_salesDayCache.errors.join('; ')).slice(0,240)+'.'):'';
+      const avail=rows.length?(' Locations Square returned today: '+esc(rows.map(r=>r.location+' ('+r.txns+')').join(', '))+'.'):' Square returned no employee-level payments today (the token may lack Payments read access, or nobody was signed in on the Square device).';
+      box.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">${esc(name)}</h3><button class="link noprint" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')">Close</button></div><div class="hint" style="margin-top:6px">No employee breakdown matched <b>${esc(name)}</b>${why}.${errs}${avail}</div></div>`;
+      return;
+    }
     const emps=(row.employees||[]);
     const rowsHtml=emps.length?emps.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${e.txns}</td><td class="num">${money((e.salesCents||0)/100)}</td><td class="num" style="font-weight:700">${money((e.avgCents||0)/100)}</td></tr>`).join(''):`<tr><td colspan="4" style="color:var(--muted)">No attributed transactions yet.</td></tr>`;
     box.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">${esc(name)} — today</h3><button class="link noprint" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')">Close</button></div>
@@ -1910,7 +1924,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260828e·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260828f·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
