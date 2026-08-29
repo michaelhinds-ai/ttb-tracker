@@ -1,11 +1,6 @@
-# Always revalidate the HTML and the app's own JS/CSS so a new deploy is picked
-# up immediately — this is what lets a browser (and Netlify's edge) escape a
-# stale cached copy. Assets are still versioned with ?v=... in index.html.
+# The app is one self-contained index.html now. Never cache the HTML so a new
+# upload is picked up immediately (no stale versions).
 /
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: no-store
 /index.html
-  Cache-Control: public, max-age=0, must-revalidate
-/*.js
-  Cache-Control: public, max-age=0, must-revalidate
-/*.css
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: no-store

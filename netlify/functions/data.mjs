@@ -8,7 +8,7 @@ import { getStore } from "@netlify/blobs";
 const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
-  "expenses", "salaried",
+  "expenses", "salaried", "attention",
 ];
 
 function mergeById(cloudArr, incArr) {
