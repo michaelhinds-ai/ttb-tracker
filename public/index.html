@@ -165,9 +165,13 @@
   body.role-manager .mgr-hide{display:none!important}
   body.role-production #homeKpis,body.role-production #view-home .card{display:none!important}
   body.role-production #view-home .apptile:not(.prod-ok){display:none!important}
-  /* Retail: only the sales KPIs for their location — hide tasks, alerts, apps, the location pills. */
-  body.role-retail #view-home .card,body.role-retail #view-home .apps,body.role-retail #view-home .entsw,body.role-retail #homeSalesDetail{display:none!important}
+  /* Retail: only the sales KPIs + the Retail tile — hide tasks, alerts, other apps, the location pills. */
+  body.role-retail #view-home .card,body.role-retail #view-home .entsw,body.role-retail #homeSalesDetail{display:none!important}
+  body.role-retail #view-home .apptile:not(.retail-ok){display:none!important}
   body.role-retail #view-home>*:first-child{margin-bottom:6px}
+  .locboxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px}
+  .locbox{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;cursor:pointer}
+  .locbox input{width:auto;margin:0;flex:none}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -237,7 +241,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260829n</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831a</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -285,6 +289,11 @@
         <div class="ai" style="background:rgba(90,130,200,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a82c8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
         <div><div class="an">Sales Reports</div><div class="ad">Item summary, sales by employee, categories, and day &amp; hour trends &mdash; any date range, with compare-to.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open reports &rarr;</span></div>
+      </div>
+      <div class="apptile retail-ok" style="cursor:pointer" onclick="switchView('retailhub')">
+        <div class="ai" style="background:rgba(63,125,84,.14);font-size:22px;display:flex;align-items:center;justify-content:center">🧾</div>
+        <div><div class="an">Retail</div><div class="ad">A store manager's dashboard &mdash; today's sales, transactions &amp; average ticket, and who's clocked in, per location.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
       <div class="apptile" style="opacity:.72">
         <div class="ai" style="background:rgba(90,160,138,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5aa08a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
@@ -1104,16 +1113,20 @@
 
     <div class="card cap-users">
       <h3>👤 Users &amp; Access</h3>
-      <p class="hint">Require a login and control what each person can do. Roles: <b>Admin</b> (everything, incl. managing users), <b>Editor</b> (add/edit data &amp; run reports), <b>Manager</b> / <b>Barrel Manager</b> (add/edit data; no financials — tune per-section access below), <b>Reports</b> (reports only), <b>Viewer</b> (read-only). This is UI-level access control for trusted staff — the data still lives in your synced workspace, so it deters mistakes and casual access but isn't hardened security.</p>
+      <p class="hint">Require a login and control what each person can do. Roles: <b>Admin</b> (everything, incl. managing users), <b>Editor</b> (add/edit data &amp; run reports), <b>Manager</b> / <b>Barrel Manager</b> (add/edit data; no financials — tune per-section access below), <b>Retail Manager</b> (only the Retail dashboard — daily sales, average ticket &amp; who's clocked in for their assigned store), <b>Reports</b> (reports only), <b>Viewer</b> (read-only). Tick <b>locations</b> below a user to limit them to just those stores (and hide back office); leave them unticked for full access. This is UI-level access control for trusted staff — the data still lives in your synced workspace, so it deters mistakes and casual access but isn't hardened security.</p>
       <div id="authState"></div>
       <div id="userMgmt" style="display:none">
         <div class="tablewrap" style="border:0;box-shadow:none;margin-top:6px"><table><thead><tr><th>Name</th><th>Role</th><th class="noprint"></th></tr></thead><tbody id="userBody"></tbody></table></div>
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="retail">Retail (location dashboard)</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
-          <div><label class="fld">Location <span style="font-weight:400;color:var(--muted)">— for Retail users</span></label><input type="text" id="u_location" list="uLocList" placeholder="e.g. Church S"><datalist id="uLocList"></datalist></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="retail">Retail Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
+        </div>
+        <div style="margin-top:12px">
+          <label class="fld">Locations this user can see <span style="font-weight:400;color:var(--muted)">— tick one or more to limit them to those stores (and hide back office). Leave all unticked for full access to every location.</span></label>
+          <div id="u_loc_boxes" class="locboxes"></div>
+          <div style="display:flex;gap:6px;margin-top:8px;align-items:center"><input type="text" id="u_loc_add" placeholder="Add another location…" style="max-width:240px" onkeydown="if(event.key==='Enter'){event.preventDefault();addUserLocOption();}"><button type="button" class="btn ghost sm" onclick="addUserLocOption()">Add location</button></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
           <button class="btn" id="userSave">Save user</button>
@@ -1249,6 +1262,12 @@
   <section class="view" id="view-catrpt"><h2 class="section">Category Summary</h2><div class="card" id="catrptBody"></div></section>
   <section class="view" id="view-trendrpt"><h2 class="section">Day &amp; Hour Trends</h2><div class="card" id="trendrptBody"></div></section>
   <section class="view" id="view-clockrpt"><h2 class="section">Who’s Clocked In</h2><div class="card" id="clockrptBody"></div></section>
+  <section class="view" id="view-retailhub">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h2 class="section">Retail</h2>
+    <p class="hint" style="margin:0 0 14px">A store manager's daily view — sales, average ticket and who's on the clock, for the assigned location(s).</p>
+    <div class="card" id="retailhubBody"></div>
+  </section>
 </main>
 
 <script>
@@ -1293,9 +1312,16 @@ function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings
 
 /* ================= Access control (UI-gated roles) ================= */
 const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[], retail:[] };
-const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer', retail:'Retail (location dashboard)' };
-// Retail users see only a stripped-down dashboard for their assigned location.
-function currentLocation(){ return (SESSION&&SESSION.location)||''; }
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer', retail:'Retail Manager' };
+// Per-user location scoping. A user with one or more assigned locations sees ONLY
+// those locations' data (and no back office); an empty list = full access.
+function userLocations(u){ if(!u) return []; if(Array.isArray(u.locations)) return u.locations.filter(Boolean); return u.location?[u.location]:[]; }
+function currentLocations(){ if(!SESSION) return []; if(Array.isArray(SESSION.locations)) return SESSION.locations.filter(Boolean); return SESSION.location?[SESSION.location]:[]; }
+function currentLocation(){ const L=currentLocations(); return L[0]||''; }
+function locScoped(){ return currentLocations().length>0; }
+function _locNorm(s){ return String(s||'').trim().toLowerCase(); }
+function locNameMatch(a,b){ a=_locNorm(a); b=_locNorm(b); if(!a||!b) return false; return a===b||a.startsWith(b)||b.startsWith(a)||a.indexOf(b)>=0||b.indexOf(a)>=0; }
+function locAllowed(name){ const L=currentLocations(); if(!L.length) return true; return L.some(l=>locNameMatch(l,name)); }
 // Roles an admin can tune section-visibility for (admin always sees everything).
 const CONFIG_ROLES=['editor','manager','barrelmgr','production','reports','viewer'];
 // The navigable sections that can be shown/hidden per role.
@@ -1316,7 +1342,7 @@ const DEFAULT_HIDDEN={
   viewer:['payroll','expenses','pnl','data'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; if(role==='retail') return v!=='home'; return roleHiddenList(role).indexOf(v)>=0; }
+function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; if(role==='retail') return ['home','retailhub','clockrpt','emprpt'].indexOf(v)<0; return roleHiddenList(role).indexOf(v)>=0; }
 function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
@@ -1354,7 +1380,7 @@ function loadSession(){
     const s=JSON.parse(j);
     if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // expired → require sign-in
     const su=state.auth.users.find(u=>u.id===s.userId&&u.role===s.role);
-    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||''}; saveSession(); } // valid → slide the expiry forward
+    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||'',locations:userLocations(su)}; saveSession(); } // valid → slide the expiry forward
   }catch(e){}
 }
 function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
@@ -1385,7 +1411,7 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||''}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
+    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||'',locations:userLocations(u)}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}} else if(currentRole()==='retail'){try{switchView('retailhub');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
@@ -1472,10 +1498,16 @@ function renderUsers(){
   if(mg) mg.style.display='';
   const db=$('#disableLogin'); if(db) db.onclick=disableLogin;
   const rows=[...state.auth.users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)}${u.location?` <span style="color:var(--muted);font-size:12px">· ${esc(u.location)}</span>`:''}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
-  // Suggest known locations for the Retail user's location field.
-  const dl=$('#uLocList'); if(dl){ const locs=[...new Set([...(state.pnlLocs||[]),...(state.auth.users||[]).map(u=>u.location).filter(Boolean)])]; dl.innerHTML=locs.map(l=>`<option value="${esc(l)}"></option>`).join(''); }
+  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>{ const ul=userLocations(u); const locTxt=ul.length?ul.join(', '):'All locations'; return `<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)} <span style="color:var(--muted);font-size:12px">· ${esc(locTxt)}</span></td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`; }).join('');
+  // Render the location checkboxes, preserving any in-progress selection across refreshes.
+  const keep=_readUserLocs(); renderUserLocBoxes(keep.length?keep:(editingUserId?userLocations(state.auth.users.find(x=>x.id===editingUserId)):[]));
 }
+// Union of locations we know about, offered as checkboxes on the user form.
+function _knownLocs(){ return [...new Set([...(state.pnlLocs||[]), ...((state.auth&&state.auth.users)||[]).flatMap(u=>userLocations(u)), ..._userLocOpts].filter(Boolean))]; }
+let _userLocOpts=[];
+function renderUserLocBoxes(selected){ const box=$('#u_loc_boxes'); if(!box) return; const sel=new Set((selected||[]).map(_locNorm)); const opts=[...new Set([..._knownLocs(), ...(selected||[])].filter(Boolean))]; _userLocOpts=[...new Set([..._userLocOpts, ...opts])]; if(!opts.length){ box.innerHTML='<span class="hint">No locations known yet — add one below, or leave empty for full access.</span>'; return; } box.innerHTML=opts.map(l=>`<label class="locbox"><input type="checkbox" value="${esc(l)}" ${sel.has(_locNorm(l))?'checked':''}> ${esc(l)}</label>`).join(''); }
+function _readUserLocs(){ const box=$('#u_loc_boxes'); if(!box) return []; return [...box.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).map(c=>c.value); }
+function addUserLocOption(){ const i=$('#u_loc_add'); const v=(i&&i.value||'').trim(); if(!v) return; const cur=_readUserLocs(); if(!cur.some(x=>_locNorm(x)===_locNorm(v))) cur.push(v); _userLocOpts=[...new Set([..._userLocOpts,v])]; if(i) i.value=''; renderUserLocBoxes(cur); }
 async function enableLogin(){
   if(!requireCap('users'))return;
   const name=prompt('Create the first ADMIN account.\n\nAdmin name:',state.settings.signer||''); if(name===null)return; if(!name.trim()){ alert('Enter a name.'); return; }
@@ -1494,31 +1526,31 @@ function disableLogin(){
 async function userSave(){
   if(!requireCap('users'))return;
   const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||'';
-  const location=(($('#u_location')||{}).value||'').trim();
+  const locations=_readUserLocs(); const location=locations[0]||'';
   if(!name){ alert('Enter a name.'); return; }
-  if(role==='retail' && !location){ alert('A Retail user needs a location — type the Square location name (e.g. Church S) so their dashboard shows the right store.'); return; }
+  if(role==='retail' && !locations.length){ alert('A Retail Manager needs at least one location — tick the store(s) they should see (or add one) so their dashboard shows the right data.'); return; }
   if(editingUserId){
     const u=state.auth.users.find(x=>x.id===editingUserId); if(!u)return;
     if(u.role==='admin' && role!=='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t change the last admin’s role — add another admin first.'); return; }
-    u.name=name; u.role=role; u.location=location;
+    u.name=name; u.role=role; u.locations=locations; u.location=location;
     if(pin){ if(pin.length<4){alert('PIN must be at least 4 digits.');return;} u.pinHash=await hashPin(pin); }
-    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; SESSION.location=u.location; saveSession(); }
+    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; SESSION.locations=locations.slice(); SESSION.location=location; saveSession(); }
     cancelUser(); save('Updated a user'); applyPermissions(); refreshAll(); flash('User updated.');
   } else {
     if(pin.length<4){ alert('PIN must be at least 4 digits.'); return; }
-    state.auth.users.push({id:uid(),name,role,location,pinHash:await hashPin(pin)});
+    state.auth.users.push({id:uid(),name,role,locations,location,pinHash:await hashPin(pin)});
     cancelUser(); save('Added a user'); refreshAll(); flash('User added.');
   }
 }
 function editUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
-  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value=''; if($('#u_location')) $('#u_location').value=u.location||'';
+  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value=''; renderUserLocBoxes(userLocations(u));
   $('#u_pin').placeholder='Leave blank to keep current PIN';
   $('#userFormTitle').textContent='Edit '+(u.name||'user'); $('#userCancel').style.display='inline-block';
   switchView('data'); $('#u_name').scrollIntoView({behavior:'smooth',block:'center'});
 }
-function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; if($('#u_location'))$('#u_location').value=''; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
+function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; renderUserLocBoxes([]); $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
 function deleteUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
@@ -1769,7 +1801,7 @@ function ytdTaxableBeforeQuarter(y,q){ return taxablePG(e=>yearOf(e.date)===y&&q
 /* ================= Dashboard ================= */
 function renderHome(){
   try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const nm=(authOn()&&SESSION&&SESSION.name)?String(SESSION.name).split(' ')[0]:'Mike'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', '+nm;
-    const sub=document.querySelector('#view-home h1#homeHello + p'); if(sub){ sub.textContent=(currentRole()==='retail')?('Today at '+(currentLocation()||'your location')+' — at a glance.'):'Today’s sales across your locations — at a glance.'; }
+    const sub=document.querySelector('#view-home h1#homeHello + p'); if(sub){ sub.textContent=(currentRole()==='retail')?('Today at '+(currentLocations().join(' · ')||'your location')+' — at a glance.'):(locScoped()?('Today at '+currentLocations().join(' · ')+' — at a glance.'):'Today’s sales across your locations — at a glance.'); }
   }catch(e){}
   try{ renderAttnForm(); }catch(e){}
   try{
@@ -1881,15 +1913,16 @@ async function loadHomeSales(force){
     P('/api/shopify/summary',{startDate:lyday,endDate:lyday,endCapISO:lyISO}),
   ]); }catch(e){}
   const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
-  // Retail users see only their assigned location: today's sales, transactions, avg ticket.
+  // Retail managers (and any location-scoped user) see only their assigned
+  // location(s): today's sales, transactions, avg ticket — summed across them.
   if(currentRole()==='retail'){
-    const loc=currentLocation(); const nz=s=>String(s||'').trim().toLowerCase(); const n=nz(loc);
-    let match=null;
-    if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>(a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const ln=nz(l.name); if(!match&&ln&&(ln===n||ln.startsWith(n)||n.startsWith(ln)||(n&&ln.indexOf(n)>=0))) match={name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}; })); }
-    if(!match){ box.innerHTML=kpi('copper',esc(loc||'Your location'),money(0),(sq&&sq.error)?'Square unavailable — try again shortly':'No sales recorded yet today.'); _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return; }
-    const avg=match.orders?match.net/match.orders:0;
-    box.innerHTML=kpi('copper','Today’s Sales',money(match.net),esc(match.name))
-      +kpi('blue','Transactions',numf(match.orders,0),match.orders===1?'sale today':'sales today')
+    const locLbl=currentLocations().join(' · ');
+    let matched=[];
+    if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>(a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ if(locAllowed(l.name)) matched.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); })); }
+    if(!matched.length){ box.innerHTML=kpi('copper',esc(locLbl||'Your location'),money(0),(sq&&sq.error)?'Square unavailable — try again shortly':'No sales recorded yet today.'); _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return; }
+    const net=matched.reduce((s,m)=>s+m.net,0), orders=matched.reduce((s,m)=>s+m.orders,0), avg=orders?net/orders:0;
+    box.innerHTML=kpi('copper','Today’s Sales',money(net),matched.length>1?(matched.length+' locations'):esc(matched[0].name))
+      +kpi('blue','Transactions',numf(orders,0),orders===1?'sale today':'sales today')
       +kpi('green','Average Ticket',money(avg),'net sales ÷ transactions');
     _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return;
   }
@@ -1898,13 +1931,16 @@ async function loadHomeSales(force){
   const wMap=mapOf(sqW), yMap=mapOf(sqY), yOrdMap=ordOf(sqY);
   const cards=[], colors=['copper','green','blue','ky'];
   if(sq&&!sq.error){
-    const rows=[]; (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ rows.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); }); });
+    let rows=[]; (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ rows.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); }); });
+    if(locScoped()) rows=rows.filter(r=>locAllowed(r.name));
     rows.sort((x,y)=>y.net-x.net);
     if(rows.length) rows.forEach((r,i)=>cards.push(homeSalesCard(colors[i%colors.length],r.name,r.net,r.orders,(r.name in wMap)?wMap[r.name]:null,(r.name in yMap)?yMap[r.name]:null,(r.name in yOrdMap)?yOrdMap[r.name]:null,true)));
     else cards.push(homeSalesCard('copper','Store sales',0,0,null,null,null));
   } else cards.push(homeErrCard('copper','Store sales',(sq&&(sq.detail||sq.error))?'Square unavailable':'Connect Square in Setup'));
-  if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null,(shY&&shY.ok)?(+shY.orders||0):null));
-  else cards.push(homeErrCard('amber','Shopify (online)',(sh&&sh.detail)?'Shopify unavailable':'Connect Shopify'));
+  if(!locScoped()){
+    if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null,(shY&&shY.ok)?(+shY.orders||0):null));
+    else cards.push(homeErrCard('amber','Shopify (online)',(sh&&sh.detail)?'Shopify unavailable':'Connect Shopify'));
+  }
   _homeSalesHTML=cards.join(''); _homeSalesAt=Date.now(); box.innerHTML=_homeSalesHTML;
 }
 /* ---- Team tasks (assign to a teammate; they see it on Home and check it off) ---- */
@@ -1970,7 +2006,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260829n·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831a·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3306,8 +3342,8 @@ window.addEventListener('popstate',function(e){ _navPop=true; try{ switchView((e
 function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
-  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In"};
+  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub',retailhub:'home'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In",retailhub:'Retail'};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
@@ -3317,7 +3353,7 @@ function renderCrumb(v){
     return `<button onclick="switchView('${t}')">${i===0?'\u2190 ':''}${esc(LABEL[t]||t)}</button><span class="sep">/</span>`;
   }).join('')+'</div>';
 }
-function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
+function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(v==='retailhub')try{renderRetailHub();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
 function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderBarrelsProc();try{renderExpenses();}catch(e){}renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();try{renderRolePanel();}catch(e){}renderBackups();dataStatus();syncUI();applyPermissions();}
@@ -4353,7 +4389,13 @@ async function boot(rejoin){
   // login is required (and while the cloud load is still in flight).
   try{ lockApp(); showBootLoading(); }catch(e){}
   setSync('connecting');
-  await cloudLoad();
+  // Seed from this device's last-known copy up front so we can show the login /
+  // app even if the cloud is slow or unreachable (a store iPad on flaky Wi‑Fi
+  // must never get stuck on "Connecting…").
+  try{ const c=localStorage.getItem(cacheKey()); if(c){ state=normalize(JSON.parse(c)); const sb=localStorage.getItem(baseKey()); if(sb) cloudBaseSavedAt=sb; } }catch(e){}
+  // Never let a hung fetch (or a slow response body) block boot. cloudLoad keeps
+  // running in the background and updates the sync badge when it lands.
+  try{ await Promise.race([ cloudLoad(), new Promise(res=>setTimeout(res, 9000)) ]); }catch(e){}
   if(!state.history) state.history=[]; lastSnap=dataOnly();
   if(!wired){ wireOnce(); wired=true; }
   updateUndoBtn();
@@ -5443,7 +5485,7 @@ async function runEmpRpt(){
   const cur=await rptFetchDay(_rptFrom,_rptTo);
   const cmp=rptCompareRange(_rptFrom,_rptTo,_rptCompare);
   const prev=cmp?await rptFetchDay(cmp.from,cmp.to):null;
-  const agg=d=>{ const by={}; if(d&&d.ok)(d.rows||[]).forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'').toLowerCase(); const o=by[k]||(by[k]={name:e.name,txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); })); return by; };
+  const agg=d=>{ const by={}; if(d&&d.ok)(d.rows||[]).filter(r=>typeof locAllowed!=='function'||locAllowed(r.location)).forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'').toLowerCase(); const o=by[k]||(by[k]={name:e.name,txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); })); return by; };
   const curBy=agg(cur), prevBy=cmp?agg(prev):null;
   const list=Object.values(curBy).map(o=>({...o,avg:o.txns?Math.round(o.sales/o.txns):0})).sort((a,b)=>b.sales-a.sales);
   if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runEmpRpt')+`<div class="note">⚠️ ${esc((cur&&cur.detail)||'Could not load employee sales.')}</div>`; return; }
@@ -5465,7 +5507,8 @@ async function runClockRpt(){
   box.innerHTML=clockToolbar()+`<div class="empty" style="padding:24px">⏳ Checking timecards…</div>`;
   let d=null; try{ const r=await fetch('/api/square/clockins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date:_clockDate})}); d=await r.json().catch(()=>null); }catch(e){}
   if(!d||!d.ok){ box.innerHTML=clockToolbar()+`<div class="note">⚠️ ${esc((d&&(d.error||(d.errors&&d.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; return; }
-  const rows=d.rows||[];
+  let rows=d.rows||[];
+  if(typeof locAllowed==='function') rows=rows.filter(r=>locAllowed(r.location));
   if(!rows.length){ box.innerHTML=clockToolbar()+`<div class="note">No clock-ins recorded for ${esc(fmtDate(_clockDate))}.${(d.errors&&d.errors.length)?' — '+esc(d.errors.join('; ')):''}</div>`; return; }
   const fmtT=iso=>{ if(!iso)return ''; try{ return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } };
   const byLoc={}; rows.forEach(r=>{ (byLoc[r.location||'—']||(byLoc[r.location||'—']=[])).push(r); });
@@ -5479,6 +5522,59 @@ async function runClockRpt(){
       `</tbody></table></div></div>`;
   }).join('');
   html+=`<div class="disclaimer">From Square timecards for the selected day, in each account’s timezone. “Still in” means Square has no clock-out recorded yet. Needs the Square token to have Timecards read access.</div>`;
+  box.innerHTML=html;
+}
+
+/* ===================== Retail hub — a manager's home for one or more stores.
+   Per-location daily sales KPIs + who's clocked in, scoped to the viewer's
+   assigned location(s). Admins (no locations set) see every location. ===== */
+let _retDate=null;
+function retHubToolbar(){ if(!_retDate)_retDate=rptTodayStr(); return `<div class="toolbar" style="align-items:end;flex-wrap:wrap;gap:10px"><div><label class="fld">Day</label><input type="date" id="ret_date" value="${_retDate}" onchange="_retDate=this.value;renderRetailHub()"></div><button class="btn ghost sm" onclick="_retDate=rptTodayStr();renderRetailHub()">Today</button><button class="btn ky sm" onclick="renderRetailHub()">Refresh</button></div>`; }
+async function renderRetailHub(){
+  const box=document.getElementById('retailhubBody'); if(!box) return;
+  if(!_retDate)_retDate=rptTodayStr();
+  const scoped=(typeof locScoped==='function'&&locScoped());
+  const allow=r=>(typeof locAllowed!=='function')||locAllowed(r);
+  const locLbl=scoped?currentLocations().join(' · '):'all locations';
+  box.innerHTML=retHubToolbar()+`<div class="empty" style="padding:24px">⏳ Loading retail dashboard for ${esc(fmtDate(_retDate))}…</div>`;
+  let day=null,clk=null;
+  try{ [day,clk]=await Promise.all([
+    rptFetchDay(_retDate,_retDate),
+    fetch('/api/square/clockins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date:_retDate})}).then(r=>r.json()).catch(()=>null)
+  ]); }catch(e){}
+  let html=retHubToolbar()+`<h3 style="margin:6px 0 2px">Retail — ${esc(fmtDate(_retDate))}</h3><div class="hint" style="margin:0 0 10px">${esc(locLbl)}</div>`;
+  // ---- Sales KPIs (per location, summed) ----
+  let rows=(day&&day.ok&&day.rows)||[]; rows=rows.filter(r=>allow(r.location));
+  if(day&&day.ok){
+    if(rows.length){
+      const tot=rows.reduce((s,r)=>s+(+r.sales||0),0), totTx=rows.reduce((s,r)=>s+(+r.txns||0),0);
+      html+=`<div class="kpis" style="margin:8px 0 4px">`+
+        kpi('copper','Today’s Sales',money(tot/100),rows.length>1?(rows.length+' locations'):esc(rows[0].location))+
+        kpi('blue','Transactions',numf(totTx,0),totTx===1?'sale':'sales')+
+        kpi('green','Average Ticket',money(totTx?tot/totTx/100:0),'net ÷ transactions')+`</div>`;
+      if(rows.length>1){
+        html+=`<div class="tablewrap" style="margin-top:6px"><table><thead><tr><th>Location</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
+          rows.slice().sort((a,b)=>b.sales-a.sales).map(r=>`<tr><td><b>${esc(r.location)}</b></td><td class="num">${numf(r.txns,0)}</td><td class="num">${money(r.sales/100)}</td><td class="num" style="font-weight:700">${money(r.txns?r.sales/r.txns/100:0)}</td></tr>`).join('')+
+          `</tbody></table></div>`;
+      }
+    } else { html+=`<div class="note">No sales recorded for ${esc(fmtDate(_retDate))}${scoped?(' at '+esc(locLbl)):''}.</div>`; }
+  } else { html+=`<div class="note">⚠️ ${esc((day&&day.detail)||'Could not load sales — make sure the latest netlify/functions are deployed (needs /api/sales/day).')}</div>`; }
+  // ---- Who's clocked in ----
+  let crows=(clk&&clk.ok&&clk.rows)||[]; crows=crows.filter(r=>allow(r.location));
+  html+=`<h3 style="margin:20px 0 2px">Who’s clocked in</h3>`;
+  if(clk&&clk.ok){
+    if(crows.length){
+      const fmtT=iso=>{ if(!iso)return ''; try{ return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } };
+      const byLoc={}; crows.forEach(r=>{ (byLoc[r.location||'—']||(byLoc[r.location||'—']=[])).push(r); });
+      const openCount=crows.filter(r=>r.open).length, ppl=new Set(crows.map(r=>r.name)).size;
+      html+=`<div class="hint" style="margin:2px 0 8px">${openCount} on the clock now · ${ppl} ${ppl===1?'person':'people'} today</div>`;
+      html+=Object.keys(byLoc).sort().map(loc=>`<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th></tr></thead><tbody>`+
+        byLoc[loc].map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td></tr>`).join('')+
+        `</tbody></table></div></div>`).join('');
+    } else { html+=`<div class="note">No clock-ins recorded for ${esc(fmtDate(_retDate))}${scoped?(' at '+esc(locLbl)):''}.</div>`; }
+  } else { html+=`<div class="note">⚠️ ${esc((clk&&(clk.error||(clk.errors&&clk.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; }
+  html+=`<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost sm" onclick="switchView('emprpt')">Sales by Employee ▸</button></div>`;
+  html+=`<div class="disclaimer">Live from Square for the selected day. Sales exclude tips; average ticket = net sales ÷ transactions. ${scoped?('You see only: '+esc(locLbl)+'.'):'Showing every location.'}</div>`;
   box.innerHTML=html;
 }
 
