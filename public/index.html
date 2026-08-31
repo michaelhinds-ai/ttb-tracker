@@ -241,7 +241,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831a</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831b</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -308,6 +308,11 @@
       <div class="apptile" style="cursor:pointer" onclick="switchView('barrelsproc')">
         <div class="ai" style="background:rgba(122,90,43,.15)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7a5a2b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
         <div><div class="an">Barrels in Process</div><div class="ad">Single-barrel selections &mdash; track logo/text approval &amp; bottling for each barrel.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
+      </div>
+      <div class="apptile" style="cursor:pointer" onclick="switchView('production')">
+        <div class="ai" style="background:rgba(122,90,43,.15);font-size:22px;display:flex;align-items:center;justify-content:center">🧪</div>
+        <div><div class="an">Production</div><div class="ad">Samples sent to stores &amp; distributors &mdash; barrel #, sample #, contact &amp; status. Move a committed one into Barrels in Process.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div>
       </div>
       <div class="apptile" style="cursor:pointer" onclick="switchView('compliance')">
@@ -1268,6 +1273,17 @@
     <p class="hint" style="margin:0 0 14px">A store manager's daily view — sales, average ticket and who's on the clock, for the assigned location(s).</p>
     <div class="card" id="retailhubBody"></div>
   </section>
+  <section class="view" id="view-production">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h2 class="section">Production</h2>
+    <p class="hint" style="margin:0 0 14px">Production tools. Start with Samples — everything you send out to stores and distributors.</p>
+    <div id="productionBody"></div>
+  </section>
+  <section class="view" id="view-samples">
+    <button class="link" onclick="switchView('production')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Production</button>
+    <h2 class="section">Samples</h2>
+    <div id="samplesBody"></div>
+  </section>
 </main>
 
 <script>
@@ -1298,7 +1314,7 @@ const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032
 const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
 
 /* ================= State ================= */
-function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[],skus:[{id:'seed-lrwc-11sib',company:'Louisville Rickhouse Whiskey Co',product:'11 Year Single Barrel Bourbon',size:'750ml',scc6:'',scc12:'10850033780311'}],brandLogos:{},docs:[],assets:[],barrelsProc:[],wages:{},expenses:[],pnlXolaMap:{},locAlias:{},pnlLocs:[],salaried:[],attention:[]};}
+function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[],skus:[{id:'seed-lrwc-11sib',company:'Louisville Rickhouse Whiskey Co',product:'11 Year Single Barrel Bourbon',size:'750ml',scc6:'',scc12:'10850033780311'}],brandLogos:{},docs:[],assets:[],barrelsProc:[],wages:{},expenses:[],pnlXolaMap:{},locAlias:{},pnlLocs:[],salaried:[],attention:[],samples:[]};}
 let state=freshState();
 let WS=null;
 const API='/api/data';
@@ -1308,7 +1324,7 @@ function genKey(){ if(crypto&&crypto.randomUUID) return crypto.randomUUID().repl
 function readWSfromHash(){ const h=new URLSearchParams(location.hash.slice(1)); return (h.get('ws')||'').trim(); }
 function writeWStoHash(ws){ const h=new URLSearchParams(location.hash.slice(1)); h.set('ws',ws); location.hash=h.toString(); }
 function cacheKey(){ return 'ttb_cache_'+WS; }
-function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; s.assets=Array.isArray(d.assets)?d.assets:[]; s.barrelsProc=Array.isArray(d.barrelsProc)?d.barrelsProc:[]; s.wages=(d.wages&&typeof d.wages==='object'&&!Array.isArray(d.wages))?d.wages:{}; s.expenses=Array.isArray(d.expenses)?d.expenses:[]; s.pnlXolaMap=(d.pnlXolaMap&&typeof d.pnlXolaMap==='object'&&!Array.isArray(d.pnlXolaMap))?d.pnlXolaMap:{}; s.locAlias=(d.locAlias&&typeof d.locAlias==='object'&&!Array.isArray(d.locAlias))?d.locAlias:{}; s.pnlLocs=Array.isArray(d.pnlLocs)?d.pnlLocs:[]; s.salaried=Array.isArray(d.salaried)?d.salaried:[]; s.attention=Array.isArray(d.attention)?d.attention:[]; return s; }
+function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; s.assets=Array.isArray(d.assets)?d.assets:[]; s.barrelsProc=Array.isArray(d.barrelsProc)?d.barrelsProc:[]; s.wages=(d.wages&&typeof d.wages==='object'&&!Array.isArray(d.wages))?d.wages:{}; s.expenses=Array.isArray(d.expenses)?d.expenses:[]; s.pnlXolaMap=(d.pnlXolaMap&&typeof d.pnlXolaMap==='object'&&!Array.isArray(d.pnlXolaMap))?d.pnlXolaMap:{}; s.locAlias=(d.locAlias&&typeof d.locAlias==='object'&&!Array.isArray(d.locAlias))?d.locAlias:{}; s.pnlLocs=Array.isArray(d.pnlLocs)?d.pnlLocs:[]; s.salaried=Array.isArray(d.salaried)?d.salaried:[]; s.attention=Array.isArray(d.attention)?d.attention:[]; s.samples=Array.isArray(d.samples)?d.samples:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
 const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[], retail:[] };
@@ -1332,17 +1348,17 @@ const SECTIONS=[
   {v:'marketing',label:'Marketing'},{v:'reviews',label:'Reviews'},{v:'barrels',label:'Barrels'},
   {v:'bottling',label:'Bottling'},{v:'finished',label:'Finished Goods'},{v:'orders',label:'Orders'},
   {v:'customers',label:'Customers'},{v:'compliance',label:'Compliance Center'},{v:'labels',label:'Case Labels'},
-  {v:'barrelsproc',label:'Processing'},{v:'ledger',label:'Ledger'},{v:'data',label:'Setup & Sync'},
+  {v:'barrelsproc',label:'Processing'},{v:'production',label:'Production / Samples'},{v:'ledger',label:'Ledger'},{v:'data',label:'Setup & Sync'},
 ];
 // Sensible default hides per role (used until an admin customizes in the Roles panel).
 const DEFAULT_HIDDEN={
   barrelmgr:['payroll','expenses','pnl','lrs','salesrpt','retail','reports','kentucky','dashboard','marketing','reviews','data','customers'],
   production:['payroll','expenses','pnl','lrs','salesrpt','retail','reports','kentucky','dashboard','marketing','reviews','data','orders','customers','ledger'],
-  reports:['payroll','expenses','pnl','data'],
-  viewer:['payroll','expenses','pnl','data'],
+  reports:['payroll','expenses','pnl','data','production'],
+  viewer:['payroll','expenses','pnl','data','production'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; if(role==='retail') return ['home','retailhub','clockrpt','emprpt'].indexOf(v)<0; return roleHiddenList(role).indexOf(v)>=0; }
+function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(role==='admin') return false; if(role==='retail') return ['home','retailhub','clockrpt','emprpt'].indexOf(v)<0; return roleHiddenList(role).indexOf(v)>=0; }
 function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
@@ -2006,7 +2022,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831a·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831b·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3342,8 +3358,8 @@ window.addEventListener('popstate',function(e){ _navPop=true; try{ switchView((e
 function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
-  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub',retailhub:'home'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In",retailhub:'Retail'};
+  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub',retailhub:'home',production:'home',samples:'production'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In",retailhub:'Retail',production:'Production',samples:'Samples'};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
@@ -3353,10 +3369,10 @@ function renderCrumb(v){
     return `<button onclick="switchView('${t}')">${i===0?'\u2190 ':''}${esc(LABEL[t]||t)}</button><span class="sep">/</span>`;
   }).join('')+'</div>';
 }
-function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(v==='retailhub')try{renderRetailHub();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
+function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(v==='retailhub')try{renderRetailHub();}catch(e){}if(v==='production')try{renderProduction();}catch(e){}if(v==='samples')try{renderSamples();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
-function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderBarrelsProc();try{renderExpenses();}catch(e){}renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();try{renderRolePanel();}catch(e){}renderBackups();dataStatus();syncUI();applyPermissions();}
+function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderBarrelsProc();try{renderExpenses();}catch(e){}renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();try{renderRolePanel();}catch(e){}renderBackups();try{renderSamples();}catch(e){}try{renderProduction();}catch(e){}dataStatus();syncUI();applyPermissions();}
 function dataStatus(){$('#dataStatus').innerHTML=`Tracking <b>${state.entries.length}</b> entries in workspace <span class="code">${WS.slice(0,8)}…</span>. Sync: <b>${cloudAvailable?'on (this link, all devices)':'offline — saved on this device'}</b>.`;}
 let flashT;function flash(m){let el=$('#flash');if(!el){el=document.createElement('div');el.id='flash';el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#241812;color:#fff;padding:12px 20px;border-radius:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:200;opacity:0;transition:opacity .2s';document.body.appendChild(el);}el.textContent=m;el.style.opacity='1';clearTimeout(flashT);flashT=setTimeout(()=>el.style.opacity='0',2200);}
 function printReport(){const o=$('#view-reports');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);}
@@ -5576,6 +5592,143 @@ async function renderRetailHub(){
   html+=`<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost sm" onclick="switchView('emprpt')">Sales by Employee ▸</button></div>`;
   html+=`<div class="disclaimer">Live from Square for the selected day. Sales exclude tips; average ticket = net sales ÷ transactions. ${scoped?('You see only: '+esc(locLbl)+'.'):'Showing every location.'}</div>`;
   box.innerHTML=html;
+}
+
+;
+/* ===================== Production hub + Samples tracker =====================
+   Distilleries constantly send barrel samples to stores & distributors. This
+   logs each one (sample #, barrel #, store, distributor, brand/spirit/age,
+   contact, status, notes). When a store commits, "Move to Barrels in Process"
+   creates a single-barrel selection over in barrelsProc and removes the sample. */
+
+const SMP_STATUS = [
+  { k:'sent',      label:'Sent',      bg:'#eef2f7', fg:'#37506e' },
+  { k:'tasting',   label:'Tasting',   bg:'#fff4e0', fg:'#8a5a12' },
+  { k:'committed', label:'Committed', bg:'#e7f0e3', fg:'#2f6b34' },
+  { k:'declined',  label:'Declined',  bg:'#f6e9e7', fg:'#9a3a2e' },
+];
+function smpStatusMeta(k){ return SMP_STATUS.find(s=>s.k===k)||SMP_STATUS[0]; }
+function smpStatusBadge(k){ const m=smpStatusMeta(k); return `<span class="pill" style="background:${m.bg};color:${m.fg}">${m.label}</span>`; }
+function smpBrands(){ try{ return bpBrands(); }catch(e){ return ["Louisville Rickhouse Whiskey Co","Nashville Barrel Co","Nashtucky"]; } }
+function smpTodayStr(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+
+/* ---------- Production hub ---------- */
+function renderProduction(){
+  const box=document.getElementById('productionBody'); if(!box) return;
+  const smp=state.samples||[];
+  const out=smp.filter(s=>s.status==='sent'||s.status==='tasting').length;
+  const won=smp.filter(s=>s.status==='committed').length;
+  const kpis=`<div class="kpis" style="margin:2px 0 16px">`+
+    kpi('copper','Samples logged',numf(smp.length,0),'all time')+
+    kpi('blue','Out / tasting',numf(out,0),'awaiting a decision')+
+    kpi('green','Committed',numf(won,0),'turned into a barrel pick')+`</div>`;
+  const card=(v,icon,title,desc)=>`<div class="apptile" style="cursor:pointer" onclick="switchView('${v}')"><div class="ai" style="background:rgba(122,90,43,.15);font-size:22px;display:flex;align-items:center;justify-content:center">${icon}</div><div><div class="an">${esc(title)}</div><div class="ad">${esc(desc)}</div></div><div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div></div>`;
+  box.innerHTML=kpis+`<div class="apps">${card('samples','🧪','Samples','Track barrel samples sent to stores & distributors — sample #, barrel #, contact and status. Move a committed one straight into Barrels in Process.')}</div>`;
+}
+
+/* ---------- Samples tracker ---------- */
+let _smpEditId=null;
+function smpFormHTML(){
+  const brands=smpBrands();
+  const bopt='<option value="">— brand —</option>'+brands.map(b=>`<option>${esc(b)}</option>`).join('');
+  const sopt=SMP_STATUS.map(s=>`<option value="${s.k}">${s.label}</option>`).join('');
+  return `<div class="card">
+    <h3 style="margin:0 0 2px" id="smpFormTitle">Log a sample</h3>
+    <p class="hint" style="margin:0 0 10px">Record what went out. When a store commits, use <b>Move to Barrels in Process</b> in the list below.</p>
+    <div class="grid g3">
+      <div><label class="fld">Date sent</label><input type="date" id="smp_date" value="${smpTodayStr()}"></div>
+      <div><label class="fld">Sample #</label><input type="text" id="smp_no" placeholder="e.g. S-104"></div>
+      <div><label class="fld">Barrel #</label><input type="text" id="smp_barrel" placeholder="e.g. 227"></div>
+      <div><label class="fld">Brand</label><select id="smp_brand">${bopt}</select></div>
+      <div><label class="fld">Spirit</label><input type="text" id="smp_spirit" placeholder="e.g. Single Barrel Bourbon"></div>
+      <div><label class="fld">Age</label><input type="text" id="smp_age" placeholder="e.g. 6 yr"></div>
+      <div><label class="fld">Store</label><input type="text" id="smp_store" placeholder="Store / account name"></div>
+      <div><label class="fld">Distributor</label><input type="text" id="smp_distro" placeholder="Distributor / wholesaler"></div>
+      <div><label class="fld">Status</label><select id="smp_status">${sopt}</select></div>
+      <div><label class="fld">Contact name</label><input type="text" id="smp_cname" placeholder="Buyer / rep"></div>
+      <div><label class="fld">Contact phone</label><input type="text" id="smp_cphone" placeholder="(xxx) xxx-xxxx"></div>
+      <div><label class="fld">Contact email</label><input type="text" id="smp_cemail" placeholder="name@store.com"></div>
+    </div>
+    <div style="margin-top:10px"><label class="fld">Notes</label><textarea id="smp_notes" rows="2" placeholder="Anything worth remembering about this sample…"></textarea></div>
+    <div class="row-actions" style="margin-top:12px">
+      <button class="btn" onclick="smpSave()">Save sample</button>
+      <button class="btn gray" id="smpCancel" style="display:none" onclick="smpCancel()">Cancel</button>
+    </div>
+  </div>`;
+}
+function renderSamples(){
+  const box=document.getElementById('samplesBody'); if(!box) return;
+  const writable=(typeof can!=='function')||can('write');
+  const list=[...(state.samples||[])].sort((a,b)=>(b.dateSent||'').localeCompare(a.dateSent||'')|| (b.ts||0)-(a.ts||0));
+  const rows=list.map(s=>{
+    const acts=writable?`<button class="link" onclick="smpEdit('${s.id}')">Edit</button> · <button class="link" onclick="smpMove('${s.id}')" title="Create a Barrels-in-Process pick from this sample and remove it here">Move&nbsp;&rarr;&nbsp;Barrels</button> · <button class="del" onclick="smpDelete('${s.id}')">Del</button>`:'';
+    return `<tr>
+      <td>${esc(fmtDate(s.dateSent)||'')}</td>
+      <td><b>${esc(s.sampleNo||'')}</b></td>
+      <td>${esc(s.barrelNo||'')}</td>
+      <td>${esc(s.brand||'')}${s.spirit?`<div style="color:var(--muted);font-size:12px">${esc(s.spirit)}${s.age?(' · '+esc(s.age)):''}</div>`:''}</td>
+      <td>${esc(s.store||'')}</td>
+      <td>${esc(s.distributor||'')}</td>
+      <td>${smpStatusBadge(s.status)}</td>
+      <td class="noprint">${acts}</td>
+    </tr>`;
+  }).join('');
+  const table=list.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Sample #</th><th>Barrel #</th><th>Brand</th><th>Store</th><th>Distributor</th><th>Status</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>`
+    :`<div class="empty" style="padding:22px">No samples logged yet — add one above.</div>`;
+  box.innerHTML=(writable?smpFormHTML():'')+`<div class="card" style="margin-top:14px"><h3 style="margin:0 0 8px">Samples sent</h3>${table}<div class="disclaimer">“Move → Barrels” creates a single-barrel selection in <b>Barrels in Process</b> (carrying the barrel #, store, distributor, brand and contact) and removes it from this list.</div></div>`;
+  if(_smpEditId){ const s=(state.samples||[]).find(x=>x.id===_smpEditId); if(s) smpFill(s); }
+}
+function smpFill(s){
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  set('smp_date',s.dateSent); set('smp_no',s.sampleNo); set('smp_barrel',s.barrelNo); set('smp_brand',s.brand);
+  set('smp_spirit',s.spirit); set('smp_age',s.age); set('smp_store',s.store); set('smp_distro',s.distributor);
+  set('smp_status',s.status||'sent'); set('smp_cname',s.contactName); set('smp_cphone',s.contactPhone); set('smp_cemail',s.contactEmail); set('smp_notes',s.notes);
+  const t=document.getElementById('smpFormTitle'); if(t) t.textContent='Edit sample'+(s.sampleNo?(' #'+s.sampleNo):''); const c=document.getElementById('smpCancel'); if(c) c.style.display='inline-block';
+}
+function smpRead(){
+  const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  return { dateSent:g('smp_date')||smpTodayStr(), sampleNo:g('smp_no'), barrelNo:g('smp_barrel'), brand:g('smp_brand'),
+    spirit:g('smp_spirit'), age:g('smp_age'), store:g('smp_store'), distributor:g('smp_distro'),
+    status:g('smp_status')||'sent', contactName:g('smp_cname'), contactPhone:g('smp_cphone'), contactEmail:g('smp_cemail'), notes:g('smp_notes') };
+}
+function smpSave(){
+  if(!requireCap('write'))return;
+  const d=smpRead();
+  if(!d.sampleNo && !d.barrelNo && !d.store){ alert('Enter at least a sample #, a barrel #, or a store.'); return; }
+  if(!state.samples) state.samples=[];
+  if(_smpEditId){
+    const s=state.samples.find(x=>x.id===_smpEditId); if(!s){ _smpEditId=null; return; }
+    Object.assign(s,d,{_upd:Date.now()});
+    _smpEditId=null; save('Updated a sample'+(d.sampleNo?(' #'+d.sampleNo):'')); refreshAll(); flash('Sample updated.');
+  } else {
+    state.samples.push(Object.assign({id:uid(),ts:Date.now(),_upd:Date.now(),by:(SESSION?SESSION.name:'')},d));
+    save('Logged a sample'+(d.sampleNo?(' #'+d.sampleNo):'')); refreshAll(); flash('Sample logged.');
+  }
+}
+function smpEdit(id){ if(!requireCap('write'))return; _smpEditId=id; renderSamples(); try{ document.getElementById('smpFormTitle').scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} }
+function smpCancel(){ _smpEditId=null; renderSamples(); }
+function smpDelete(id){
+  if(!requireCap('write'))return;
+  const s=(state.samples||[]).find(x=>x.id===id); if(!s)return;
+  if(!confirm('Delete sample'+(s.sampleNo?(' #'+s.sampleNo):'')+'?'))return;
+  state.samples=(state.samples||[]).filter(x=>x.id!==id); if(_smpEditId===id)_smpEditId=null;
+  save('Deleted a sample'); refreshAll(); flash('Sample deleted.');
+}
+function smpMove(id){
+  if(!requireCap('write'))return;
+  const s=(state.samples||[]).find(x=>x.id===id); if(!s)return;
+  if(!confirm('Move sample'+(s.sampleNo?(' #'+s.sampleNo):'')+' into Barrels in Process?\n\nThis creates a single-barrel selection (barrel #, store, distributor, brand & contact carry over) and removes it from the samples list.'))return;
+  const note='Converted from sample'+(s.sampleNo?(' #'+s.sampleNo):'')+(s.notes?(' — '+s.notes):'');
+  const rec={ id:uid(), dsp:s.dsp||'', brand:s.brand||'', barrelNo:s.barrelNo||'', spirit:s.spirit||'', age:s.age||'',
+    retailer:s.store||'', wholesaler:s.distributor||'',
+    buyerName:s.contactName||'', buyerPhone:s.contactPhone||'', buyerEmail:s.contactEmail||'',
+    labelChoice:'', artType:'logo', notes:note, artText:'', logoId:'', logoName:'',
+    stages:{}, ts:Date.now(), _upd:Date.now(), by:(SESSION?SESSION.name:'') };
+  if(!state.barrelsProc) state.barrelsProc=[];
+  state.barrelsProc.push(rec);
+  state.samples=(state.samples||[]).filter(x=>x.id!==id); if(_smpEditId===id)_smpEditId=null;
+  save('Moved sample'+(s.sampleNo?(' #'+s.sampleNo):'')+' to Barrels in Process',{view:'barrelsproc'}); refreshAll();
+  flash('Moved to Barrels in Process.'); try{ switchView('barrelsproc'); }catch(e){}
 }
 
 </script>
