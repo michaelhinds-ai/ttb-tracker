@@ -165,6 +165,9 @@
   body.role-manager .mgr-hide{display:none!important}
   body.role-production #homeKpis,body.role-production #view-home .card{display:none!important}
   body.role-production #view-home .apptile:not(.prod-ok){display:none!important}
+  /* Retail: only the sales KPIs for their location — hide tasks, alerts, apps, the location pills. */
+  body.role-retail #view-home .card,body.role-retail #view-home .apps,body.role-retail #view-home .entsw,body.role-retail #homeSalesDetail{display:none!important}
+  body.role-retail #view-home>*:first-child{margin-bottom:6px}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -234,7 +237,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260829m</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260829n</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -424,6 +427,7 @@
         <div><label class="fld">Barrel #</label><input id="lbl_barrel" placeholder="2868"></div>
         <div><label class="fld">Proof</label><input id="lbl_proof" inputmode="decimal" placeholder="132.80" oninput="lblUpdAbv()"></div>
         <div style="display:flex;align-items:flex-end"><span id="lbl_abv" style="color:var(--copper);font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:10px"></span></div>
+        <div style="grid-column:1/-1"><label class="fld">Distributor / store / note <span style="font-weight:400;color:var(--muted)">— optional, printed on the label</span></label><input id="lbl_note" placeholder="e.g. Total Wine — Nashville, or a comment"></div>
       </div>
       <div id="lbl_logo" style="margin:10px 0"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1107,7 +1111,8 @@
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="retail">Retail (location dashboard)</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Location <span style="font-weight:400;color:var(--muted)">— for Retail users</span></label><input type="text" id="u_location" list="uLocList" placeholder="e.g. Church S"><datalist id="uLocList"></datalist></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
@@ -1243,6 +1248,7 @@
   <section class="view" id="view-emprpt"><h2 class="section">Sales by Employee</h2><div class="card" id="emprptBody"></div></section>
   <section class="view" id="view-catrpt"><h2 class="section">Category Summary</h2><div class="card" id="catrptBody"></div></section>
   <section class="view" id="view-trendrpt"><h2 class="section">Day &amp; Hour Trends</h2><div class="card" id="trendrptBody"></div></section>
+  <section class="view" id="view-clockrpt"><h2 class="section">Who’s Clocked In</h2><div class="card" id="clockrptBody"></div></section>
 </main>
 
 <script>
@@ -1286,8 +1292,10 @@ function cacheKey(){ return 'ttb_cache_'+WS; }
 function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; s.assets=Array.isArray(d.assets)?d.assets:[]; s.barrelsProc=Array.isArray(d.barrelsProc)?d.barrelsProc:[]; s.wages=(d.wages&&typeof d.wages==='object'&&!Array.isArray(d.wages))?d.wages:{}; s.expenses=Array.isArray(d.expenses)?d.expenses:[]; s.pnlXolaMap=(d.pnlXolaMap&&typeof d.pnlXolaMap==='object'&&!Array.isArray(d.pnlXolaMap))?d.pnlXolaMap:{}; s.locAlias=(d.locAlias&&typeof d.locAlias==='object'&&!Array.isArray(d.locAlias))?d.locAlias:{}; s.pnlLocs=Array.isArray(d.pnlLocs)?d.pnlLocs:[]; s.salaried=Array.isArray(d.salaried)?d.salaried:[]; s.attention=Array.isArray(d.attention)?d.attention:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
-const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[] };
-const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer' };
+const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[], retail:[] };
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer', retail:'Retail (location dashboard)' };
+// Retail users see only a stripped-down dashboard for their assigned location.
+function currentLocation(){ return (SESSION&&SESSION.location)||''; }
 // Roles an admin can tune section-visibility for (admin always sees everything).
 const CONFIG_ROLES=['editor','manager','barrelmgr','production','reports','viewer'];
 // The navigable sections that can be shown/hidden per role.
@@ -1308,7 +1316,7 @@ const DEFAULT_HIDDEN={
   viewer:['payroll','expenses','pnl','data'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; return roleHiddenList(role).indexOf(v)>=0; }
+function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; if(role==='retail') return v!=='home'; return roleHiddenList(role).indexOf(v)>=0; }
 function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
@@ -1345,7 +1353,8 @@ function loadSession(){
     if(!j) return;
     const s=JSON.parse(j);
     if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // expired → require sign-in
-    if(state.auth.users.some(u=>u.id===s.userId&&u.role===s.role)){ SESSION={userId:s.userId,name:s.name,role:s.role}; saveSession(); } // valid → slide the expiry forward
+    const su=state.auth.users.find(u=>u.id===s.userId&&u.role===s.role);
+    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||''}; saveSession(); } // valid → slide the expiry forward
   }catch(e){}
 }
 function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
@@ -1376,7 +1385,7 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
+    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||''}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
@@ -1387,7 +1396,7 @@ function applyPermissions(){
   const role=currentRole();
   const b=document.body;
   ['write','delete','setup','users','reports'].forEach(c=>b.classList.toggle('perm-'+c, can(c)));
-  ['admin','editor','manager','barrelmgr','production','reports','viewer'].forEach(r=>b.classList.toggle('role-'+r, role===r));
+  ['admin','editor','manager','barrelmgr','production','reports','viewer','retail'].forEach(r=>b.classList.toggle('role-'+r, role===r));
   // Hide any tile / link / button whose target view this role isn't allowed to see.
   try{
     document.querySelectorAll('[onclick^="switchView("]').forEach(el=>{
@@ -1463,7 +1472,9 @@ function renderUsers(){
   if(mg) mg.style.display='';
   const db=$('#disableLogin'); if(db) db.onclick=disableLogin;
   const rows=[...state.auth.users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${u.name||''}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${ROLE_LABEL[u.role]||u.role}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
+  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)}${u.location?` <span style="color:var(--muted);font-size:12px">· ${esc(u.location)}</span>`:''}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
+  // Suggest known locations for the Retail user's location field.
+  const dl=$('#uLocList'); if(dl){ const locs=[...new Set([...(state.pnlLocs||[]),...(state.auth.users||[]).map(u=>u.location).filter(Boolean)])]; dl.innerHTML=locs.map(l=>`<option value="${esc(l)}"></option>`).join(''); }
 }
 async function enableLogin(){
   if(!requireCap('users'))return;
@@ -1483,29 +1494,31 @@ function disableLogin(){
 async function userSave(){
   if(!requireCap('users'))return;
   const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||'';
+  const location=(($('#u_location')||{}).value||'').trim();
   if(!name){ alert('Enter a name.'); return; }
+  if(role==='retail' && !location){ alert('A Retail user needs a location — type the Square location name (e.g. Church S) so their dashboard shows the right store.'); return; }
   if(editingUserId){
     const u=state.auth.users.find(x=>x.id===editingUserId); if(!u)return;
     if(u.role==='admin' && role!=='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t change the last admin’s role — add another admin first.'); return; }
-    u.name=name; u.role=role;
+    u.name=name; u.role=role; u.location=location;
     if(pin){ if(pin.length<4){alert('PIN must be at least 4 digits.');return;} u.pinHash=await hashPin(pin); }
-    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; saveSession(); }
+    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; SESSION.location=u.location; saveSession(); }
     cancelUser(); save('Updated a user'); applyPermissions(); refreshAll(); flash('User updated.');
   } else {
     if(pin.length<4){ alert('PIN must be at least 4 digits.'); return; }
-    state.auth.users.push({id:uid(),name,role,pinHash:await hashPin(pin)});
+    state.auth.users.push({id:uid(),name,role,location,pinHash:await hashPin(pin)});
     cancelUser(); save('Added a user'); refreshAll(); flash('User added.');
   }
 }
 function editUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
-  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value='';
+  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value=''; if($('#u_location')) $('#u_location').value=u.location||'';
   $('#u_pin').placeholder='Leave blank to keep current PIN';
   $('#userFormTitle').textContent='Edit '+(u.name||'user'); $('#userCancel').style.display='inline-block';
   switchView('data'); $('#u_name').scrollIntoView({behavior:'smooth',block:'center'});
 }
-function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
+function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; if($('#u_location'))$('#u_location').value=''; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
 function deleteUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
@@ -1755,7 +1768,9 @@ function ytdTaxableBeforeQuarter(y,q){ return taxablePG(e=>yearOf(e.date)===y&&q
 
 /* ================= Dashboard ================= */
 function renderHome(){
-  try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', Mike'; }catch(e){}
+  try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const nm=(authOn()&&SESSION&&SESSION.name)?String(SESSION.name).split(' ')[0]:'Mike'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', '+nm;
+    const sub=document.querySelector('#view-home h1#homeHello + p'); if(sub){ sub.textContent=(currentRole()==='retail')?('Today at '+(currentLocation()||'your location')+' — at a glance.'):'Today’s sales across your locations — at a glance.'; }
+  }catch(e){}
   try{ renderAttnForm(); }catch(e){}
   try{
     const me=SESSION?SESSION.userId:null; const admin=(typeof can==='function'&&can('setup'));
@@ -1866,6 +1881,18 @@ async function loadHomeSales(force){
     P('/api/shopify/summary',{startDate:lyday,endDate:lyday,endCapISO:lyISO}),
   ]); }catch(e){}
   const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
+  // Retail users see only their assigned location: today's sales, transactions, avg ticket.
+  if(currentRole()==='retail'){
+    const loc=currentLocation(); const nz=s=>String(s||'').trim().toLowerCase(); const n=nz(loc);
+    let match=null;
+    if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>(a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const ln=nz(l.name); if(!match&&ln&&(ln===n||ln.startsWith(n)||n.startsWith(ln)||(n&&ln.indexOf(n)>=0))) match={name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}; })); }
+    if(!match){ box.innerHTML=kpi('copper',esc(loc||'Your location'),money(0),(sq&&sq.error)?'Square unavailable — try again shortly':'No sales recorded yet today.'); _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return; }
+    const avg=match.orders?match.net/match.orders:0;
+    box.innerHTML=kpi('copper','Today’s Sales',money(match.net),esc(match.name))
+      +kpi('blue','Transactions',numf(match.orders,0),match.orders===1?'sale today':'sales today')
+      +kpi('green','Average Ticket',money(avg),'net sales ÷ transactions');
+    _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return;
+  }
   const mapOf=d=>{ const m={}; if(d&&!d.error){ (d.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ m[l.name]=(m[l.name]||0)+(+l.netSales||0); }); }); } return m; };
   const ordOf=d=>{ const m={}; if(d&&!d.error){ (d.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ m[l.name]=(m[l.name]||0)+(+l.orderCount||0); }); }); } return m; };
   const wMap=mapOf(sqW), yMap=mapOf(sqY), yOrdMap=ordOf(sqY);
@@ -1943,7 +1970,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260829m·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260829n·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -2012,6 +2039,7 @@ function labelHTML(s,ctx){
   return `<div class="clabel">
     <div class="clogo">${logo?`<img src="${logo}" alt="">`:`<div class="cbrand">${esc(s.company||'')}</div>`}</div>
     <div class="cprod">${esc(s.product||'')}</div>
+    ${ctx.note?`<div class="cnote" style="font-weight:700;font-size:11pt;margin:2px 0">${esc(ctx.note)}</div>`:''}
     <div class="cmeta">${esc([ctx.barrel?('Barrel #'+ctx.barrel):'', ctx.pack+' x '+(s.size||'')].filter(Boolean).join('  ·  '))}</div>
     ${p?`<div class="cproof">${esc('Proof '+p+'  ·  '+abv+'% ALC/Vol')}</div>`:''}
     <div class="cbar">${scc?gs1128Svg(scc):`<div style="color:#b00;font-size:11pt">No ${ctx.pack}-pack SCC set for this product</div>`}${scc?`<div class="chr">(01)${esc(scc)}</div>`:''}</div>
@@ -2023,7 +2051,7 @@ function printCaseLabels(){
   if(!s){ alert('Choose a product to print.'); return; }
   const pack=(document.getElementById('lbl_pack')||{}).value; if(!pack){ alert('Choose the case pack — 6-pack or 12-pack.'); return; }
   const scc = pack==='6' ? (s.scc6||'') : pack12scc(s);
-  const ctx={pack, scc, barrel:(document.getElementById('lbl_barrel')||{}).value.trim(), proof:(document.getElementById('lbl_proof')||{}).value.trim()};
+  const ctx={pack, scc, barrel:(document.getElementById('lbl_barrel')||{}).value.trim(), proof:(document.getElementById('lbl_proof')||{}).value.trim(), note:((document.getElementById('lbl_note')||{}).value||'').trim()};
   const one=labelHTML(s,ctx);
   let page='<div class="lsheet-page">'; for(let i=0;i<6;i++) page+=one; page+='</div>';
   const sheet=document.getElementById('labelSheet'); sheet.innerHTML=page; sheet.style.display='';
@@ -3278,8 +3306,8 @@ window.addEventListener('popstate',function(e){ _navPop=true; try{ switchView((e
 function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
-  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends'};
+  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In"};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
@@ -3289,7 +3317,7 @@ function renderCrumb(v){
     return `<button onclick="switchView('${t}')">${i===0?'\u2190 ':''}${esc(LABEL[t]||t)}</button><span class="sep">/</span>`;
   }).join('')+'</div>';
 }
-function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
+function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
 function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderBarrelsProc();try{renderExpenses();}catch(e){}renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();try{renderRolePanel();}catch(e){}renderBackups();dataStatus();syncUI();applyPermissions();}
@@ -5333,6 +5361,7 @@ function renderSalesHub(){
     ${card('emprpt','🧑‍💼','Sales by Employee','Each employee’s transactions, sales and average ticket for a date range, with a compare-to.')}
     ${card('catrpt','🗂️','Category Summary','Totals rolled up by category, so you see the big buckets at a glance.')}
     ${card('trendrpt','📈','Day & Hour Trends','Your busiest days of the week and hours of the day, by sales and transactions.')}
+    ${card('clockrpt','⏱️','Who’s Clocked In','Who clocked in and out today by location, and who is still on the clock — from Square timecards.')}
     ${card('retail','🧾','Retail Sales (daily)','The full per-location daily summary across every Square account.')}
     ${card('salesrpt','📍','Sales by Location','Net sales by location over a period, with month-by-month breakouts.')}
   </div>`;
@@ -5426,6 +5455,31 @@ async function runEmpRpt(){
     <div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales${showCmp?` <span style="font-weight:400;color:var(--muted)">vs ${esc(cmp.label)}</span>`:''}</th><th class="num">Avg ticket</th></tr></thead>
     <tbody>${rows}</tbody><tfoot><tr class="total" style="font-weight:700"><td>All employees</td><td class="num">${numf(tTx,0)}</td><td class="num">${money(tSales/100)}</td><td class="num">${money(tTx?tSales/tTx/100:0)}</td></tr></tfoot></table></div>
     <div class="disclaimer">From Square payments across every location. Sales exclude tips; average ticket = an employee’s sales ÷ their transactions. “Unattributed” covers payments Square didn’t tie to a team member.</div>`;
+}
+
+/* ---------- Who's clocked in / out (Square timecards) ---------- */
+let _clockDate=null;
+function clockToolbar(){ if(!_clockDate)_clockDate=rptTodayStr(); return `<div class="toolbar" style="align-items:end;flex-wrap:wrap;gap:10px"><div><label class="fld">Date</label><input type="date" id="clock_date" value="${_clockDate}" onchange="_clockDate=this.value;runClockRpt()"></div><button class="btn ghost sm" onclick="_clockDate=rptTodayStr();runClockRpt()">Today</button><button class="btn ky sm" onclick="runClockRpt()">Refresh</button></div>`; }
+async function runClockRpt(){
+  const box=document.getElementById('clockrptBody'); if(!box) return;
+  box.innerHTML=clockToolbar()+`<div class="empty" style="padding:24px">⏳ Checking timecards…</div>`;
+  let d=null; try{ const r=await fetch('/api/square/clockins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date:_clockDate})}); d=await r.json().catch(()=>null); }catch(e){}
+  if(!d||!d.ok){ box.innerHTML=clockToolbar()+`<div class="note">⚠️ ${esc((d&&(d.error||(d.errors&&d.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; return; }
+  const rows=d.rows||[];
+  if(!rows.length){ box.innerHTML=clockToolbar()+`<div class="note">No clock-ins recorded for ${esc(fmtDate(_clockDate))}.${(d.errors&&d.errors.length)?' — '+esc(d.errors.join('; ')):''}</div>`; return; }
+  const fmtT=iso=>{ if(!iso)return ''; try{ return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } };
+  const byLoc={}; rows.forEach(r=>{ (byLoc[r.location||'—']||(byLoc[r.location||'—']=[])).push(r); });
+  const openCount=rows.filter(r=>r.open).length;
+  let html=clockToolbar()+`<h3 style="margin:8px 0 2px">Who’s clocked in — ${esc(fmtDate(_clockDate))}</h3>`+
+    `<div class="kpis" style="margin:12px 0">`+kpi('green','Clocked in now',String(openCount),'of '+rows.length+' shift'+(rows.length===1?'':'s'))+kpi('copper','People today',String(new Set(rows.map(r=>r.name)).size),'across '+Object.keys(byLoc).length+' location'+(Object.keys(byLoc).length===1?'':'s'))+`</div>`;
+  html+=Object.keys(byLoc).sort().map(loc=>{
+    const rs=byLoc[loc];
+    return `<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th></tr></thead><tbody>`+
+      rs.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td></tr>`).join('')+
+      `</tbody></table></div></div>`;
+  }).join('');
+  html+=`<div class="disclaimer">From Square timecards for the selected day, in each account’s timezone. “Still in” means Square has no clock-out recorded yet. Needs the Square token to have Timecards read access.</div>`;
+  box.innerHTML=html;
 }
 
 </script>
