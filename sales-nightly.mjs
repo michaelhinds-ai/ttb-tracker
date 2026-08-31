@@ -39,7 +39,7 @@ export default async (req) => {
   const tz = sqEnv().tz;
   const ymd = todayInTz(tz);
   let rows = [];
-  try { const dig = await fullDigest(ymd); rows = dig.rows || []; if (dig.errors && dig.errors.length) console.warn("sales-nightly account errors:", dig.errors.join(" | ")); } catch (e) { console.error("sales-nightly digest failed", e && e.message); }
+  try { const dig = await fullDigest(ymd, ymd); rows = dig.rows || []; if (dig.errors && dig.errors.length) console.warn("sales-nightly account errors:", dig.errors.join(" | ")); } catch (e) { console.error("sales-nightly digest failed", e && e.message); }
   const html = renderDigestHTML(rows, ymd, tz);
   const total = rows.reduce((s, r) => s + r.sales, 0);
   const subject = `Daily Sales — ${new Date(ymd + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} — $${(total / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;

@@ -17,7 +17,7 @@ export default async (req) => {
   const tz = sqEnv().tz;
   const ymd = /^\d{4}-\d{2}-\d{2}$/.test(p.date || "") ? p.date : todayInTz(tz);
   let rows = [];
-  try { rows = await fullDigest(ymd); }
+  try { const dig = await fullDigest(ymd, ymd); rows = dig.rows || []; }
   catch (e) { return json({ ok: false, error: "square_failed", detail: String((e && e.message) || e) }, 200); }
   const html = renderDigestHTML(rows, ymd, tz);
   const total = rows.reduce((s, r) => s + r.sales, 0);

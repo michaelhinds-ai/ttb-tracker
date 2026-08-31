@@ -165,6 +165,9 @@
   body.role-manager .mgr-hide{display:none!important}
   body.role-production #homeKpis,body.role-production #view-home .card{display:none!important}
   body.role-production #view-home .apptile:not(.prod-ok){display:none!important}
+  /* Retail: only the sales KPIs for their location — hide tasks, alerts, apps, the location pills. */
+  body.role-retail #view-home .card,body.role-retail #view-home .apps,body.role-retail #view-home .entsw,body.role-retail #homeSalesDetail{display:none!important}
+  body.role-retail #view-home>*:first-child{margin-bottom:6px}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -234,7 +237,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260828f</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260829n</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -277,6 +280,11 @@
         <div class="ai" style="background:rgba(168,88,43,.12)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8582b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
         <div><div class="an">Louisville Rickhouse Systems</div><div class="ad">Reporting, production, bottling, barrels, orders &amp; customers &mdash; the full distillery system.</div></div>
         <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open system &rarr;</span></div>
+      </div>
+      <div class="apptile cap-reports" style="cursor:pointer" onclick="switchView('saleshub')">
+        <div class="ai" style="background:rgba(90,130,200,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5a82c8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+        <div><div class="an">Sales Reports</div><div class="ad">Item summary, sales by employee, categories, and day &amp; hour trends &mdash; any date range, with compare-to.</div></div>
+        <div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open reports &rarr;</span></div>
       </div>
       <div class="apptile" style="opacity:.72">
         <div class="ai" style="background:rgba(90,160,138,.14)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5aa08a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4c-1.2 5-1.2 11 0 16M17 4c1.2 5 1.2 11 0 16M6 4h12M6 20h12M5.4 9.2h13.2M5.4 14.8h13.2"/></svg></div>
@@ -419,6 +427,7 @@
         <div><label class="fld">Barrel #</label><input id="lbl_barrel" placeholder="2868"></div>
         <div><label class="fld">Proof</label><input id="lbl_proof" inputmode="decimal" placeholder="132.80" oninput="lblUpdAbv()"></div>
         <div style="display:flex;align-items:flex-end"><span id="lbl_abv" style="color:var(--copper);font-weight:700;font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:10px"></span></div>
+        <div style="grid-column:1/-1"><label class="fld">Distributor / store / note <span style="font-weight:400;color:var(--muted)">— optional, printed on the label</span></label><input id="lbl_note" placeholder="e.g. Total Wine — Nashville, or a comment"></div>
       </div>
       <div id="lbl_logo" style="margin:10px 0"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -651,7 +660,7 @@
         <div><label class="fld">From</label><input type="date" id="rtlFrom"></div>
         <div><label class="fld">To</label><input type="date" id="rtlTo"></div>
         <button class="btn ghost sm" id="rtlPrev" title="Shift back one period">◀</button>
-        <button class="btn ghost sm" id="rtlToday">Today</button>
+        <button class="btn ghost sm" id="rtlToday" title="Click to cycle: Today → This Week → Month to date → Year to date">Today</button>
         <button class="btn ghost sm" id="rtlNext" title="Shift forward one period">▶</button>
         <button class="btn ky sm cap-reports" id="rtlRun">Pull the range</button>
         <button class="btn ghost sm noprint" id="rtlCsv" style="display:none">Export CSV</button>
@@ -1102,7 +1111,8 @@
         <h3 style="margin-top:18px;font-size:15px" id="userFormTitle">Add a user</h3>
         <div class="grid g3" style="margin-top:6px">
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
-          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="retail">Retail (location dashboard)</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
+          <div><label class="fld">Location <span style="font-weight:400;color:var(--muted)">— for Retail users</span></label><input type="text" id="u_location" list="uLocList" placeholder="e.g. Church S"><datalist id="uLocList"></datalist></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
@@ -1176,7 +1186,8 @@
       </div>
       <div id="bp_logo_wrap" style="margin-top:12px"><label class="fld">Logo image</label><input type="file" id="bp_logo_file" accept="image/*"></div>
       <div id="bp_text_wrap" style="margin-top:12px;display:none"><label class="fld">Label text</label><input id="bp_text" placeholder="Text to print on the label"></div>
-      <div class="row-actions" style="margin-top:14px"><button class="btn" id="bp_addbtn" onclick="bpAdd()">Add barrel</button></div>
+      <div style="margin-top:12px"><label class="fld">Comments / notes <span style="font-weight:400;color:var(--muted)">— optional</span></label><textarea id="bp_notes" rows="2" placeholder="Anything to remember about this barrel — pickup details, special instructions, etc."></textarea></div>
+      <div class="row-actions" style="margin-top:14px"><button class="btn" id="bp_addbtn" onclick="bpAdd()">Add barrel</button><button class="btn gray" id="bp_canceledit" style="display:none" onclick="bpCancelEdit()">Cancel edit</button></div>
     </div>
 
     <div id="bpList"></div>
@@ -1226,6 +1237,18 @@
     </div>
     <div id="pnlBody" style="margin-top:12px"></div>
   </section>
+
+  <section class="view" id="view-saleshub">
+    <button class="link" onclick="switchView('home')" style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin-bottom:8px">&larr; Home</button>
+    <h2 class="section">Reports</h2>
+    <p class="hint" style="margin:0 0 14px">Sales reports across every Square account. Pick one — each has its own date range and a compare-to option.</p>
+    <div id="saleshubBody"></div>
+  </section>
+  <section class="view" id="view-itemrpt"><h2 class="section">Item Summary</h2><div class="card" id="itemrptBody"></div></section>
+  <section class="view" id="view-emprpt"><h2 class="section">Sales by Employee</h2><div class="card" id="emprptBody"></div></section>
+  <section class="view" id="view-catrpt"><h2 class="section">Category Summary</h2><div class="card" id="catrptBody"></div></section>
+  <section class="view" id="view-trendrpt"><h2 class="section">Day &amp; Hour Trends</h2><div class="card" id="trendrptBody"></div></section>
+  <section class="view" id="view-clockrpt"><h2 class="section">Who’s Clocked In</h2><div class="card" id="clockrptBody"></div></section>
 </main>
 
 <script>
@@ -1269,8 +1292,10 @@ function cacheKey(){ return 'ttb_cache_'+WS; }
 function normalize(d){ const s=freshState(); s.settings=Object.assign(s.settings,d.settings||{}); s.entries=Array.isArray(d.entries)?d.entries:[]; s.ky=Object.assign({monthly:{},barrel:{}},d.ky||{}); s.barrels=Array.isArray(d.barrels)?d.barrels:[]; s.bottlings=Array.isArray(d.bottlings)?d.bottlings:[]; s.finishedGoods=Array.isArray(d.finishedGoods)?d.finishedGoods:[]; s.customers=Array.isArray(d.customers)?d.customers:[]; s.orders=Array.isArray(d.orders)?d.orders:[]; s.history=Array.isArray(d.history)?d.history:[]; s.auth={enabled:!!(d.auth&&d.auth.enabled),users:Array.isArray(d.auth&&d.auth.users)?d.auth.users:[]}; s.dailyBackups=Array.isArray(d.dailyBackups)?d.dailyBackups:[]; s.tibouts=Array.isArray(d.tibouts)?d.tibouts:[]; s.tibins=Array.isArray(d.tibins)?d.tibins:[]; s.tasks=Array.isArray(d.tasks)?d.tasks:[]; s.skus=(Array.isArray(d.skus)?d.skus:s.skus).map(x=>({...x,scc12:x.scc12||x.scc||'',scc6:x.scc6||''})); s.brandLogos=(d.brandLogos&&typeof d.brandLogos==='object'&&!Array.isArray(d.brandLogos))?d.brandLogos:{}; s.docs=Array.isArray(d.docs)?d.docs:[]; s.assets=Array.isArray(d.assets)?d.assets:[]; s.barrelsProc=Array.isArray(d.barrelsProc)?d.barrelsProc:[]; s.wages=(d.wages&&typeof d.wages==='object'&&!Array.isArray(d.wages))?d.wages:{}; s.expenses=Array.isArray(d.expenses)?d.expenses:[]; s.pnlXolaMap=(d.pnlXolaMap&&typeof d.pnlXolaMap==='object'&&!Array.isArray(d.pnlXolaMap))?d.pnlXolaMap:{}; s.locAlias=(d.locAlias&&typeof d.locAlias==='object'&&!Array.isArray(d.locAlias))?d.locAlias:{}; s.pnlLocs=Array.isArray(d.pnlLocs)?d.pnlLocs:[]; s.salaried=Array.isArray(d.salaried)?d.salaried:[]; s.attention=Array.isArray(d.attention)?d.attention:[]; return s; }
 
 /* ================= Access control (UI-gated roles) ================= */
-const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[] };
-const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer' };
+const ROLE_CAPS={ admin:['write','delete','setup','users','reports'], editor:['write','reports'], manager:['write'], barrelmgr:['write'], production:[], reports:['reports'], viewer:[], retail:[] };
+const ROLE_LABEL={ admin:'Admin', editor:'Editor', manager:'Manager', barrelmgr:'Barrel Manager', production:'Production', reports:'Reports', viewer:'Viewer', retail:'Retail (location dashboard)' };
+// Retail users see only a stripped-down dashboard for their assigned location.
+function currentLocation(){ return (SESSION&&SESSION.location)||''; }
 // Roles an admin can tune section-visibility for (admin always sees everything).
 const CONFIG_ROLES=['editor','manager','barrelmgr','production','reports','viewer'];
 // The navigable sections that can be shown/hidden per role.
@@ -1291,7 +1316,7 @@ const DEFAULT_HIDDEN={
   viewer:['payroll','expenses','pnl','data'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; return roleHiddenList(role).indexOf(v)>=0; }
+function viewBlocked(v){ const role=currentRole(); if(role==='admin') return false; if(role==='retail') return v!=='home'; return roleHiddenList(role).indexOf(v)>=0; }
 function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
@@ -1328,7 +1353,8 @@ function loadSession(){
     if(!j) return;
     const s=JSON.parse(j);
     if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // expired → require sign-in
-    if(state.auth.users.some(u=>u.id===s.userId&&u.role===s.role)){ SESSION={userId:s.userId,name:s.name,role:s.role}; saveSession(); } // valid → slide the expiry forward
+    const su=state.auth.users.find(u=>u.id===s.userId&&u.role===s.role);
+    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||''}; saveSession(); } // valid → slide the expiry forward
   }catch(e){}
 }
 function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
@@ -1349,7 +1375,7 @@ function showLogin(){
   ov=document.createElement('div'); ov.id='authWrap'; ov.className='authwrap';
   ov.innerHTML=`<div class="authcard"><div class="hd"><h2>Mikey Systems</h2><div style="opacity:.8;font-size:13px;margin-top:4px">${state.settings.name||'Sign in to continue'}</div></div>
   <div class="bd">
-    <label>User</label><select id="authUser">${users.map(u=>`<option value="${u.id}">${u.name} — ${ROLE_LABEL[u.role]||u.role}</option>`).join('')}</select>
+    <label>User</label><select id="authUser"><option value="">— Select your name —</option>${users.map(u=>`<option value="${u.id}">${u.name} — ${ROLE_LABEL[u.role]||u.role}</option>`).join('')}</select>
     <label>PIN</label><input type="password" id="authPin" inputmode="numeric" autocomplete="off" placeholder="Enter your PIN">
     <div class="err" id="authErr"></div>
     <button class="btn" id="authGo" style="width:100%;margin-top:6px">Sign in</button>
@@ -1359,7 +1385,7 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
+    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||''}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
@@ -1370,7 +1396,7 @@ function applyPermissions(){
   const role=currentRole();
   const b=document.body;
   ['write','delete','setup','users','reports'].forEach(c=>b.classList.toggle('perm-'+c, can(c)));
-  ['admin','editor','manager','barrelmgr','production','reports','viewer'].forEach(r=>b.classList.toggle('role-'+r, role===r));
+  ['admin','editor','manager','barrelmgr','production','reports','viewer','retail'].forEach(r=>b.classList.toggle('role-'+r, role===r));
   // Hide any tile / link / button whose target view this role isn't allowed to see.
   try{
     document.querySelectorAll('[onclick^="switchView("]').forEach(el=>{
@@ -1446,7 +1472,9 @@ function renderUsers(){
   if(mg) mg.style.display='';
   const db=$('#disableLogin'); if(db) db.onclick=disableLogin;
   const rows=[...state.auth.users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${u.name||''}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${ROLE_LABEL[u.role]||u.role}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
+  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>`<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)}${u.location?` <span style="color:var(--muted);font-size:12px">· ${esc(u.location)}</span>`:''}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`).join('');
+  // Suggest known locations for the Retail user's location field.
+  const dl=$('#uLocList'); if(dl){ const locs=[...new Set([...(state.pnlLocs||[]),...(state.auth.users||[]).map(u=>u.location).filter(Boolean)])]; dl.innerHTML=locs.map(l=>`<option value="${esc(l)}"></option>`).join(''); }
 }
 async function enableLogin(){
   if(!requireCap('users'))return;
@@ -1466,29 +1494,31 @@ function disableLogin(){
 async function userSave(){
   if(!requireCap('users'))return;
   const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||'';
+  const location=(($('#u_location')||{}).value||'').trim();
   if(!name){ alert('Enter a name.'); return; }
+  if(role==='retail' && !location){ alert('A Retail user needs a location — type the Square location name (e.g. Church S) so their dashboard shows the right store.'); return; }
   if(editingUserId){
     const u=state.auth.users.find(x=>x.id===editingUserId); if(!u)return;
     if(u.role==='admin' && role!=='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t change the last admin’s role — add another admin first.'); return; }
-    u.name=name; u.role=role;
+    u.name=name; u.role=role; u.location=location;
     if(pin){ if(pin.length<4){alert('PIN must be at least 4 digits.');return;} u.pinHash=await hashPin(pin); }
-    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; saveSession(); }
+    if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; SESSION.location=u.location; saveSession(); }
     cancelUser(); save('Updated a user'); applyPermissions(); refreshAll(); flash('User updated.');
   } else {
     if(pin.length<4){ alert('PIN must be at least 4 digits.'); return; }
-    state.auth.users.push({id:uid(),name,role,pinHash:await hashPin(pin)});
+    state.auth.users.push({id:uid(),name,role,location,pinHash:await hashPin(pin)});
     cancelUser(); save('Added a user'); refreshAll(); flash('User added.');
   }
 }
 function editUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
-  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value='';
+  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value=''; if($('#u_location')) $('#u_location').value=u.location||'';
   $('#u_pin').placeholder='Leave blank to keep current PIN';
   $('#userFormTitle').textContent='Edit '+(u.name||'user'); $('#userCancel').style.display='inline-block';
   switchView('data'); $('#u_name').scrollIntoView({behavior:'smooth',block:'center'});
 }
-function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
+function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; if($('#u_location'))$('#u_location').value=''; $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
 function deleteUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
@@ -1738,7 +1768,9 @@ function ytdTaxableBeforeQuarter(y,q){ return taxablePG(e=>yearOf(e.date)===y&&q
 
 /* ================= Dashboard ================= */
 function renderHome(){
-  try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', Mike'; }catch(e){}
+  try{ const h=new Date().getHours(); const g=h<12?'Good morning':h<18?'Good afternoon':'Good evening'; const nm=(authOn()&&SESSION&&SESSION.name)?String(SESSION.name).split(' ')[0]:'Mike'; const el=document.getElementById('homeHello'); if(el)el.textContent=g+', '+nm;
+    const sub=document.querySelector('#view-home h1#homeHello + p'); if(sub){ sub.textContent=(currentRole()==='retail')?('Today at '+(currentLocation()||'your location')+' — at a glance.'):'Today’s sales across your locations — at a glance.'; }
+  }catch(e){}
   try{ renderAttnForm(); }catch(e){}
   try{
     const me=SESSION?SESSION.userId:null; const admin=(typeof can==='function'&&can('setup'));
@@ -1777,14 +1809,15 @@ function delAttention(id){
 }
 let _homeSalesAt=0,_homeSalesHTML='';
 function homeSalesLoading(){ return [0,1,2,3].map(()=>`<div class="kpi"><div class="label">Today's sales</div><div class="val" style="color:var(--muted);font-size:19px">Loading…</div><div class="foot">&nbsp;</div></div>`).join(''); }
-function homeChip(label,cur,prev){
-  if(prev==null||!isFinite(prev)||(prev===0&&cur===0)) return `<span style="color:var(--muted)">${label} —</span>`;
+function homeChip(label,cur,prev,title){
+  const t=title?` title="${esc(title)}"`:'';
+  if(prev==null||!isFinite(prev)||(prev===0&&cur===0)) return `<span${t} style="color:var(--muted)">${label} —</span>`;
   const up=cur>=prev,col=up?'var(--green)':'var(--red)',arrow=up?'▲':'▼';
   const pct=prev>0?Math.round(Math.abs(cur-prev)/prev*100):(cur>0?100:0);
-  return `<span style="color:${col};font-weight:700;white-space:nowrap">${label} ${arrow}${pct}%</span>`;
+  return `<span${t} style="color:${col};font-weight:700;white-space:nowrap">${label} ${arrow}${pct}%</span>`;
 }
-function homeSalesCard(color,name,net,orders,prevW,prevY,clickable){
-  const chips=isManager()?'':`<div style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${homeChip('wk',net,prevW)}${homeChip('yr',net,prevY)}</div>`;
+function homeSalesCard(color,name,net,orders,prevW,prevY,prevYOrders,clickable){
+  const chips=isManager()?'':`<div style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;font-family:-apple-system,Segoe UI,sans-serif">${homeChip('wk',net,prevW,'Net sales vs the same day last week')}${homeChip('$ yr',net,prevY,'Net sales vs the same day last year')}${homeChip('txns yr',orders,prevYOrders,'Transactions vs the same day last year')}</div>`;
   const click=clickable?` style="cursor:pointer" onclick="homeShowLocation('${String(name).replace(/'/g,"\\'")}')" title="Tap for the employee breakdown"`:'';
   const hint=clickable?`<div class="foot" style="opacity:.7">${orders} order${orders===1?'':'s'} today · tap for staff ▸</div>`:`<div class="foot">${orders} order${orders===1?'':'s'} today</div>`;
   return `<div class="kpi ${color}"${click}><div class="label">${esc(name)}</div><div class="val">${money(net)}</div>${chips}${hint}</div>`;
@@ -1848,16 +1881,29 @@ async function loadHomeSales(force){
     P('/api/shopify/summary',{startDate:lyday,endDate:lyday,endCapISO:lyISO}),
   ]); }catch(e){}
   const blankBO=l=>/back\s*-?\s*office/i.test(l.name||'')&&!l.orderCount&&!(+l.netSales)&&!(+l.tax);
+  // Retail users see only their assigned location: today's sales, transactions, avg ticket.
+  if(currentRole()==='retail'){
+    const loc=currentLocation(); const nz=s=>String(s||'').trim().toLowerCase(); const n=nz(loc);
+    let match=null;
+    if(sq&&!sq.error){ (sq.accounts||[]).filter(a=>a.ok).forEach(a=>(a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ const ln=nz(l.name); if(!match&&ln&&(ln===n||ln.startsWith(n)||n.startsWith(ln)||(n&&ln.indexOf(n)>=0))) match={name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}; })); }
+    if(!match){ box.innerHTML=kpi('copper',esc(loc||'Your location'),money(0),(sq&&sq.error)?'Square unavailable — try again shortly':'No sales recorded yet today.'); _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return; }
+    const avg=match.orders?match.net/match.orders:0;
+    box.innerHTML=kpi('copper','Today’s Sales',money(match.net),esc(match.name))
+      +kpi('blue','Transactions',numf(match.orders,0),match.orders===1?'sale today':'sales today')
+      +kpi('green','Average Ticket',money(avg),'net sales ÷ transactions');
+    _homeSalesHTML=box.innerHTML; _homeSalesAt=Date.now(); return;
+  }
   const mapOf=d=>{ const m={}; if(d&&!d.error){ (d.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ m[l.name]=(m[l.name]||0)+(+l.netSales||0); }); }); } return m; };
-  const wMap=mapOf(sqW), yMap=mapOf(sqY);
+  const ordOf=d=>{ const m={}; if(d&&!d.error){ (d.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ m[l.name]=(m[l.name]||0)+(+l.orderCount||0); }); }); } return m; };
+  const wMap=mapOf(sqW), yMap=mapOf(sqY), yOrdMap=ordOf(sqY);
   const cards=[], colors=['copper','green','blue','ky'];
   if(sq&&!sq.error){
     const rows=[]; (sq.accounts||[]).filter(a=>a.ok).forEach(a=>{ (a.locations||[]).filter(l=>!blankBO(l)).forEach(l=>{ rows.push({name:l.name,net:+l.netSales||0,orders:+l.orderCount||0}); }); });
     rows.sort((x,y)=>y.net-x.net);
-    if(rows.length) rows.forEach((r,i)=>cards.push(homeSalesCard(colors[i%colors.length],r.name,r.net,r.orders,(r.name in wMap)?wMap[r.name]:null,(r.name in yMap)?yMap[r.name]:null,true)));
-    else cards.push(homeSalesCard('copper','Store sales',0,0,null,null));
+    if(rows.length) rows.forEach((r,i)=>cards.push(homeSalesCard(colors[i%colors.length],r.name,r.net,r.orders,(r.name in wMap)?wMap[r.name]:null,(r.name in yMap)?yMap[r.name]:null,(r.name in yOrdMap)?yOrdMap[r.name]:null,true)));
+    else cards.push(homeSalesCard('copper','Store sales',0,0,null,null,null));
   } else cards.push(homeErrCard('copper','Store sales',(sq&&(sq.detail||sq.error))?'Square unavailable':'Connect Square in Setup'));
-  if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null));
+  if(sh&&sh.ok) cards.push(homeSalesCard('amber','Shopify (online)',+sh.net||0,sh.orders||0,(shW&&shW.ok)?(+shW.net||0):null,(shY&&shY.ok)?(+shY.net||0):null,(shY&&shY.ok)?(+shY.orders||0):null));
   else cards.push(homeErrCard('amber','Shopify (online)',(sh&&sh.detail)?'Shopify unavailable':'Connect Shopify'));
   _homeSalesHTML=cards.join(''); _homeSalesAt=Date.now(); box.innerHTML=_homeSalesHTML;
 }
@@ -1924,7 +1970,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260828f·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260829n·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -1993,6 +2039,7 @@ function labelHTML(s,ctx){
   return `<div class="clabel">
     <div class="clogo">${logo?`<img src="${logo}" alt="">`:`<div class="cbrand">${esc(s.company||'')}</div>`}</div>
     <div class="cprod">${esc(s.product||'')}</div>
+    ${ctx.note?`<div class="cnote" style="font-weight:700;font-size:11pt;margin:2px 0">${esc(ctx.note)}</div>`:''}
     <div class="cmeta">${esc([ctx.barrel?('Barrel #'+ctx.barrel):'', ctx.pack+' x '+(s.size||'')].filter(Boolean).join('  ·  '))}</div>
     ${p?`<div class="cproof">${esc('Proof '+p+'  ·  '+abv+'% ALC/Vol')}</div>`:''}
     <div class="cbar">${scc?gs1128Svg(scc):`<div style="color:#b00;font-size:11pt">No ${ctx.pack}-pack SCC set for this product</div>`}${scc?`<div class="chr">(01)${esc(scc)}</div>`:''}</div>
@@ -2004,7 +2051,7 @@ function printCaseLabels(){
   if(!s){ alert('Choose a product to print.'); return; }
   const pack=(document.getElementById('lbl_pack')||{}).value; if(!pack){ alert('Choose the case pack — 6-pack or 12-pack.'); return; }
   const scc = pack==='6' ? (s.scc6||'') : pack12scc(s);
-  const ctx={pack, scc, barrel:(document.getElementById('lbl_barrel')||{}).value.trim(), proof:(document.getElementById('lbl_proof')||{}).value.trim()};
+  const ctx={pack, scc, barrel:(document.getElementById('lbl_barrel')||{}).value.trim(), proof:(document.getElementById('lbl_proof')||{}).value.trim(), note:((document.getElementById('lbl_note')||{}).value||'').trim()};
   const one=labelHTML(s,ctx);
   let page='<div class="lsheet-page">'; for(let i=0;i<6;i++) page+=one; page+='</div>';
   const sheet=document.getElementById('labelSheet'); sheet.innerHTML=page; sheet.style.display='';
@@ -2637,6 +2684,25 @@ function stxCsv(){
 /* ---- Retail Sales — one day, every location, every Square account ---- */
 let rtlLast=null, rtlAccts=null;
 const rtlTodayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// The date-preset button cycles: Today → This Week → Month to date → Year to date.
+const RTL_PRESETS=['Today','This Week','Month to date','Year to date'];
+let _rtlPreset=0;
+function rtlPresetRange(i){
+  const d=new Date(); const pad=n=>String(n).padStart(2,'0'); const s=x=>x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate());
+  const today=s(d);
+  if(i===1){ const w=new Date(d); const dow=(w.getDay()+6)%7; w.setDate(d.getDate()-dow); return {from:s(w),to:today}; } // week starts Monday
+  if(i===2){ return {from:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01', to:today}; }
+  if(i===3){ return {from:d.getFullYear()+'-01-01', to:today}; }
+  return {from:today,to:today};
+}
+function rtlSetPreset(i,run){
+  _rtlPreset=((i%4)+4)%4;
+  const r=rtlPresetRange(_rtlPreset);
+  const f=$('#rtlFrom'), t=$('#rtlTo'), btn=$('#rtlToday');
+  if(f)f.value=r.from; if(t)t.value=r.to; if(btn)btn.textContent=RTL_PRESETS[_rtlPreset];
+  if(run!==false) rtlRun();
+}
+function rtlCyclePreset(){ rtlSetPreset(_rtlPreset+1, true); }
 // The name you set in SQUARE_LABEL_n wins; then Square's business name; then a plain fallback.
 const rtlAcctName=a=>a.label||a.merchant||('Account '+(a.key==='a2'?2:1));
 let rtlAutoRan=false;
@@ -3014,13 +3080,15 @@ function renderRetailOut(d){
           +l.topItems.map(it=>`<tr><td>${esc(it.name)}</td><td class="num">${numf(it.qty,0)}</td><td class="num">${money(it.net)}</td></tr>`).join('')
           +`</tbody></table></div>`
         : `<div style="color:var(--muted);font-size:13px">Orders ran here, but no item lines came back.</div>`;
-      return head+`<div style="margin:8px 0 12px">${stats}</div>${items}`;
+      const staff=`<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">Average ticket by employee</summary><div class="rtl-staff" data-loc="${esc(l.name)}" style="margin-top:8px"><div class="hint">Loading…</div></div></details>`;
+      return head+`<div style="margin:8px 0 12px">${stats}</div>${items}${staff}`;
     }).join('');
   }).join('');
 
   const failNote=bad.length?`<div class="note">⚠️ Couldn’t reach ${bad.map(a=>esc(rtlAcctName(a))).join(' and ')} — ${esc(bad[0].detail||bad[0].error)}. Everything below covers the remaining account${ok.length===1?'':'s'} only.</div>`:'';
 
   $('#rtlOut').innerHTML=topHeader+failNote+kpis+acctBlocks+xolaBlock+`
+    <details class="card" style="margin:16px 0"><summary style="cursor:pointer;font-weight:700;font-family:-apple-system,Segoe UI,sans-serif">Average ticket by employee — all locations</summary><div class="rtl-staff-all" style="margin-top:10px"><div class="hint">Loading…</div></div></details>
     <h4>All locations</h4>
     <div class="tablewrap"><table><thead><tr>
       <th>Location</th><th class="num">Orders</th><th class="num">Net Sales</th><th class="num">Avg Ticket</th>
@@ -3032,6 +3100,38 @@ function renderRetailOut(d){
       <div class="due">${money(cAll.collected)}</div>
       <div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;margin-top:4px">${money(cAll.netSales)} in sales + ${money(cAll.tax)} tax + ${money(c.tips)} tips${c.serviceCharges?` + ${money(c.serviceCharges)} service charges`:''}${c.refundCount?`, before ${money(c.refunded)} refunded`:''}${xr?`. Includes Xola experiences redeemed this period.`:'.'}</div></div>
     <div class="disclaimer">Completed Square orders only, for the calendar day in each account’s own timezone. Net sales are merchandise after discounts, before tax and tips; avg ticket is net sales ÷ orders. “Bottles” counts line items tagged with <b>TTB Bottle Size (mL)</b> — accounts without those tags show a dash. Locations with no sales still appear, at zero — except an empty back-office location, which is hidden until it has activity. <b>Tip:</b> click any location to see its individual transactions. This is an operating snapshot, not a tax filing; use the Kentucky tab for the returns.</div>`;
+  try{ loadRetailStaff(from,to); }catch(e){}
+}
+// Fill each location's "Average ticket by employee" section from the sales digest.
+let _rtlStaffKey='';
+async function loadRetailStaff(from,to){
+  const els=[...document.querySelectorAll('#rtlOut .rtl-staff')]; if(!els.length) return;
+  const key=from+'|'+to; _rtlStaffKey=key;
+  let data=null;
+  try{ const r=await fetch('/api/sales/day',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}); data=await r.json().catch(()=>null); }catch(e){}
+  if(_rtlStaffKey!==key) return; // a newer report replaced this one
+  const rows=(data&&data.ok&&data.rows)||[];
+  const norm=s=>String(s||'').trim().toLowerCase();
+  // Combined "all locations" breakdown: sum each employee across every location.
+  const allEl=document.querySelector('#rtlOut .rtl-staff-all');
+  if(allEl){
+    const by={};
+    rows.forEach(r=>(r.employees||[]).forEach(e=>{ const k=norm(e.name)||e.name; const o=by[k]||(by[k]={name:e.name,txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); }));
+    const list=Object.values(by).map(o=>({...o,avg:o.txns?Math.round(o.sales/o.txns):0})).sort((a,b)=>b.sales-a.sales);
+    if(!list.length){ const why=(data&&!data.ok)?(' — '+esc(data.detail||'Square unavailable')):''; allEl.innerHTML=`<div class="hint">No employee-level Square data for this period${why}. (Staff must sign in individually on the Square device, and the token needs Payments read access.)</div>`; }
+    else allEl.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+list.map(o=>`<tr><td>${esc(o.name)}</td><td class="num">${o.txns}</td><td class="num">${money(o.sales/100)}</td><td class="num" style="font-weight:700">${money(o.avg/100)}</td></tr>`).join('')+`</tbody></table></div>`;
+  }
+  [...document.querySelectorAll('#rtlOut .rtl-staff')].forEach(el=>{
+    const name=el.getAttribute('data-loc'); const n=norm(name);
+    const row=rows.find(x=>norm(x.location)===n) || rows.find(x=>{const l=norm(x.location); return l&&(l.startsWith(n)||n.startsWith(l));}) || rows.find(x=>{const l=norm(x.location); return l&&n&&(l.indexOf(n)>=0||n.indexOf(l)>=0);});
+    if(!row || !(row.employees||[]).length){
+      const why=(data&&!data.ok)?(' — '+esc(data.detail||'Square unavailable')):'';
+      el.innerHTML=`<div class="hint">No employee-level Square data for this location${why}. (Staff must be signed in individually on the Square device, and the token needs Payments read access.)</div>`; return;
+    }
+    el.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
+      row.employees.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${e.txns}</td><td class="num">${money((e.salesCents||0)/100)}</td><td class="num" style="font-weight:700">${money((e.avgCents||0)/100)}</td></tr>`).join('')+
+      `</tbody></table></div>`;
+  });
 }
 // ---- Location drill-down: individual transactions for one location on the shown day ----
 async function openLocTxns(acctKey, locId, name){
@@ -3206,8 +3306,8 @@ window.addEventListener('popstate',function(e){ _navPop=true; try{ switchView((e
 function renderCrumb(v){
   const c=document.getElementById('crumb'); if(!c) return;
   if(v==='home'){ c.style.display='none'; c.innerHTML=''; return; }
-  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'home',salesrpt:'home',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home'};
-  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales Report',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L'};
+  const PARENT={lrs:'home',dashboard:'lrs',reports:'lrs',kentucky:'lrs',ledger:'lrs',entry:'lrs',barrels:'lrs',bottling:'lrs',finished:'lrs',orders:'lrs',customers:'lrs',labels:'lrs',retail:'saleshub',salesrpt:'saleshub',data:'home',compliance:'home',marketing:'home',payroll:'home',barrelsproc:'home',reviews:'home',expenses:'home',pnl:'home',saleshub:'home',itemrpt:'saleshub',emprpt:'saleshub',catrpt:'saleshub',trendrpt:'saleshub',clockrpt:'saleshub'};
+  const LABEL={home:'Home',lrs:'Louisville Rickhouse Systems',dashboard:'Dashboard',reports:'Federal Reports',kentucky:'Kentucky',ledger:'Ledger',entry:'Add Entry',barrels:'Barrels',bottling:'Bottling',finished:'Finished Goods',orders:'Orders',customers:'Customers',labels:'Case Labels',retail:'Retail Sales',salesrpt:'Sales by Location',data:'Setup & Sync',compliance:'Licenses and Forms',marketing:'Marketing',payroll:'Payroll',barrelsproc:'Barrels in Process',reviews:'Google Reviews',expenses:'Overhead & Expenses',pnl:'Rough P&L',saleshub:'Reports',itemrpt:'Item Summary',emprpt:'Sales by Employee',catrpt:'Category Summary',trendrpt:'Day & Hour Trends',clockrpt:"Who's Clocked In"};
   const trail=[]; let node=v, seen={}; while(node && !seen[node]){ seen[node]=1; trail.unshift(node); node=PARENT[node]; }
   if(trail[0]!=='home') trail.unshift('home');
   c.style.display=''; syncCrumbTop();
@@ -3217,7 +3317,7 @@ function renderCrumb(v){
     return `<button onclick="switchView('${t}')">${i===0?'\u2190 ':''}${esc(LABEL[t]||t)}</button><span class="sep">/</span>`;
   }).join('')+'</div>';
 }
-function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
+function switchView(v){if(typeof viewBlocked==='function'&&v!=='home'&&viewBlocked(v)){try{flash('Your role can’t open that section.');}catch(e){}return;}renderCrumb(v);$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));window.scrollTo({top:0,behavior:'smooth'});if(v==='home')renderHome();if(v==='lrs')renderLrs();if(v==='labels')renderLabels();if(v==='compliance')renderCompliance();if(v==='marketing')renderMarketing();if(v==='ledger')renderLedger();if(v==='reports')renderReport();if(v==='dashboard')renderDashboard();if(v==='kentucky')renderKy();if(v==='retail')renderRetail();if(v==='salesrpt')renderSalesReport();if(v==='barrels')renderBarrels();if(v==='bottling')renderBottling();if(v==='finished')renderFinished();if(v==='orders')renderOrders();if(v==='customers')renderCustomers();if(v==='payroll')renderPayroll();if(v==='barrelsproc')renderBarrelsProc();if(v==='reviews')renderReviews();if(v==='expenses')renderExpenses();if(v==='pnl')renderPnl();if(v==='data')qbRefresh();if(v==='saleshub')try{renderSalesHub();}catch(e){}if(v==='itemrpt')try{runItemRpt();}catch(e){}if(v==='emprpt')try{runEmpRpt();}catch(e){}if(v==='catrpt')try{runCatRpt();}catch(e){}if(v==='trendrpt')try{runTrendRpt();}catch(e){}if(v==='clockrpt')try{runClockRpt();}catch(e){}if(!_navPop){try{history.pushState({mv:v},'');}catch(e){}}}
 function fillYearSelects(){const yrs=new Set(state.entries.map(e=>yearOf(e.date)));yrs.add(state.settings.year);yrs.add(new Date().getFullYear());const arr=[...yrs].sort((a,b)=>b-a);$('#ledgerYear').innerHTML=`<option value="">All years</option>`+arr.map(y=>`<option>${y}</option>`).join('');}
 function updateBadge(){$('#dspBadge').innerHTML=state.settings.name?`<b>${state.settings.name}</b>${state.settings.permit||''}`:`<b>Set up your DSP</b>Setup &amp; Sync tab`;}
 function refreshAll(){try{runSyncRepair();}catch(e){}updateBadge();fillYearSelects();renderHome();renderTasks();renderLrs();renderLabels();renderCompliance();renderMarketing();renderBarrelsProc();try{renderExpenses();}catch(e){}renderDashboard();renderLedger();initReportControls();renderReport();initKyControls();renderKy();renderBarrels();renderBottling();renderFinished();renderOrders();renderCustomers();renderUsers();try{renderRolePanel();}catch(e){}renderBackups();dataStatus();syncUI();applyPermissions();}
@@ -4231,7 +4331,7 @@ function wireOnce(){
   $('#stxPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#sqPrint').onclick=()=>{const o=$('#view-kentucky');o.classList.add('printing');window.print();setTimeout(()=>o.classList.remove('printing'),500);};
   $('#rtlRun').onclick=rtlRun; $('#rtlCsv').onclick=rtlCsv;
-  $('#rtlToday').onclick=()=>{const t=rtlTodayStr();$('#rtlFrom').value=t;$('#rtlTo').value=t;rtlRun();};
+  $('#rtlToday').onclick=()=>rtlCyclePreset();
   $('#rtlPrev').onclick=()=>rtlShift(-1); $('#rtlNext').onclick=()=>rtlShift(1);
   $('#rtlFrom').onchange=()=>{ if($('#rtlTo').value&&$('#rtlFrom').value>$('#rtlTo').value)$('#rtlTo').value=$('#rtlFrom').value; };
   $('#rtlTo').onchange=()=>{ if($('#rtlFrom').value&&$('#rtlTo').value<$('#rtlFrom').value)$('#rtlFrom').value=$('#rtlTo').value; };
@@ -4624,27 +4724,29 @@ function bpAdd(){
   const buyerEmail=((document.getElementById('bp_buyer_email')||{}).value||'').trim();
   const artType=(document.getElementById('bp_arttype')||{}).value||'logo';
   const labelChoice=bpIsNashville(brand)?((document.getElementById('bp_labelchoice')||{}).value||''):'';
+  const notes=((document.getElementById('bp_notes')||{}).value||'').trim();
   if(!dsp){ alert('Pick a DSP.'); return; }
   if(!brand){ alert('Pick a brand.'); return; }
   if(!barrelNo){ alert('Enter a barrel #.'); return; }
 
   const base={ id:uid(), dsp, brand, barrelNo, spirit, age, retailer, wholesaler,
-    buyerName, buyerPhone, buyerEmail, labelChoice, artType,
+    buyerName, buyerPhone, buyerEmail, labelChoice, artType, notes,
     artText:'', logoId:'', logoName:'', stages:{}, ts:Date.now(), by:(SESSION?SESSION.name:'') };
 
   if(artType==='text'){
     const txt=((document.getElementById('bp_text')||{}).value||'').trim();
     if(!txt){ alert('Enter the text for the barrel.'); return; }
     base.artText=txt;
-    if(!state.barrelsProc) state.barrelsProc=[];
-    state.barrelsProc.push(base);
-    bpClearForm(); save('Added barrel in process — '+brand+' #'+barrelNo); refreshAll(); flash('Barrel added.');
-    return;
+    bpCommit(base); return;
   }
   // Logo path — upload the image to Blob storage, then save the record.
   if(!WS){ alert('Connect a workspace first (Setup & Sync).'); return; }
   const fi=document.getElementById('bp_logo_file'); const f=fi&&fi.files&&fi.files[0];
-  if(!f){ alert('Choose a logo image to upload (or switch to Text).'); return; }
+  if(!f){
+    // Editing an existing logo barrel without picking a new image → keep the old logo.
+    if(_bpEditId){ const ex=(state.barrelsProc||[]).find(x=>x.id===_bpEditId); base.logoId=(ex&&ex.logoId)||''; base.logoName=(ex&&ex.logoName)||''; bpCommit(base); return; }
+    alert('Choose a logo image to upload (or switch to Text).'); return;
+  }
   if(f.size>4.5*1048576){ alert('That image is too large — keep it under about 4.5 MB.'); return; }
   const btn=document.getElementById('bp_addbtn'); if(btn){ btn.disabled=true; btn.textContent='Uploading…'; }
   const r=new FileReader();
@@ -4654,16 +4756,52 @@ function bpAdd(){
       const res=await fetch('/api/docs?ws='+encodeURIComponent(WS),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name:f.name,type:f.type||'application/octet-stream',dataB64:b64})});
       const d=await res.json(); if(!d||!d.ok) throw new Error((d&&(d.detail||d.error))||'upload failed');
       base.logoId=id; base.logoName=f.name;
-      if(!state.barrelsProc) state.barrelsProc=[];
-      state.barrelsProc.push(base);
-      bpClearForm(); save('Added barrel in process — '+brand+' #'+barrelNo); refreshAll(); flash('Barrel added.');
+      bpCommit(base);
     }catch(e){ alert('Logo upload failed: '+((e&&e.message)||e)); }
-    finally{ const b=document.getElementById('bp_addbtn'); if(b){ b.disabled=false; b.textContent='Add barrel'; } }
+    finally{ const b=document.getElementById('bp_addbtn'); if(b){ b.disabled=false; b.textContent=_bpEditId?'Update barrel':'Add barrel'; } }
   };
   r.readAsDataURL(f);
 }
+// Save a barrel record — either a new one, or an update to the one being edited
+// (preserving its stage checkboxes and original timestamp).
+let _bpEditId=null;
+function bpCommit(rec){
+  rec._upd=Date.now();
+  if(_bpEditId){
+    const i=(state.barrelsProc||[]).findIndex(x=>x.id===_bpEditId);
+    if(i>=0){ rec.id=_bpEditId; rec.stages=state.barrelsProc[i].stages||{}; rec.ts=state.barrelsProc[i].ts||Date.now(); state.barrelsProc[i]=Object.assign({},state.barrelsProc[i],rec); }
+    _bpEditId=null; bpClearForm(); bpEditUI(false);
+    save('Updated barrel in process — '+(rec.brand||'')+' #'+(rec.barrelNo||'')); refreshAll(); flash('Barrel updated.');
+  } else {
+    if(!state.barrelsProc) state.barrelsProc=[];
+    state.barrelsProc.push(rec);
+    bpClearForm(); save('Added barrel in process — '+(rec.brand||'')+' #'+(rec.barrelNo||'')); refreshAll(); flash('Barrel added.');
+  }
+}
+function bpEditUI(on){
+  const btn=document.getElementById('bp_addbtn'); if(btn) btn.textContent=on?'Update barrel':'Add barrel';
+  const c=document.getElementById('bp_canceledit'); if(c) c.style.display=on?'':'none';
+}
+function bpEdit(id){
+  if(!requireCap('write'))return;
+  const b=(state.barrelsProc||[]).find(x=>x.id===id); if(!b)return;
+  _bpEditId=id;
+  const set=(f,v)=>{const el=document.getElementById(f); if(el) el.value=v==null?'':v;};
+  const ensureOpt=(f,v)=>{const s=document.getElementById(f); if(s&&v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.text=v;s.appendChild(o);}};
+  ensureOpt('bp_dsp',b.dsp); ensureOpt('bp_brand',b.brand);
+  set('bp_dsp',b.dsp); set('bp_brand',b.brand); try{bpBrandToggle();}catch(e){}
+  set('bp_barrel',b.barrelNo); set('bp_spirit',b.spirit); set('bp_age',b.age);
+  set('bp_retailer',b.retailer); set('bp_wholesaler',b.wholesaler);
+  set('bp_buyer_name',b.buyerName); set('bp_buyer_phone',b.buyerPhone); set('bp_buyer_email',b.buyerEmail);
+  set('bp_arttype',b.artType||'logo'); try{bpArtToggle();}catch(e){}
+  set('bp_labelchoice',b.labelChoice); set('bp_text',b.artText); set('bp_notes',b.notes);
+  bpEditUI(true);
+  const btn=document.getElementById('bp_addbtn'); if(btn&&btn.scrollIntoView) btn.scrollIntoView({behavior:'smooth',block:'center'});
+  flash('Editing '+(b.brand||'')+' #'+(b.barrelNo||'')+' — change the fields'+(b.artType==='logo'?' (leave the logo empty to keep the current one)':'')+', then Update.');
+}
+function bpCancelEdit(){ _bpEditId=null; bpClearForm(); bpEditUI(false); flash('Edit cancelled.'); }
 function bpClearForm(){
-  ['bp_barrel','bp_spirit','bp_age','bp_retailer','bp_wholesaler','bp_buyer_name','bp_buyer_phone','bp_buyer_email','bp_labelchoice','bp_text'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['bp_barrel','bp_spirit','bp_age','bp_retailer','bp_wholesaler','bp_buyer_name','bp_buyer_phone','bp_buyer_email','bp_labelchoice','bp_text','bp_notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const fi=document.getElementById('bp_logo_file'); if(fi) fi.value='';
 }
 function bpToggleStage(id,key){
@@ -4726,8 +4864,9 @@ function bpCard(b){
       ${bpArtPreview(b)}
     </div>
     ${meta.length?`<div style="color:#5a4a38;font-size:13.5px;font-family:-apple-system,Segoe UI,sans-serif;margin-top:10px;display:flex;gap:18px;flex-wrap:wrap">${meta.join('')}</div>`:''}
+    ${b.notes?`<div style="margin-top:10px;background:#faf5eb;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;color:#5a4a38;white-space:pre-wrap"><b>Notes:</b> ${esc(b.notes)}</div>`:''}
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px">${checks}</div>
-    <div class="noprint" style="margin-top:12px"><button class="del" onclick="bpDelete('${b.id}')">Remove</button></div>
+    <div class="noprint" style="margin-top:12px;display:flex;gap:8px"><button class="btn ghost sm cap-write" onclick="bpEdit('${b.id}')">Edit</button><button class="del" onclick="bpDelete('${b.id}')">Remove</button></div>
   </div>`;
 }
 function bpRenderList(){
@@ -5165,6 +5304,183 @@ function renderPnlBody(bundle){
 function pnlSetCogs(v){ if(!requireCap('setup'))return; if(!state.settings)state.settings={}; state.settings.cogsPct=Math.max(0,Math.min(100,+v||0)); save('Set COGS %'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
 function pnlSetXolaMap(akey,loc){ if(!requireCap('setup'))return; if(!state.pnlXolaMap)state.pnlXolaMap={}; if(loc) state.pnlXolaMap[akey]=loc; else delete state.pnlXolaMap[akey]; save('Mapped Xola account'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
 function pnlSetLocAlias(orphanName, canonical){ if(!requireCap('setup'))return; if(!state.locAlias)state.locAlias={}; const k=pnlNorm(orphanName); if(canonical) state.locAlias[k]=canonical; else delete state.locAlias[k]; save('Merged a location'); const key=_pnlY+'-'+_pnlM; if(_pnlCache[key]) renderPnlBody(_pnlCache[key]); }
+
+;
+/* ===================== Reports hub — Item Summary, Sales by Employee,
+   Category Summary, Day & Hour Trends. Shared date range + compare picker. ===== */
+let _rptFrom=null,_rptTo=null,_rptPreset=2,_rptCompare='';
+const RPT_PRESETS=['Today','This Week','Month to date','Year to date'];
+function rptTodayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function rptPresetRange(i){
+  const d=new Date(),pad=n=>String(n).padStart(2,'0'),s=x=>x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate());
+  const today=s(d);
+  if(i===1){const w=new Date(d);const dow=(w.getDay()+6)%7;w.setDate(d.getDate()-dow);return{from:s(w),to:today};}
+  if(i===2){return{from:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01',to:today};}
+  if(i===3){return{from:d.getFullYear()+'-01-01',to:today};}
+  return{from:today,to:today};
+}
+function rptEnsureDates(){ if(!_rptFrom||!_rptTo){ const r=rptPresetRange(_rptPreset); _rptFrom=r.from; _rptTo=r.to; } }
+function rptCompareRange(from,to,mode){
+  if(!mode) return null;
+  const shiftD=(ymd,days)=>{const [y,m,d]=ymd.split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d));dt.setUTCDate(dt.getUTCDate()+days);return dt.toISOString().slice(0,10);};
+  const shiftY=(ymd,yrs)=>{const [y,m,d]=ymd.split('-').map(Number);return (y-yrs)+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');};
+  if(mode==='lastweek') return {from:shiftD(from,-7),to:shiftD(to,-7),label:'last week'};
+  if(mode==='lastyear') return {from:shiftY(from,1),to:shiftY(to,1),label:'last year'};
+  if(mode==='2yearsago') return {from:shiftY(from,2),to:shiftY(to,2),label:'2 years ago'};
+  return null;
+}
+// Shared toolbar. `runFn` is the report's run function name (string) to call on change.
+function rptToolbar(runFn){
+  rptEnsureDates();
+  const opt=(v,l)=>`<option value="${v}"${_rptCompare===v?' selected':''}>${l}</option>`;
+  return `<div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:end">
+    <div><label class="fld">From</label><input type="date" id="rpt_from" value="${_rptFrom}" onchange="_rptFrom=this.value;${runFn}()"></div>
+    <div><label class="fld">To</label><input type="date" id="rpt_to" value="${_rptTo}" onchange="_rptTo=this.value;${runFn}()"></div>
+    <button class="btn ghost sm" title="Cycle: Today → This Week → Month to date → Year to date" onclick="rptCyclePreset('${runFn}')">${RPT_PRESETS[_rptPreset]}</button>
+    <div><label class="fld">Compare to</label><select id="rpt_cmp" onchange="_rptCompare=this.value;${runFn}()">${opt('','— none —')}${opt('lastweek','Last week')}${opt('lastyear','Last year')}${opt('2yearsago','2 years ago')}</select></div>
+    <button class="btn ky sm" onclick="${runFn}()">Run</button>
+  </div>`;
+}
+function rptCyclePreset(runFn){ _rptPreset=(_rptPreset+1)%4; const r=rptPresetRange(_rptPreset); _rptFrom=r.from; _rptTo=r.to; if(window[runFn]) window[runFn](); }
+function rptDelta(cur,prev){
+  if(prev==null||!isFinite(prev)||(prev===0&&cur===0)) return '';
+  const up=cur>=prev,col=up?'var(--green)':'var(--red)',arrow=up?'▲':'▼';
+  const pct=prev>0?Math.round(Math.abs(cur-prev)/prev*100):(cur>0?100:0);
+  return ` <span style="color:${col};font-weight:700;font-size:12px;white-space:nowrap">${arrow}${pct}%</span>`;
+}
+function rptRangeLabel(){ return _rptFrom===_rptTo?fmtDate(_rptFrom):(fmtDate(_rptFrom)+' – '+fmtDate(_rptTo)); }
+async function rptFetchBreakdown(from,to){ try{ const r=await fetch('/api/sales/breakdown',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}); return await r.json().catch(()=>null); }catch(e){ return null; } }
+async function rptFetchDay(from,to){ try{ const r=await fetch('/api/sales/day',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({startDate:from,endDate:to})}); return await r.json().catch(()=>null); }catch(e){ return null; } }
+
+/* ---------- Reports hub ---------- */
+function renderSalesHub(){
+  const box=document.getElementById('saleshubBody'); if(!box) return;
+  const card=(v,icon,title,desc)=>`<div class="apptile" style="cursor:pointer" onclick="switchView('${v}')"><div class="ai" style="background:rgba(90,130,200,.12);font-size:22px;display:flex;align-items:center;justify-content:center">${icon}</div><div><div class="an">${esc(title)}</div><div class="ad">${esc(desc)}</div></div><div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div></div>`;
+  box.innerHTML=`<div class="apps">
+    ${card('itemrpt','📦','Item Summary','How many of each item — bottles, hats, shirts — sold over any date range, by category and as a full list.')}
+    ${card('emprpt','🧑‍💼','Sales by Employee','Each employee’s transactions, sales and average ticket for a date range, with a compare-to.')}
+    ${card('catrpt','🗂️','Category Summary','Totals rolled up by category, so you see the big buckets at a glance.')}
+    ${card('trendrpt','📈','Day & Hour Trends','Your busiest days of the week and hours of the day, by sales and transactions.')}
+    ${card('clockrpt','⏱️','Who’s Clocked In','Who clocked in and out today by location, and who is still on the clock — from Square timecards.')}
+    ${card('retail','🧾','Retail Sales (daily)','The full per-location daily summary across every Square account.')}
+    ${card('salesrpt','📍','Sales by Location','Net sales by location over a period, with month-by-month breakouts.')}
+  </div>`;
+}
+
+/* ---------- Item Summary ---------- */
+async function runItemRpt(){
+  const box=document.getElementById('itemrptBody'); if(!box) return;
+  box.innerHTML=rptToolbar('runItemRpt')+`<div class="empty" style="padding:24px">⏳ Pulling items for ${esc(rptRangeLabel())}…</div>`;
+  const cur=await rptFetchBreakdown(_rptFrom,_rptTo);
+  const cmp=rptCompareRange(_rptFrom,_rptTo,_rptCompare);
+  const prev=cmp?await rptFetchBreakdown(cmp.from,cmp.to):null;
+  if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runItemRpt')+`<div class="note">⚠️ ${esc((cur&&(cur.error||cur.errors&&cur.errors.join('; ')))||'Could not load Square orders.')}</div>`; return; }
+  const items=cur.items||[], cats=cur.categories||[];
+  const prevTot=prev&&prev.ok?prev.totals:null;
+  const totItems=items.reduce((s,i)=>s+i.qty,0), totNet=(cur.totals&&cur.totals.netCents)||0;
+  const kpis=`<div class="kpis" style="margin:14px 0">`+
+    kpi('copper','Units Sold',numf(totItems,0),(cur.totals&&cur.totals.orderCount)+' orders'+ (prevTot?rptDelta(totItems, prev.items.reduce((s,i)=>s+i.qty,0)):''))+
+    kpi('blue','Net Sales',money(totNet/100),'items, after discounts'+(prevTot?rptDelta(totNet,prevTot.netCents):''))+
+    kpi('green','Distinct Items',numf(items.length,0),cats.length+' categories')+`</div>`;
+  // category subtotals
+  const catRows=cats.map(c=>`<tr><td><b>${esc(c.name)}</b></td><td class="num">${numf(c.qty,0)}</td><td class="num">${money(c.netCents/100)}</td></tr>`).join('');
+  const catTable=`<h4>By category</h4><div class="tablewrap"><table><thead><tr><th>Category</th><th class="num">Units</th><th class="num">Net Sales</th></tr></thead><tbody>${catRows}</tbody></table></div>`;
+  // flat item list
+  const itemRows=items.map(i=>`<tr><td>${esc(i.name)}</td><td style="color:var(--muted)">${esc(i.category||'')}</td><td class="num">${numf(i.qty,0)}</td><td class="num">${money(i.netCents/100)}</td></tr>`).join('');
+  const itemTable=`<h4 style="margin-top:22px">Every item</h4><div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Units</th><th class="num">Net Sales</th></tr></thead><tbody>${itemRows}</tbody></table></div>`;
+  const head=`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Item Summary — ${esc(rptRangeLabel())}</h3><button class="btn ghost sm noprint" onclick="rptItemCsv()">Export CSV</button></div>`;
+  _rptItemCsvData=items;
+  box.innerHTML=rptToolbar('runItemRpt')+head+kpis+catTable+itemTable+`<div class="disclaimer">Completed Square orders across all accounts. Units = line-item quantity; Net = merchandise after discounts, before tax and tips. Category comes from each item’s Square category (items with none show “Uncategorized”).${cmp?` Compared to ${esc(cmp.label)}.`:''}</div>`;
+}
+let _rptItemCsvData=[];
+function rptItemCsv(){
+  const rows=[['Item','Category','Units','NetSales']].concat((_rptItemCsvData||[]).map(i=>[i.name,i.category||'',i.qty,(i.netCents/100).toFixed(2)]));
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='item-summary_'+_rptFrom+'_'+_rptTo+'.csv'; a.click();
+}
+
+/* ---------- Category Summary ---------- */
+async function runCatRpt(){
+  const box=document.getElementById('catrptBody'); if(!box) return;
+  box.innerHTML=rptToolbar('runCatRpt')+`<div class="empty" style="padding:24px">⏳ Pulling categories…</div>`;
+  const cur=await rptFetchBreakdown(_rptFrom,_rptTo);
+  const cmp=rptCompareRange(_rptFrom,_rptTo,_rptCompare);
+  const prev=cmp?await rptFetchBreakdown(cmp.from,cmp.to):null;
+  if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runCatRpt')+`<div class="note">⚠️ ${esc((cur&&cur.error)||'Could not load.')}</div>`; return; }
+  const cats=cur.categories||[]; const pmap={}; if(prev&&prev.ok)(prev.categories||[]).forEach(c=>pmap[c.name]=c);
+  const showCmp=!!(cmp&&prev&&prev.ok);
+  const rows=cats.map(c=>{ const pc=pmap[c.name]; return `<tr><td><b>${esc(c.name)}</b></td><td class="num">${numf(c.qty,0)}</td><td class="num">${money(c.netCents/100)}${showCmp?rptDelta(c.netCents,pc?pc.netCents:0):''}</td></tr>`; }).join('');
+  const tot=cats.reduce((s,c)=>s+c.netCents,0), totQ=cats.reduce((s,c)=>s+c.qty,0);
+  box.innerHTML=rptToolbar('runCatRpt')+`<h3 style="margin:0 0 6px">Category Summary — ${esc(rptRangeLabel())}</h3>
+    <div class="tablewrap"><table><thead><tr><th>Category</th><th class="num">Units</th><th class="num">Net Sales${showCmp?` <span style="font-weight:400;color:var(--muted)">vs ${esc(cmp.label)}</span>`:''}</th></tr></thead>
+    <tbody>${rows}</tbody><tfoot><tr class="total" style="font-weight:700"><td>All categories</td><td class="num">${numf(totQ,0)}</td><td class="num">${money(tot/100)}</td></tr></tfoot></table></div>
+    <div class="disclaimer">Net sales by Square category, completed orders, after discounts and before tax/tips.</div>`;
+}
+
+/* ---------- Day & Hour Trends ---------- */
+async function runTrendRpt(){
+  const box=document.getElementById('trendrptBody'); if(!box) return;
+  box.innerHTML=rptToolbar('runTrendRpt')+`<div class="empty" style="padding:24px">⏳ Crunching trends…</div>`;
+  const cur=await rptFetchBreakdown(_rptFrom,_rptTo);
+  if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runTrendRpt')+`<div class="note">⚠️ ${esc((cur&&cur.error)||'Could not load.')}</div>`; return; }
+  const dowNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const bar=(val,max,label,sub)=>{ const w=max>0?Math.round(val/max*100):0; return `<div style="display:flex;align-items:center;gap:10px;margin:3px 0;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px"><div style="width:78px;flex:none;color:var(--muted)">${label}</div><div style="flex:1;background:var(--line);border-radius:6px;overflow:hidden;height:20px"><div style="width:${w}%;background:var(--copper);height:100%"></div></div><div style="width:150px;flex:none;text-align:right">${sub}</div></div>`; };
+  const dow=cur.byDow||[], hour=cur.byHour||[];
+  const maxDow=Math.max(1,...dow.map(d=>d.net)), maxHour=Math.max(1,...hour.map(h=>h.net));
+  const dowBars=dow.map((d,i)=>bar(d.net,maxDow,dowNames[i],money(d.net/100)+' · '+numf(d.count,0)+' txns')).join('');
+  const fmtHr=h=>{const ap=h<12?'a':'p';let hh=h%12;if(hh===0)hh=12;return hh+ap;};
+  const hourBars=hour.map((h,i)=> (h.count||h.net)?bar(h.net,maxHour,fmtHr(i),money(h.net/100)+' · '+numf(h.count,0)+' txns'):'').join('');
+  box.innerHTML=rptToolbar('runTrendRpt')+`<h3 style="margin:0 0 8px">Day &amp; Hour Trends — ${esc(rptRangeLabel())}</h3>
+    <div class="card"><h4 style="margin-top:0">By day of week</h4>${dowBars}</div>
+    <div class="card"><h4 style="margin-top:0">By hour of day</h4>${hourBars||'<div class="hint">No hourly activity in this range.</div>'}</div>
+    <div class="disclaimer">Net sales and transaction counts bucketed by the day/hour each order closed (in each account’s timezone), completed orders only.</div>`;
+}
+
+/* ---------- Sales by Employee (own page) ---------- */
+async function runEmpRpt(){
+  const box=document.getElementById('emprptBody'); if(!box) return;
+  box.innerHTML=rptToolbar('runEmpRpt')+`<div class="empty" style="padding:24px">⏳ Pulling employee sales…</div>`;
+  const cur=await rptFetchDay(_rptFrom,_rptTo);
+  const cmp=rptCompareRange(_rptFrom,_rptTo,_rptCompare);
+  const prev=cmp?await rptFetchDay(cmp.from,cmp.to):null;
+  const agg=d=>{ const by={}; if(d&&d.ok)(d.rows||[]).forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'').toLowerCase(); const o=by[k]||(by[k]={name:e.name,txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); })); return by; };
+  const curBy=agg(cur), prevBy=cmp?agg(prev):null;
+  const list=Object.values(curBy).map(o=>({...o,avg:o.txns?Math.round(o.sales/o.txns):0})).sort((a,b)=>b.sales-a.sales);
+  if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runEmpRpt')+`<div class="note">⚠️ ${esc((cur&&cur.detail)||'Could not load employee sales.')}</div>`; return; }
+  if(!list.length){ box.innerHTML=rptToolbar('runEmpRpt')+`<div class="note">No employee-level Square data for this range. Staff must sign in individually on the Square device, and the token needs Payments read access.</div>`; return; }
+  const showCmp=!!(cmp&&prev&&prev.ok);
+  const rows=list.map(o=>{ const p=prevBy&&prevBy[(o.name||'').toLowerCase()]; return `<tr><td>${esc(o.name)}</td><td class="num">${numf(o.txns,0)}</td><td class="num">${money(o.sales/100)}${showCmp?rptDelta(o.sales,p?p.sales:0):''}</td><td class="num" style="font-weight:700">${money(o.avg/100)}</td></tr>`; }).join('');
+  const tSales=list.reduce((s,o)=>s+o.sales,0), tTx=list.reduce((s,o)=>s+o.txns,0);
+  box.innerHTML=rptToolbar('runEmpRpt')+`<h3 style="margin:0 0 6px">Sales by Employee — ${esc(rptRangeLabel())}</h3>
+    <div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales${showCmp?` <span style="font-weight:400;color:var(--muted)">vs ${esc(cmp.label)}</span>`:''}</th><th class="num">Avg ticket</th></tr></thead>
+    <tbody>${rows}</tbody><tfoot><tr class="total" style="font-weight:700"><td>All employees</td><td class="num">${numf(tTx,0)}</td><td class="num">${money(tSales/100)}</td><td class="num">${money(tTx?tSales/tTx/100:0)}</td></tr></tfoot></table></div>
+    <div class="disclaimer">From Square payments across every location. Sales exclude tips; average ticket = an employee’s sales ÷ their transactions. “Unattributed” covers payments Square didn’t tie to a team member.</div>`;
+}
+
+/* ---------- Who's clocked in / out (Square timecards) ---------- */
+let _clockDate=null;
+function clockToolbar(){ if(!_clockDate)_clockDate=rptTodayStr(); return `<div class="toolbar" style="align-items:end;flex-wrap:wrap;gap:10px"><div><label class="fld">Date</label><input type="date" id="clock_date" value="${_clockDate}" onchange="_clockDate=this.value;runClockRpt()"></div><button class="btn ghost sm" onclick="_clockDate=rptTodayStr();runClockRpt()">Today</button><button class="btn ky sm" onclick="runClockRpt()">Refresh</button></div>`; }
+async function runClockRpt(){
+  const box=document.getElementById('clockrptBody'); if(!box) return;
+  box.innerHTML=clockToolbar()+`<div class="empty" style="padding:24px">⏳ Checking timecards…</div>`;
+  let d=null; try{ const r=await fetch('/api/square/clockins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date:_clockDate})}); d=await r.json().catch(()=>null); }catch(e){}
+  if(!d||!d.ok){ box.innerHTML=clockToolbar()+`<div class="note">⚠️ ${esc((d&&(d.error||(d.errors&&d.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; return; }
+  const rows=d.rows||[];
+  if(!rows.length){ box.innerHTML=clockToolbar()+`<div class="note">No clock-ins recorded for ${esc(fmtDate(_clockDate))}.${(d.errors&&d.errors.length)?' — '+esc(d.errors.join('; ')):''}</div>`; return; }
+  const fmtT=iso=>{ if(!iso)return ''; try{ return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } };
+  const byLoc={}; rows.forEach(r=>{ (byLoc[r.location||'—']||(byLoc[r.location||'—']=[])).push(r); });
+  const openCount=rows.filter(r=>r.open).length;
+  let html=clockToolbar()+`<h3 style="margin:8px 0 2px">Who’s clocked in — ${esc(fmtDate(_clockDate))}</h3>`+
+    `<div class="kpis" style="margin:12px 0">`+kpi('green','Clocked in now',String(openCount),'of '+rows.length+' shift'+(rows.length===1?'':'s'))+kpi('copper','People today',String(new Set(rows.map(r=>r.name)).size),'across '+Object.keys(byLoc).length+' location'+(Object.keys(byLoc).length===1?'':'s'))+`</div>`;
+  html+=Object.keys(byLoc).sort().map(loc=>{
+    const rs=byLoc[loc];
+    return `<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th></tr></thead><tbody>`+
+      rs.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td></tr>`).join('')+
+      `</tbody></table></div></div>`;
+  }).join('');
+  html+=`<div class="disclaimer">From Square timecards for the selected day, in each account’s timezone. “Still in” means Square has no clock-out recorded yet. Needs the Square token to have Timecards read access.</div>`;
+  box.innerHTML=html;
+}
 
 </script>
 </body>
