@@ -10,7 +10,7 @@ import { env as sqEnv, dayRange, todayInTz } from "./lib/square.mjs";
 import { sendDigestEmail } from "./lib/salesdigest.mjs";
 
 async function settingsFor(wsCodes) {
-  let to = new Set(), threshold = 15, on = true;
+  let to = new Set(), byLoc = {}, threshold = 15, on = true;
   (process.env.LATE_EMAIL_TO || "").split(",").map((s) => s.trim()).filter(Boolean).forEach((e) => to.add(e));
   if (wsCodes.length) {
     const store = getStore({ name: "ttb-data", consistency: "strong" });
@@ -19,12 +19,32 @@ async function settingsFor(wsCodes) {
         const d = await store.get(`ws_${code}`, { type: "json" });
         const s = (d && d.settings) || {};
         String(s.lateEmailTo || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((e) => to.add(e));
+        if (s.lateEmailByLoc && typeof s.lateEmailByLoc === "object") {
+          for (const k of Object.keys(s.lateEmailByLoc)) {
+            const v = String(s.lateEmailByLoc[k] || "").trim();
+            if (v) byLoc[k] = byLoc[k] ? byLoc[k] + "," + v : v;
+          }
+        }
         if (s.lateThresholdMin) threshold = Math.max(1, +s.lateThresholdMin || 15);
         if (s.lateAlertOn === false) on = false;
       } catch {}
     }
   }
-  return { to: [...to], threshold, on };
+  return { to: [...to], byLoc, threshold, on };
+}
+// Recipients for a missed shift at `locName`: the catch-all list PLUS anyone
+// mapped to that location (name-tolerant so "Church S" matches "Church Street").
+function recipientsForLoc(locName, globalTo, byLoc) {
+  const set = new Set(globalTo);
+  const nz = (x) => String(x || "").trim().toLowerCase();
+  const target = nz(locName);
+  for (const k of Object.keys(byLoc)) {
+    const kk = nz(k);
+    if (kk && target && (kk === target || kk.startsWith(target) || target.startsWith(kk) || kk.indexOf(target) >= 0 || target.indexOf(kk) >= 0)) {
+      String(byLoc[k]).split(",").map((x) => x.trim()).filter(Boolean).forEach((e) => set.add(e));
+    }
+  }
+  return [...set];
 }
 
 export default async (req) => {
@@ -33,8 +53,9 @@ export default async (req) => {
   const wsCodes = (process.env.BACKUP_WS || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!apiKey) return new Response("no api key", { status: 200 });
 
-  const { to, threshold, on } = await settingsFor(wsCodes);
-  if (!on || !to.length) return new Response("disabled or no recipients", { status: 200 });
+  const { to, byLoc, threshold, on } = await settingsFor(wsCodes);
+  if (!on) return new Response("disabled", { status: 200 });
+  if (!to.length && !Object.keys(byLoc).length) return new Response("no recipients", { status: 200 });
 
   const tz = sqEnv().tz;
   // Quiet hours: don't check overnight.
@@ -58,12 +79,24 @@ export default async (req) => {
   const fresh = rows.filter((r) => !notified.includes(r.id));
   if (!fresh.length) return new Response("already notified", { status: 200 });
 
-  const html = lateEmailHTML(fresh, threshold, tz);
-  const names = fresh.map((r) => r.name).join(", ");
-  try { await sendDigestEmail({ to, from, apiKey, subject: `⏰ Missed clock-in: ${names}`, html }); }
-  catch (e) { console.error("clockin-alert send failed", e && e.message); return new Response("send failed", { status: 200 }); }
-  try { await store.setJSON(key, notified.concat(fresh.map((r) => r.id))); } catch {}
-  return new Response("alerted " + fresh.length, { status: 200 });
+  // Group the missed shifts by location and email each store's own recipients
+  // (plus the catch-all). A shift is only marked notified once it's actually sent.
+  const groups = {};
+  for (const r of fresh) { const k = r.location || ""; (groups[k] = groups[k] || []).push(r); }
+  const sentIds = [];
+  let groupsSent = 0;
+  for (const loc of Object.keys(groups)) {
+    const rowsL = groups[loc];
+    const recips = recipientsForLoc(loc, to, byLoc);
+    if (!recips.length) continue; // nobody configured for this store — leave it for once it is
+    const html = lateEmailHTML(rowsL, threshold, tz);
+    const names = rowsL.map((r) => r.name).join(", ");
+    const subject = `⏰ Missed clock-in${loc ? " — " + loc : ""}: ${names}`;
+    try { await sendDigestEmail({ to: recips, from, apiKey, subject, html }); sentIds.push(...rowsL.map((r) => r.id)); groupsSent++; }
+    catch (e) { console.error("clockin-alert send failed for", loc, e && e.message); }
+  }
+  if (sentIds.length) { try { await store.setJSON(key, notified.concat(sentIds)); } catch {} }
+  return new Response("alerted " + groupsSent + " location group(s), " + sentIds.length + " shift(s)", { status: 200 });
 };
 
 export const config = { schedule: "*/15 * * * *" };
