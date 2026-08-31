@@ -172,6 +172,10 @@
   .locboxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px}
   .locbox{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;cursor:pointer}
   .locbox input{width:auto;margin:0;flex:none}
+  .echips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;min-height:8px}
+  .echip{display:inline-flex;align-items:center;gap:8px;background:#efe7d8;color:#5a4a38;border-radius:16px;padding:5px 6px 5px 12px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;font-weight:600}
+  .echip button{border:0;background:#d8c9ad;color:#5a4a38;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;display:grid;place-items:center;padding:0}
+  .echip button:hover{background:#c9a85f;color:#fff}
   .whoami{display:flex;align-items:center;gap:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:12.5px;color:#cbb99e}
   .whoami .role{background:#3a2a1c;border:1px solid #6b543c;color:#f4e9d6;padding:3px 9px;border-radius:12px;font-weight:600}
   .whoami .logout{background:transparent;border:0;color:#cbb99e;cursor:pointer;font-size:12.5px;text-decoration:underline}
@@ -241,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831f</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831g</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1051,10 +1055,11 @@
 
     <div class="card cap-setup">
       <h3>Nightly Sales Email</h3>
-      <p class="hint">A per-location sales summary — each employee's transaction count and average ticket — emails automatically every night (~9&nbsp;PM). Enter who should receive it, comma-separated. Uses your Square accounts and the Resend email set up in Netlify.</p>
-      <div><label class="fld">Send to <span style="font-weight:400;color:var(--muted)">— emails, comma-separated</span></label><input type="text" id="s_salesEmail" placeholder="you@company.com, manager@company.com"></div>
+      <p class="hint">A per-location sales summary — each employee's transaction count and average ticket — emails automatically every night (~9&nbsp;PM). Add or remove the people who should receive it below. Uses your Square accounts and the Resend email set up in Netlify.</p>
+      <label class="fld">Recipients</label>
+      <div id="salesRecipList" class="echips"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"><input type="email" id="salesRecipInput" placeholder="name@company.com" style="max-width:280px" onkeydown="if(event.key==='Enter'){event.preventDefault();salesRecipAdd();}"><button type="button" class="btn sm" onclick="salesRecipAdd()">Add person</button></div>
       <div class="row-actions" style="margin-top:12px">
-        <button class="btn" onclick="saveSalesEmail()">Save recipients</button>
         <button class="btn gray" onclick="sendSalesTest()">Send test now</button>
         <span id="salesTestMsg" class="hint" style="margin:0"></span>
       </div>
@@ -2053,7 +2058,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831f·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831g·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3394,7 +3399,7 @@ function rtlCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);try{renderLateLocBoxes();if(typeof loadPickerLocations==='function'&&!(typeof _sqLocNames!=='undefined'&&_sqLocNames.length))loadPickerLocations();}catch(e){}}
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);try{renderSalesRecips();renderLateLocBoxes();if(typeof loadPickerLocations==='function'&&!(typeof _sqLocNames!=='undefined'&&_sqLocNames.length))loadPickerLocations();}catch(e){}}
 function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); s.lateEmailByLoc=_readLateLocs(); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
 /* Per-location clock-in alert recipients. Reuses the Square location list. */
 let _lateLocOpts=[];
@@ -3425,12 +3430,17 @@ async function testLateAlert(){
   }catch(e){ if(msg){ msg.textContent='Test failed: '+(e&&e.message||e); msg.style.color='var(--red)'; } }
 }
 function saveSalesEmail(){ if(!requireCap('setup'))return; const el=$('#s_salesEmail'); if(!el)return; state.settings.salesEmailTo=(el.value||'').trim(); save('Updated nightly sales email recipients'); flash('Recipients saved.'); }
+/* Managed recipient list for the nightly sales email (add / remove people). */
+function emailChips(list, removeFn){ if(!list.length) return '<span class="hint">No one yet — add an email below.</span>'; return list.map((e,i)=>`<span class="echip">${esc(e)}<button type="button" title="Remove" onclick="${removeFn}(${i})">×</button></span>`).join(''); }
+function _salesEmails(){ return String((state.settings&&state.settings.salesEmailTo)||'').split(',').map(s=>s.trim()).filter(Boolean); }
+function renderSalesRecips(){ const box=$('#salesRecipList'); if(!box) return; box.innerHTML=emailChips(_salesEmails(),'salesRecipRemove'); }
+function salesRecipAdd(){ if(!requireCap('setup'))return; const i=$('#salesRecipInput'); const v=((i&&i.value)||'').trim(); if(!v) return; if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){ flash('Enter a valid email address.'); return; } const list=_salesEmails(); if(list.some(e=>e.toLowerCase()===v.toLowerCase())){ flash('That email is already on the list.'); if(i)i.value=''; return; } list.push(v); state.settings.salesEmailTo=list.join(', '); if(i) i.value=''; save('Added nightly sales email recipient'); renderSalesRecips(); flash('Added '+v+'.'); }
+function salesRecipRemove(idx){ if(!requireCap('setup'))return; const list=_salesEmails(); const removed=list[idx]; if(removed==null) return; list.splice(idx,1); state.settings.salesEmailTo=list.join(', '); save('Removed nightly sales email recipient'); renderSalesRecips(); flash('Removed '+removed+'.'); }
 async function sendSalesTest(){
   if(!requireCap('setup'))return;
-  const el=$('#s_salesEmail'); const to=((el&&el.value)||'').trim();
+  const to=_salesEmails().join(',');
   const msg=$('#salesTestMsg');
-  if(!to){ if(msg){msg.textContent='Enter at least one email first.';msg.style.color='var(--red)';} return; }
-  state.settings.salesEmailTo=to; save('Updated nightly sales email recipients');
+  if(!to){ if(msg){msg.textContent='Add at least one recipient first.';msg.style.color='var(--red)';} return; }
   if(msg){ msg.textContent='Sending…'; msg.style.color='var(--muted)'; }
   try{
     const r=await fetch('/api/sales/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({to})});
