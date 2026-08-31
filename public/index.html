@@ -241,7 +241,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831b</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831d</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1131,7 +1131,7 @@
         <div style="margin-top:12px">
           <label class="fld">Locations this user can see <span style="font-weight:400;color:var(--muted)">— tick one or more to limit them to those stores (and hide back office). Leave all unticked for full access to every location.</span></label>
           <div id="u_loc_boxes" class="locboxes"></div>
-          <div style="display:flex;gap:6px;margin-top:8px;align-items:center"><input type="text" id="u_loc_add" placeholder="Add another location…" style="max-width:240px" onkeydown="if(event.key==='Enter'){event.preventDefault();addUserLocOption();}"><button type="button" class="btn ghost sm" onclick="addUserLocOption()">Add location</button></div>
+          <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"><input type="text" id="u_loc_add" placeholder="Add another location…" style="max-width:240px" onkeydown="if(event.key==='Enter'){event.preventDefault();addUserLocOption();}"><button type="button" class="btn ghost sm" onclick="addUserLocOption()">Add location</button><button type="button" class="btn ghost sm" onclick="loadPickerLocations(true)" title="Pull your store names from Square">↻ Refresh from Square</button></div>
         </div>
         <div class="row-actions" style="margin-top:12px">
           <button class="btn" id="userSave">Save user</button>
@@ -1307,11 +1307,11 @@ const TX = [
   {id:'proc_taxfree',account:'Processing',label:'Removed — for export / tax-free',prod:0,stor:0,proc:-1,taxable:false,note:'Non-taxable removal (export or authorized use).'},
   {id:'proc_loss',account:'Processing',label:'Processing loss',prod:0,stor:0,proc:-1,taxable:false,note:'Loss recorded in processing.'},
 ];
-const TXBYID=Object.fromEntries(TX.map(t=>[t.id,t]));
+const TXBYID=TX.reduce((m,t)=>{m[t.id]=t;return m;},{});
 const TIERS=[{upTo:100000,rate:2.70},{upTo:22130000,rate:13.34},{upTo:Infinity,rate:13.50}];
 // Kentucky HB5 barrel-tax phase-out: percent of tax still owed by assessment year
 const KY_PHASEOUT={2025:100,2026:96,2027:92,2028:88,2029:84,2030:80,2031:76,2032:72,2033:68,2034:61,2035:54,2036:44,2037:38,2038:32,2039:24,2040:20,2041:15,2042:8};
-const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]??100));
+const kyPhasePct=y=> y>=2043?0:(y<=2025?100:(KY_PHASEOUT[y]!=null?KY_PHASEOUT[y]:100));
 
 /* ================= State ================= */
 function freshState(){return{settings:{name:'',permit:'',freq:'quarterly',year:new Date().getFullYear(),kyExcise:1.92,kyWholesale:11,kyCase:0.05,bottlesPerCase:6},entries:[],ky:{monthly:{},barrel:{}},barrels:[],bottlings:[],finishedGoods:[],customers:[],orders:[],history:[],auth:{enabled:false,users:[]},dailyBackups:[],tibouts:[],tibins:[],tasks:[],skus:[{id:'seed-lrwc-11sib',company:'Louisville Rickhouse Whiskey Co',product:'11 Year Single Barrel Bourbon',size:'750ml',scc6:'',scc12:'10850033780311'}],brandLogos:{},docs:[],assets:[],barrelsProc:[],wages:{},expenses:[],pnlXolaMap:{},locAlias:{},pnlLocs:[],salaried:[],attention:[],samples:[]};}
@@ -1517,11 +1517,34 @@ function renderUsers(){
   const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>{ const ul=userLocations(u); const locTxt=ul.length?ul.join(', '):'All locations'; return `<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)} <span style="color:var(--muted);font-size:12px">· ${esc(locTxt)}</span></td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`; }).join('');
   // Render the location checkboxes, preserving any in-progress selection across refreshes.
   const keep=_readUserLocs(); renderUserLocBoxes(keep.length?keep:(editingUserId?userLocations(state.auth.users.find(x=>x.id===editingUserId)):[]));
+  // Pull the real store names from Square so the tick-boxes fill in automatically.
+  try{ if(!_sqLocNames.length) loadPickerLocations(); }catch(e){}
 }
-// Union of locations we know about, offered as checkboxes on the user form.
-function _knownLocs(){ return [...new Set([...(state.pnlLocs||[]), ...((state.auth&&state.auth.users)||[]).flatMap(u=>userLocations(u)), ..._userLocOpts].filter(Boolean))]; }
+// Union of locations we know about, offered as checkboxes on the user form:
+// your Square store names (pulled live), plus P&L locations, plus any already
+// assigned to a user, plus anything typed by hand.
+let _sqLocNames=[], _pickerLocAt=0, _pickerLocLoading=false;
+function _knownLocs(){ return [...new Set([..._sqLocNames, ...(state.pnlLocs||[]), ...((state.auth&&state.auth.users)||[]).flatMap(u=>userLocations(u)), ..._userLocOpts].filter(Boolean))]; }
 let _userLocOpts=[];
-function renderUserLocBoxes(selected){ const box=$('#u_loc_boxes'); if(!box) return; const sel=new Set((selected||[]).map(_locNorm)); const opts=[...new Set([..._knownLocs(), ...(selected||[])].filter(Boolean))]; _userLocOpts=[...new Set([..._userLocOpts, ...opts])]; if(!opts.length){ box.innerHTML='<span class="hint">No locations known yet — add one below, or leave empty for full access.</span>'; return; } box.innerHTML=opts.map(l=>`<label class="locbox"><input type="checkbox" value="${esc(l)}" ${sel.has(_locNorm(l))?'checked':''}> ${esc(l)}</label>`).join(''); }
+// Pull the real Square location names so the picker shows tick-boxes instead of
+// making you type each store. Cached ~5 min; the "Refresh from Square" button forces it.
+async function loadPickerLocations(force){
+  if(_pickerLocLoading) return;
+  if(!force && _sqLocNames.length && (Date.now()-_pickerLocAt)<300000) return;
+  _pickerLocLoading=true;
+  try{
+    const r=await fetch('/api/square/accounts',{cache:'no-store'});
+    const d=await r.json().catch(()=>null);
+    if(d && Array.isArray(d.accounts)){
+      const names=[];
+      d.accounts.forEach(a=>(a.locations||[]).forEach(l=>{ const n=((l.name||'')+'').trim(); if(n && !/back\s*-?\s*office/i.test(n)) names.push(n); }));
+      if(names.length){ _sqLocNames=[...new Set(names)]; _pickerLocAt=Date.now(); }
+    }
+  }catch(e){}
+  _pickerLocLoading=false;
+  try{ if($('#u_loc_boxes')){ renderUserLocBoxes(_readUserLocs()); } }catch(e){}
+}
+function renderUserLocBoxes(selected){ const box=$('#u_loc_boxes'); if(!box) return; const sel=new Set((selected||[]).map(_locNorm)); const opts=[...new Set([..._knownLocs(), ...(selected||[])].filter(Boolean))]; _userLocOpts=[...new Set([..._userLocOpts, ...opts])]; if(!opts.length){ box.innerHTML='<span class="hint">'+(_pickerLocLoading?'Loading your stores from Square…':'No stores loaded yet — tap “Refresh from Square” to pull your locations, or type one below. Leave empty for full access.')+'</span>'; return; } box.innerHTML=opts.map(l=>`<label class="locbox"><input type="checkbox" value="${esc(l)}" ${sel.has(_locNorm(l))?'checked':''}> ${esc(l)}</label>`).join(''); }
 function _readUserLocs(){ const box=$('#u_loc_boxes'); if(!box) return []; return [...box.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).map(c=>c.value); }
 function addUserLocOption(){ const i=$('#u_loc_add'); const v=(i&&i.value||'').trim(); if(!v) return; const cur=_readUserLocs(); if(!cur.some(x=>_locNorm(x)===_locNorm(v))) cur.push(v); _userLocOpts=[...new Set([..._userLocOpts,v])]; if(i) i.value=''; renderUserLocBoxes(cur); }
 async function enableLogin(){
@@ -1785,7 +1808,7 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 const round1=n=>Math.round((Number(n)||0)*10)/10;
 const round2=n=>Math.round((Number(n)||0)*100)/100;
 const money=n=>'$'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const esc=s=>String(s??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 const numf=(n,d=1)=>(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pgCalc=(wg,proof)=>round1((Number(wg)||0)*(Number(proof)||0)/100);
 function uid(){ return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -2022,7 +2045,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831b·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831d·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3282,7 +3305,7 @@ function rtlCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=s.bottlesPerCase??6;$('#s_kyExcise').value=s.kyExcise??1.92;$('#s_kyWholesale').value=s.kyWholesale??11;$('#s_kyCase').value=s.kyCase??0.05;const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);}
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);}
 function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
 async function testLateAlert(){
   if(!requireCap('setup'))return;
@@ -3316,11 +3339,11 @@ async function sendSalesTest(){
 }
 function saveSettings(){if(!requireCap('setup'))return;const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
-function copyLink(){ const v=$('#syncLink').value; navigator.clipboard?.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); }
+function copyLink(){ const v=$('#syncLink').value; if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); } else { try{ const el=$('#syncLink'); el.focus(); el.select(); document.execCommand('copy'); flash('Link copied.'); }catch(e){ flash('Copy failed — select and copy manually.'); } } }
 function joinWorkspace(){ if(!requireCap('setup'))return; const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
 function exportJson(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);}
 function exportCsv(){const head=['Date','Account','Transaction','Spirit','WineGallons','Proof','ProofGallons','TaxDetermined','Reference','Notes'];const rows=state.entries.map(e=>{const t=TXBYID[e.type];return [e.date,t.account,t.label,e.spirit,e.wg,e.proof,e.pg,t.taxable?'YES':'',e.ref||'',e.notes||''].map(csv).join(',');});const blob=new Blob([head.join(',')+'\n'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ttb-ledger-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);}
-const csv=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+const csv=v=>{v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
 function importJson(file){if(!requireCap('setup'))return;const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.entries)throw 0;if(!confirm('Restore will replace the data in this workspace. Continue?'))return;state=normalize(p);save('Restored a backup file');loadSettingsForm();refreshAll();flash('Backup restored — '+state.entries.length+' entries.');}catch(e){alert('That file could not be read as a valid backup.');}};r.readAsText(file);}
 function clearAll(){if(!requireCap('setup'))return;if(!confirm('Erase ALL data in this workspace? Export a backup first if unsure.'))return;state=freshState();save('Erased the entire workspace');loadSettingsForm();refreshAll();flash('Workspace erased.');}
 
