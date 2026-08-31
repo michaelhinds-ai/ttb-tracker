@@ -241,7 +241,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831d</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831f</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -445,9 +445,11 @@
       </div>
       <div id="lbl_logo" style="margin:10px 0"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" onclick="printCaseLabels()">Generate sheet (6 labels)</button>
-        <button class="btn ghost" id="lbl_printbtn" style="display:none" onclick="doPrintLabels()">Print</button>
+        <button class="btn" id="lbl_pdfbtn" onclick="labelsPdf()">Download PDF (prints on any device)</button>
+        <button class="btn ghost" onclick="printCaseLabels()">Preview sheet on screen</button>
+        <button class="btn ghost" id="lbl_printbtn" style="display:none" onclick="doPrintLabels()">Browser print (desktop)</button>
       </div>
+      <p class="hint" style="margin:8px 0 0">On an iPhone or iPad, use <b>Download PDF</b> — it opens the sheet as a PDF you can print or save. Browser print is unreliable on iOS.</p>
     </div>
     <div id="labelSheet" class="labelsheet" style="display:none"></div>
     <div class="card cap-write">
@@ -1060,12 +1062,17 @@
 
     <div class="card cap-setup">
       <h3>Clock-in Alerts</h3>
-      <p class="hint">If someone with a Square <b>scheduled shift</b> hasn't clocked in within the grace window after their start time, email these people. Checks every 15 minutes; each missed shift is emailed once a day.</p>
+      <p class="hint">If someone with a Square <b>scheduled shift</b> hasn't clocked in within the grace window after their start time, email the people below. Checks every 15 minutes; each missed shift is emailed once a day. Set a different email list <b>per location</b>, and/or a catch-all that gets every location.</p>
       <div class="grid g3">
-        <div style="grid-column:span 2"><label class="fld">Send to <span style="font-weight:400;color:var(--muted)">— emails, comma-separated</span></label><input type="text" id="s_lateEmail" placeholder="you@company.com, gm@company.com"></div>
+        <div style="grid-column:span 2"><label class="fld">Catch-all — send ALL alerts to <span style="font-weight:400;color:var(--muted)">— emails, comma-separated (optional)</span></label><input type="text" id="s_lateEmail" placeholder="owner@company.com"></div>
         <div><label class="fld">Grace period <span style="font-weight:400;color:var(--muted)">— minutes</span></label><input type="number" id="s_lateThreshold" min="1" step="1" placeholder="15"></div>
       </div>
-      <label style="display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px"><input type="checkbox" id="s_lateOn"> Alerts on</label>
+      <div style="margin-top:14px">
+        <label class="fld">Per-location recipients <span style="font-weight:400;color:var(--muted)">— who gets alerted when a shift is missed at each store</span></label>
+        <div id="lateLocBoxes" style="margin-top:6px"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"><input type="text" id="late_loc_add" placeholder="Add a location…" style="max-width:220px" onkeydown="if(event.key==='Enter'){event.preventDefault();addLateLocRow();}"><button type="button" class="btn ghost sm" onclick="addLateLocRow()">Add location</button><button type="button" class="btn ghost sm" onclick="loadPickerLocations(true)" title="Pull your store names from Square">↻ Refresh from Square</button></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px"><input type="checkbox" id="s_lateOn"> Alerts on</label>
       <div class="row-actions" style="margin-top:12px">
         <button class="btn" onclick="saveLateAlert()">Save</button>
         <button class="btn gray" onclick="testLateAlert()">Test now</button>
@@ -1543,6 +1550,7 @@ async function loadPickerLocations(force){
   }catch(e){}
   _pickerLocLoading=false;
   try{ if($('#u_loc_boxes')){ renderUserLocBoxes(_readUserLocs()); } }catch(e){}
+  try{ if(typeof renderLateLocBoxes==='function' && document.getElementById('lateLocBoxes')){ renderLateLocBoxes(); } }catch(e){}
 }
 function renderUserLocBoxes(selected){ const box=$('#u_loc_boxes'); if(!box) return; const sel=new Set((selected||[]).map(_locNorm)); const opts=[...new Set([..._knownLocs(), ...(selected||[])].filter(Boolean))]; _userLocOpts=[...new Set([..._userLocOpts, ...opts])]; if(!opts.length){ box.innerHTML='<span class="hint">'+(_pickerLocLoading?'Loading your stores from Square…':'No stores loaded yet — tap “Refresh from Square” to pull your locations, or type one below. Leave empty for full access.')+'</span>'; return; } box.innerHTML=opts.map(l=>`<label class="locbox"><input type="checkbox" value="${esc(l)}" ${sel.has(_locNorm(l))?'checked':''}> ${esc(l)}</label>`).join(''); }
 function _readUserLocs(){ const box=$('#u_loc_boxes'); if(!box) return []; return [...box.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).map(c=>c.value); }
@@ -2045,7 +2053,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831d·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831f·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -2138,6 +2146,87 @@ function doPrintLabels(){
   document.body.classList.add('printing-labels');
   const done=()=>{ document.body.classList.remove('printing-labels'); const e=document.getElementById('labelPageStyle'); if(e)e.remove(); window.removeEventListener('afterprint',done); };
   window.addEventListener('afterprint',done); window.print(); setTimeout(done,1500);
+}
+/* Barcode bar geometry (module units) — shared by the on-screen SVG and the PDF. */
+function gs1128Bars(scc){
+  const d=('01'+String(scc)).replace(/\D/g,''); const dd=d.length%2?('0'+d):d;
+  const codes=[105,102]; for(let i=0;i<dd.length;i+=2) codes.push(parseInt(dd.substr(i,2),10));
+  let sum=105; for(let k=1;k<codes.length;k++) sum+=codes[k]*k; codes.push(sum%103); codes.push(106);
+  let widths=''; codes.forEach(c=>widths+=C128[c]);
+  let total=0,x=0,bar=true,bars=[];
+  for(const ch of widths){ const w=(+ch); total+=w; if(bar) bars.push({x:x,w:w}); x+=w; bar=!bar; }
+  return {bars:bars,total:total};
+}
+/* Reliable label printing on EVERY device (iPhone/iPad included): build a real
+   letter-size PDF with 6 labels and open it. Browser print() is flaky on iOS. */
+async function labelsPdf(){
+  const co=(document.getElementById('lbl_company')||{}).value; if(!co){ alert('Choose a company.'); return; }
+  const ps=document.getElementById('lbl_product'); const id=ps?ps.value:''; const s=(state.skus||[]).find(x=>x.id===id);
+  if(!s){ alert('Choose a product to print.'); return; }
+  const pack=(document.getElementById('lbl_pack')||{}).value; if(!pack){ alert('Choose the case pack — 6-pack or 12-pack.'); return; }
+  const scc = pack==='6' ? (s.scc6||'') : pack12scc(s);
+  const barrel=((document.getElementById('lbl_barrel')||{}).value||'').trim();
+  const proof=((document.getElementById('lbl_proof')||{}).value||'').trim();
+  const note=((document.getElementById('lbl_note')||{}).value||'').trim();
+  const pf=labelProof(proof);
+  const meta=[barrel?('Barrel #'+barrel):'', pack+' x '+(s.size||'')].filter(Boolean).join('   ·   ');
+  const proofLine=pf.p?('Proof '+pf.p+'   ·   '+pf.abv+'% ALC/Vol'):'';
+  const btn=document.getElementById('lbl_pdfbtn'); if(btn){ btn.disabled=true; btn.textContent='Building PDF…'; }
+  try{
+    await ensurePdfLib();
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const black=rgb(0,0,0), white=rgb(1,1,1), red=rgb(.7,0,0);
+    const pdf=await PDFDocument.create();
+    const helv=await pdf.embedFont(StandardFonts.Helvetica);
+    const helvB=await pdf.embedFont(StandardFonts.HelveticaBold);
+    // Embed the logo (PNG/JPEG data URLs only; anything else falls back to the brand name).
+    let logoImg=null; const logo=companyLogo(s.company);
+    if(logo && /^data:image\/(png|jpe?g|jpg)/i.test(logo)){
+      try{ const b64=logo.split(',')[1]||''; const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)); logoImg = /image\/png/i.test(logo) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes); }catch(e){ logoImg=null; }
+    }
+    const IN=72, page=pdf.addPage([8.5*IN,11*IN]);
+    const labelW=4*IN, labelH=3.333*IN, gap=0.19*IN;
+    const leftMargin=(8.5*IN-(2*labelW+gap))/2, topMargin=0.5*IN;
+    const padS=0.16*IN, padT=0.18*IN, padB=0.14*IN, innerW=labelW-2*padS;
+    const drawWrapped=(text,size,bold,cx,cyTop)=>{
+      const f=bold?helvB:helv; const words=String(text||'').split(/\s+/).filter(Boolean); if(!words.length) return cyTop;
+      let line='',lines=[];
+      for(const w of words){ const t=line?line+' '+w:w; if(f.widthOfTextAtSize(t,size)>innerW && line){ lines.push(line); line=w; } else line=t; }
+      if(line) lines.push(line);
+      let cy=cyTop;
+      for(const ln of lines){ const wd=f.widthOfTextAtSize(ln,size); page.drawText(ln,{x:cx-wd/2,y:cy-size,size:size,font:f,color:black}); cy-=size*1.2; }
+      return cy;
+    };
+    const drawLabel=(x,yTop)=>{
+      const cx=x+labelW/2; let cy=yTop-padT;
+      if(logoImg){ const lw=1.2*IN, sc=lw/logoImg.width, lh=logoImg.height*sc; page.drawImage(logoImg,{x:cx-lw/2,y:cy-lh,width:lw,height:lh}); cy-=lh+6; }
+      else { cy=drawWrapped(s.company||'',13,true,cx,cy)-2; }
+      cy=drawWrapped(s.product||'',15,true,cx,cy)-2;
+      if(note) cy=drawWrapped(note,10.5,true,cx,cy)-1;
+      if(meta) cy=drawWrapped(meta,11,true,cx,cy)-1;
+      if(proofLine) cy=drawWrapped(proofLine,10,false,cx,cy);
+      // Barcode pinned to the bottom of the label.
+      const bottomInner=yTop-labelH+padB;
+      if(scc){
+        const bd=gs1128Bars(scc); const bcW=2.3*IN, bcH=30, bcX=cx-bcW/2, hrSize=11, bcY=bottomInner+hrSize+4;
+        page.drawRectangle({x:bcX,y:bcY,width:bcW,height:bcH,color:white});
+        const unit=bcW/bd.total;
+        bd.bars.forEach(b=>page.drawRectangle({x:bcX+b.x*unit,y:bcY,width:b.w*unit,height:bcH,color:black}));
+        const hr='(01)'+scc; const wd=helv.widthOfTextAtSize(hr,hrSize); page.drawText(hr,{x:cx-wd/2,y:bottomInner,size:hrSize,font:helv,color:black});
+      } else {
+        const msg='No '+pack+'-pack SCC set for this product'; const wd=helv.widthOfTextAtSize(msg,9); page.drawText(msg,{x:cx-wd/2,y:bottomInner+6,size:9,font:helv,color:red});
+      }
+    };
+    for(let r=0;r<3;r++){ for(let c=0;c<2;c++){ const x=leftMargin+c*(labelW+gap); const yTop=11*IN-topMargin-r*labelH; drawLabel(x,yTop); } }
+    const bytes=await pdf.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,'_blank');
+    if(!w){ const a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.download='case-labels.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 60000);
+    flash('Label PDF ready — open it, then print or save.');
+  }catch(e){ alert('Could not build the PDF: '+((e&&e.message)||e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Download PDF (prints on any device)'; } }
 }
 /* ===================== Compliance document vault ===================== */
 const DOC_CATS=["License / Permit","Federal DSP Permit (TTB)","Sales & Use Tax","EIN Letter","TIB (Transfer in Bond)","COLA","Insurance","Bond","Other"];
@@ -3305,8 +3394,21 @@ function rtlCsv(){
 }
 
 /* ================= Setup / sync / data ================= */
-function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);}
-function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
+function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);try{renderLateLocBoxes();if(typeof loadPickerLocations==='function'&&!(typeof _sqLocNames!=='undefined'&&_sqLocNames.length))loadPickerLocations();}catch(e){}}
+function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); s.lateEmailByLoc=_readLateLocs(); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
+/* Per-location clock-in alert recipients. Reuses the Square location list. */
+let _lateLocOpts=[];
+function _lateKnownLocs(){ const sq=(typeof _sqLocNames!=='undefined'?_sqLocNames:[]); return [...new Set([...sq, ...Object.keys((state.settings&&state.settings.lateEmailByLoc)||{}), ..._lateLocOpts].filter(Boolean))]; }
+function _readLateLocs(){ const box=$('#lateLocBoxes'); const out={}; if(!box) return out; box.querySelectorAll('input[data-loc]').forEach(i=>{ const loc=decodeURIComponent(i.getAttribute('data-loc')||''); const v=(i.value||'').trim(); if(loc&&v) out[loc]=v; }); return out; }
+function renderLateLocBoxes(){
+  const box=$('#lateLocBoxes'); if(!box) return;
+  const saved=(state.settings&&state.settings.lateEmailByLoc)||{};
+  const current=_readLateLocs(); // preserve in-progress edits across refreshes
+  const locs=_lateKnownLocs();
+  if(!locs.length){ box.innerHTML='<div class="hint">No stores loaded yet — tap “Refresh from Square”, or add a location. Until then the catch-all above gets every alert.</div>'; return; }
+  box.innerHTML=locs.map(l=>{ const val=(current[l]!=null?current[l]:(saved[l]||'')); return `<div style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap"><div style="min-width:150px;font-weight:600;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px">${esc(l)}</div><input type="text" data-loc="${encodeURIComponent(l)}" value="${esc(val)}" placeholder="emails for this store, comma-separated" style="flex:1;min-width:200px"></div>`; }).join('');
+}
+function addLateLocRow(){ const i=$('#late_loc_add'); const v=(i&&i.value||'').trim(); if(!v) return; _lateLocOpts=[...new Set([..._lateLocOpts,v])]; if(i) i.value=''; renderLateLocBoxes(); }
 async function testLateAlert(){
   if(!requireCap('setup'))return;
   const to=(($('#s_lateEmail')||{}).value||'').trim(); const threshold=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15);
@@ -5598,6 +5700,17 @@ async function renderRetailHub(){
       }
     } else { html+=`<div class="note">No sales recorded for ${esc(fmtDate(_retDate))}${scoped?(' at '+esc(locLbl)):''}.</div>`; }
   } else { html+=`<div class="note">⚠️ ${esc((day&&day.detail)||'Could not load sales — make sure the latest netlify/functions are deployed (needs /api/sales/day).')}</div>`; }
+  // ---- By employee (transactions, sales, average ticket) ----
+  if(day&&day.ok&&rows.length){
+    const empBy={};
+    rows.forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'—').toLowerCase(); const o=empBy[k]||(empBy[k]={name:e.name||'—',txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); }));
+    const emps=Object.keys(empBy).map(k=>empBy[k]).map(o=>{ o.avg=o.txns?Math.round(o.sales/o.txns):0; return o; }).sort((a,b)=>b.sales-a.sales);
+    if(emps.length){
+      html+=`<h3 style="margin:20px 0 2px">By employee</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
+        emps.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${numf(e.txns,0)}</td><td class="num">${money(e.sales/100)}</td><td class="num" style="font-weight:700">${money(e.avg/100)}</td></tr>`).join('')+
+        `</tbody></table></div><div class="hint" style="margin-top:4px">Average ticket = that employee's sales ÷ their transactions (tips excluded). Staff must be signed in individually on the Square device to be attributed.</div>`;
+    }
+  }
   // ---- Who's clocked in ----
   let crows=(clk&&clk.ok&&clk.rows)||[]; crows=crows.filter(r=>allow(r.location));
   html+=`<h3 style="margin:20px 0 2px">Who’s clocked in</h3>`;
