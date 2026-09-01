@@ -5,7 +5,7 @@
 // Env: RESEND_API_KEY, BACKUP_WS (workspace code[s]), optional LATE_FROM /
 // BACKUP_FROM, optional LATE_EMAIL_TO fallback, plus SQUARE_* vars.
 import { getStore } from "@netlify/blobs";
-import { allLate, lateEmailHTML } from "./lib/lateness.mjs";
+import { allLate, lateEmailHTML, allClockStatus, overstayEmailHTML, lateArrivalEmailHTML } from "./lib/lateness.mjs";
 import { env as sqEnv, dayRange, todayInTz } from "./lib/square.mjs";
 import { sendDigestEmail } from "./lib/salesdigest.mjs";
 
@@ -64,39 +64,56 @@ export default async (req) => {
 
   const ymd = todayInTz(tz);
   const { startISO, endISO } = dayRange(ymd, tz);
-  let result;
-  try { result = await allLate(startISO, endISO, threshold); }
-  catch (e) { console.error("clockin-alert failed", e && e.message); return new Response("check failed", { status: 200 }); }
-  const rows = result.rows || [];
-  if (result.errors && result.errors.length) console.warn("clockin-alert account errors:", result.errors.join(" | "));
-  if (!rows.length) return new Response("nobody late", { status: 200 });
 
-  // De-dup: only email a given scheduled shift once per day.
+  // De-dup store: only email a given shift/event once per day.
   const store = getStore({ name: "late-alerts", consistency: "strong" });
   const key = `notified_${ymd}`;
   let notified = [];
   try { notified = (await store.get(key, { type: "json" })) || []; } catch {}
-  const fresh = rows.filter((r) => !notified.includes(r.id));
-  if (!fresh.length) return new Response("already notified", { status: 200 });
-
-  // Group the missed shifts by location and email each store's own recipients
-  // (plus the catch-all). A shift is only marked notified once it's actually sent.
-  const groups = {};
-  for (const r of fresh) { const k = r.location || ""; (groups[k] = groups[k] || []).push(r); }
   const sentIds = [];
-  let groupsSent = 0;
-  for (const loc of Object.keys(groups)) {
-    const rowsL = groups[loc];
-    const recips = recipientsForLoc(loc, to, byLoc);
-    if (!recips.length) continue; // nobody configured for this store — leave it for once it is
-    const html = lateEmailHTML(rowsL, threshold, tz);
-    const names = rowsL.map((r) => r.name).join(", ");
-    const subject = `⏰ Missed clock-in${loc ? " — " + loc : ""}: ${names}`;
-    try { await sendDigestEmail({ to: recips, from, apiKey, subject, html }); sentIds.push(...rowsL.map((r) => r.id)); groupsSent++; }
-    catch (e) { console.error("clockin-alert send failed for", loc, e && e.message); }
+
+  // Group `rows` by location and email each store's own recipients (plus the
+  // catch-all). Rows already emailed today are skipped. Returns groups sent.
+  async function emailGroups(rows, mkHtml, subjPrefix) {
+    const fresh = rows.filter((r) => !notified.includes(r.id));
+    if (!fresh.length) return 0;
+    const groups = {};
+    for (const r of fresh) { const k = r.location || ""; (groups[k] = groups[k] || []).push(r); }
+    let sent = 0;
+    for (const loc of Object.keys(groups)) {
+      const rowsL = groups[loc];
+      const recips = recipientsForLoc(loc, to, byLoc);
+      if (!recips.length) continue; // nobody configured for this store — leave it for once it is
+      const html = mkHtml(rowsL);
+      const names = rowsL.map((r) => r.name).join(", ");
+      const subject = `${subjPrefix}${loc ? " — " + loc : ""}: ${names}`;
+      try { await sendDigestEmail({ to: recips, from, apiKey, subject, html }); sentIds.push(...rowsL.map((r) => r.id)); sent++; }
+      catch (e) { console.error("clockin-alert send failed for", loc, e && e.message); }
+    }
+    return sent;
   }
+
+  // 1) Missed clock-ins (scheduled but not clocked in within the grace window).
+  let lateRows = [];
+  try { const r = await allLate(startISO, endISO, threshold); lateRows = r.rows || []; if (r.errors && r.errors.length) console.warn("clockin-alert late errors:", r.errors.join(" | ")); }
+  catch (e) { console.error("allLate failed", e && e.message); }
+  const g1 = await emailGroups(lateRows, (rowsL) => lateEmailHTML(rowsL, threshold, tz), "⏰ Missed clock-in");
+
+  // Pull enriched clock status once — drives both overstay and late-arrival alerts.
+  let statusRows = [];
+  try { const r = await allClockStatus(startISO, endISO); statusRows = r.rows || []; if (r.errors && r.errors.length) console.warn("clockin-alert status errors:", r.errors.join(" | ")); }
+  catch (e) { console.error("allClockStatus failed", e && e.message); }
+
+  // 2) Overstays — still clocked in `threshold`+ minutes past their scheduled end.
+  const overRows = statusRows.filter((x) => x.open && x.overMin != null && x.overMin >= threshold).map((x) => ({ ...x, id: "over_" + x.id }));
+  const g2 = await emailGroups(overRows, (rowsL) => overstayEmailHTML(rowsL, threshold, tz), "🕒 Still clocked in past end");
+
+  // 3) Late arrivals — clocked in, but `threshold`+ minutes after their scheduled start.
+  const lateInRows = statusRows.filter((x) => x.lateInMin != null && x.lateInMin >= threshold).map((x) => ({ ...x, id: "latein_" + x.id }));
+  const g3 = await emailGroups(lateInRows, (rowsL) => lateArrivalEmailHTML(rowsL, threshold, tz), "⏰ Clocked in late");
+
   if (sentIds.length) { try { await store.setJSON(key, notified.concat(sentIds)); } catch {} }
-  return new Response("alerted " + groupsSent + " location group(s), " + sentIds.length + " shift(s)", { status: 200 });
+  return new Response(`missed ${g1}, overstay ${g2}, late-in ${g3} group(s), ${sentIds.length} notified`, { status: 200 });
 };
 
 export const config = { schedule: "*/15 * * * *" };
