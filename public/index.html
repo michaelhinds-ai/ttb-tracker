@@ -244,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831m</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831n</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -2082,7 +2082,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831m·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831n·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -5785,10 +5785,11 @@ async function renderRetailHub(){
 
 ;
 /* ===================== Production hub + Samples tracker =====================
-   Distilleries constantly send barrel samples to stores & distributors. This
-   logs each one (sample #, barrel #, store, distributor, brand/spirit/age,
-   contact, status, notes). When a store commits, "Move to Barrels in Process"
-   creates a single-barrel selection over in barrelsProc and removes the sample. */
+   Distilleries send a store several barrel samples to pick from. A "send" is one
+   store/distributor + contact + brand, with one line per barrel (sample # +
+   barrel #). Each barrel carries its own status; mark the one they pick
+   Committed and "Move → Barrels" to create its single-barrel selection in
+   Barrels in Process (removing it here). Samples in a send share a sendId. */
 
 const SMP_STATUS = [
   { k:'sent',      label:'Sent',      bg:'#eef2f7', fg:'#37506e' },
@@ -5805,103 +5806,145 @@ function smpTodayStr(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); retur
 function renderProduction(){
   const box=document.getElementById('productionBody'); if(!box) return;
   const smp=state.samples||[];
+  const sends=new Set(smp.map(s=>s.sendId||s.id)).size;
   const out=smp.filter(s=>s.status==='sent'||s.status==='tasting').length;
   const won=smp.filter(s=>s.status==='committed').length;
   const kpis=`<div class="kpis" style="margin:2px 0 16px">`+
-    kpi('copper','Samples logged',numf(smp.length,0),'all time')+
-    kpi('blue','Out / tasting',numf(out,0),'awaiting a decision')+
+    kpi('copper','Samples out',numf(smp.length,0),numf(sends,0)+' send'+(sends===1?'':'s'))+
+    kpi('blue','Awaiting a pick',numf(out,0),'sent / tasting')+
     kpi('green','Committed',numf(won,0),'turned into a barrel pick')+`</div>`;
   const card=(v,icon,title,desc)=>`<div class="apptile" style="cursor:pointer" onclick="switchView('${v}')"><div class="ai" style="background:rgba(122,90,43,.15);font-size:22px;display:flex;align-items:center;justify-content:center">${icon}</div><div><div class="an">${esc(title)}</div><div class="ad">${esc(desc)}</div></div><div class="applinks"><span style="color:var(--copper);font-weight:700;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">Open &rarr;</span></div></div>`;
-  box.innerHTML=kpis+`<div class="apps">${card('samples','🧪','Samples','Track barrel samples sent to stores & distributors — sample #, barrel #, contact and status. Move a committed one straight into Barrels in Process.')}</div>`;
+  box.innerHTML=kpis+`<div class="apps">${card('samples','🧪','Samples','Barrel samples sent to stores & distributors to pick from — track each send, mark the winner, and move it into Barrels in Process.')}</div>`;
 }
 
 /* ---------- Samples tracker ---------- */
 let _smpEditId=null;
-function smpFormHTML(){
+let _smpLines=[{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''}]; // a new send defaults to 3 barrels to choose from
+
+function smpSharedFieldsHTML(editing){
   const brands=smpBrands();
   const bopt='<option value="">— brand —</option>'+brands.map(b=>`<option>${esc(b)}</option>`).join('');
   const sopt=SMP_STATUS.map(s=>`<option value="${s.k}">${s.label}</option>`).join('');
+  return `<div class="grid g3">
+    <div><label class="fld">Date sent</label><input type="date" id="smp_date" value="${smpTodayStr()}"></div>
+    <div><label class="fld">Store</label><input type="text" id="smp_store" placeholder="Store / account name"></div>
+    <div><label class="fld">Distributor</label><input type="text" id="smp_distro" placeholder="Distributor / wholesaler"></div>
+    <div><label class="fld">Brand</label><select id="smp_brand">${bopt}</select></div>
+    <div><label class="fld">Spirit</label><input type="text" id="smp_spirit" placeholder="e.g. Single Barrel Bourbon"></div>
+    <div><label class="fld">Age</label><input type="text" id="smp_age" placeholder="e.g. 6 yr"></div>
+    <div><label class="fld">Contact name</label><input type="text" id="smp_cname" placeholder="Buyer / rep"></div>
+    <div><label class="fld">Contact phone</label><input type="text" id="smp_cphone" placeholder="(xxx) xxx-xxxx"></div>
+    <div><label class="fld">Contact email</label><input type="text" id="smp_cemail" placeholder="name@store.com"></div>
+    <div><label class="fld">Status ${editing?'':'<span style="font-weight:400;color:var(--muted)">— starting status for all</span>'}</label><select id="smp_status">${sopt}</select></div>
+  </div>
+  <div style="margin-top:10px"><label class="fld">Notes</label><textarea id="smp_notes" rows="2" placeholder="Anything worth remembering about this send…"></textarea></div>`;
+}
+function smpFormHTML(){
+  const editing=!!_smpEditId;
   return `<div class="card">
-    <h3 style="margin:0 0 2px" id="smpFormTitle">Log a sample</h3>
-    <p class="hint" style="margin:0 0 10px">Record what went out. When a store commits, use <b>Move to Barrels in Process</b> in the list below.</p>
-    <div class="grid g3">
-      <div><label class="fld">Date sent</label><input type="date" id="smp_date" value="${smpTodayStr()}"></div>
-      <div><label class="fld">Sample #</label><input type="text" id="smp_no" placeholder="e.g. S-104"></div>
-      <div><label class="fld">Barrel #</label><input type="text" id="smp_barrel" placeholder="e.g. 227"></div>
-      <div><label class="fld">Brand</label><select id="smp_brand">${bopt}</select></div>
-      <div><label class="fld">Spirit</label><input type="text" id="smp_spirit" placeholder="e.g. Single Barrel Bourbon"></div>
-      <div><label class="fld">Age</label><input type="text" id="smp_age" placeholder="e.g. 6 yr"></div>
-      <div><label class="fld">Store</label><input type="text" id="smp_store" placeholder="Store / account name"></div>
-      <div><label class="fld">Distributor</label><input type="text" id="smp_distro" placeholder="Distributor / wholesaler"></div>
-      <div><label class="fld">Status</label><select id="smp_status">${sopt}</select></div>
-      <div><label class="fld">Contact name</label><input type="text" id="smp_cname" placeholder="Buyer / rep"></div>
-      <div><label class="fld">Contact phone</label><input type="text" id="smp_cphone" placeholder="(xxx) xxx-xxxx"></div>
-      <div><label class="fld">Contact email</label><input type="text" id="smp_cemail" placeholder="name@store.com"></div>
+    <h3 style="margin:0 0 2px" id="smpFormTitle">${editing?'Edit sample':'Log samples sent'}</h3>
+    <p class="hint" style="margin:0 0 10px">${editing?'Edit this one sample.':'You usually send a store a few barrels to choose from — add a line per barrel. They all share the store, brand and contact above.'}</p>
+    ${smpSharedFieldsHTML(editing)}
+    <div style="margin-top:12px"><label class="fld">Barrels sent ${editing?'':'<span style="font-weight:400;color:var(--muted)">— one line per barrel (sample # &amp; barrel #)</span>'}</label>
+      <div id="smp_lines"></div>
+      ${editing?'':'<button type="button" class="btn ghost sm" style="margin-top:6px" onclick="smpAddLine()">+ Add sample</button>'}
     </div>
-    <div style="margin-top:10px"><label class="fld">Notes</label><textarea id="smp_notes" rows="2" placeholder="Anything worth remembering about this sample…"></textarea></div>
     <div class="row-actions" style="margin-top:12px">
-      <button class="btn" onclick="smpSave()">Save sample</button>
+      <button class="btn" onclick="smpSave()">${editing?'Save sample':'Save samples'}</button>
       <button class="btn gray" id="smpCancel" style="display:none" onclick="smpCancel()">Cancel</button>
     </div>
   </div>`;
 }
+function _smpReadLinesDom(){ const box=document.getElementById('smp_lines'); if(!box) return null; return [...box.querySelectorAll('.smpline')].map(row=>({ sampleNo:((row.querySelector('.smp_ln_no')||{}).value||''), barrelNo:((row.querySelector('.smp_ln_barrel')||{}).value||'') })); }
+function _smpBumpLines(){ const c=_smpReadLinesDom(); if(c) _smpLines=c; }
+function renderSmpLines(){
+  const box=document.getElementById('smp_lines'); if(!box) return;
+  const editing=!!_smpEditId;
+  const cur=_smpReadLinesDom(); if(cur&&cur.length) _smpLines=cur; // preserve typed values across re-renders
+  if(!_smpLines.length) _smpLines=[{sampleNo:'',barrelNo:''}];
+  box.innerHTML=_smpLines.map((ln,i)=>`<div class="smpline" style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap">
+    <input class="smp_ln_no" type="text" oninput="_smpBumpLines()" value="${esc(ln.sampleNo||'')}" placeholder="Sample # (e.g. S-104)" style="max-width:190px">
+    <input class="smp_ln_barrel" type="text" oninput="_smpBumpLines()" value="${esc(ln.barrelNo||'')}" placeholder="Barrel # (e.g. 227)" style="max-width:190px">
+    ${(!editing&&_smpLines.length>1)?`<button type="button" class="del" title="Remove this barrel" onclick="smpRemoveLine(${i})">✕</button>`:''}
+  </div>`).join('');
+}
+function smpAddLine(){ _smpBumpLines(); _smpLines.push({sampleNo:'',barrelNo:''}); renderSmpLines(); }
+function smpRemoveLine(i){ _smpBumpLines(); _smpLines.splice(i,1); if(!_smpLines.length)_smpLines=[{sampleNo:'',barrelNo:''}]; renderSmpLines(); }
+
 function renderSamples(){
   const box=document.getElementById('samplesBody'); if(!box) return;
   const writable=(typeof can!=='function')||can('write');
-  const list=[...(state.samples||[])].sort((a,b)=>(b.dateSent||'').localeCompare(a.dateSent||'')|| (b.ts||0)-(a.ts||0));
-  const rows=list.map(s=>{
-    const acts=writable?`<button class="link" onclick="smpEdit('${s.id}')">Edit</button> · <button class="link" onclick="smpMove('${s.id}')" title="Create a Barrels-in-Process pick from this sample and remove it here">Move&nbsp;&rarr;&nbsp;Barrels</button> · <button class="del" onclick="smpDelete('${s.id}')">Del</button>`:'';
-    return `<tr>
-      <td>${esc(fmtDate(s.dateSent)||'')}</td>
-      <td><b>${esc(s.sampleNo||'')}</b></td>
-      <td>${esc(s.barrelNo||'')}</td>
-      <td>${esc(s.brand||'')}${s.spirit?`<div style="color:var(--muted);font-size:12px">${esc(s.spirit)}${s.age?(' · '+esc(s.age)):''}</div>`:''}</td>
-      <td>${esc(s.store||'')}</td>
-      <td>${esc(s.distributor||'')}</td>
-      <td>${smpStatusBadge(s.status)}</td>
-      <td class="noprint">${acts}</td>
-    </tr>`;
-  }).join('');
-  const table=list.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Sample #</th><th>Barrel #</th><th>Brand</th><th>Store</th><th>Distributor</th><th>Status</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>`
-    :`<div class="empty" style="padding:22px">No samples logged yet — add one above.</div>`;
-  box.innerHTML=(writable?smpFormHTML():'')+`<div class="card" style="margin-top:14px"><h3 style="margin:0 0 8px">Samples sent</h3>${table}<div class="disclaimer">“Move → Barrels” creates a single-barrel selection in <b>Barrels in Process</b> (carrying the barrel #, store, distributor, brand and contact) and removes it from this list.</div></div>`;
-  if(_smpEditId){ const s=(state.samples||[]).find(x=>x.id===_smpEditId); if(s) smpFill(s); }
+  const all=[...(state.samples||[])];
+  const groups={}, order=[];
+  all.forEach(s=>{ const k=s.sendId||s.id; if(!groups[k]){ groups[k]=[]; order.push(k); } groups[k].push(s); });
+  order.sort((a,b)=>{ const ga=groups[a][0], gb=groups[b][0]; return (gb.dateSent||'').localeCompare(ga.dateSent||'')||((gb.ts||0)-(ga.ts||0)); });
+  const groupsHtml = order.length? order.map(k=>{
+    const g=groups[k], h=g[0];
+    const rows=g.slice().sort((a,b)=>String(a.sampleNo||'').localeCompare(String(b.sampleNo||''))).map(s=>{
+      const statusSel=writable?`<select onchange="smpSetStatus('${s.id}',this.value)" style="min-width:120px">${SMP_STATUS.map(o=>`<option value="${o.k}" ${s.status===o.k?'selected':''}>${o.label}</option>`).join('')}</select>`:smpStatusBadge(s.status);
+      const acts=writable?`<button class="link" onclick="smpMove('${s.id}')" title="Create a Barrels-in-Process pick from this barrel and remove it here">Move&nbsp;&rarr;&nbsp;Barrels</button> · <button class="link" onclick="smpEdit('${s.id}')">Edit</button> · <button class="del" onclick="smpDelete('${s.id}')">Del</button>`:'';
+      return `<tr><td><b>${esc(s.sampleNo||'')}</b></td><td>${esc(s.barrelNo||'')}</td><td>${statusSel}</td><td class="noprint">${acts}</td></tr>`;
+    }).join('');
+    const contact=[h.contactName,h.contactPhone,h.contactEmail].filter(Boolean).join(' · ');
+    const meta=[fmtDate(h.dateSent)||'', h.brand||'', h.spirit||'', h.age||''].filter(Boolean).join(' · ');
+    return `<div class="card" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div><h3 style="margin:0">${esc(h.store||'—')}${h.distributor?` <span style="color:var(--muted);font-weight:400;font-size:13px">via ${esc(h.distributor)}</span>`:''}</h3>
+          <div style="color:var(--muted);font-size:12.5px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${esc(meta)}${contact?(' · '+esc(contact)):''} · ${g.length} barrel${g.length===1?'':'s'}</div></div>
+        ${writable?`<button class="del noprint" onclick="smpDeleteSend('${k}')">Delete send</button>`:''}
+      </div>
+      <div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Sample #</th><th>Barrel #</th><th>Status</th><th class="noprint"></th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${h.notes?`<div class="hint" style="margin-top:6px">${esc(h.notes)}</div>`:''}
+    </div>`;
+  }).join('') : `<div class="empty" style="padding:22px">No samples logged yet — add a send above.</div>`;
+  box.innerHTML=(writable?smpFormHTML():'')+`<h3 style="margin:16px 0 0">Samples sent</h3>${groupsHtml}<div class="disclaimer">Each “send” is the set of barrels a store is choosing from. Mark the one they pick <b>Committed</b>, then <b>Move → Barrels</b> to create its single-barrel selection in Barrels in Process (which removes it here). “Delete send” removes the whole batch.</div>`;
+  if(writable){ renderSmpLines(); if(_smpEditId){ const s=(state.samples||[]).find(x=>x.id===_smpEditId); if(s) smpFill(s); } }
 }
 function smpFill(s){
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
-  set('smp_date',s.dateSent); set('smp_no',s.sampleNo); set('smp_barrel',s.barrelNo); set('smp_brand',s.brand);
-  set('smp_spirit',s.spirit); set('smp_age',s.age); set('smp_store',s.store); set('smp_distro',s.distributor);
-  set('smp_status',s.status||'sent'); set('smp_cname',s.contactName); set('smp_cphone',s.contactPhone); set('smp_cemail',s.contactEmail); set('smp_notes',s.notes);
+  set('smp_date',s.dateSent); set('smp_store',s.store); set('smp_distro',s.distributor); set('smp_brand',s.brand);
+  set('smp_spirit',s.spirit); set('smp_age',s.age); set('smp_status',s.status||'sent'); set('smp_cname',s.contactName); set('smp_cphone',s.contactPhone); set('smp_cemail',s.contactEmail); set('smp_notes',s.notes);
+  _smpLines=[{sampleNo:s.sampleNo||'',barrelNo:s.barrelNo||''}]; renderSmpLines();
   const t=document.getElementById('smpFormTitle'); if(t) t.textContent='Edit sample'+(s.sampleNo?(' #'+s.sampleNo):''); const c=document.getElementById('smpCancel'); if(c) c.style.display='inline-block';
 }
-function smpRead(){
-  const g=id=>((document.getElementById(id)||{}).value||'').trim();
-  return { dateSent:g('smp_date')||smpTodayStr(), sampleNo:g('smp_no'), barrelNo:g('smp_barrel'), brand:g('smp_brand'),
-    spirit:g('smp_spirit'), age:g('smp_age'), store:g('smp_store'), distributor:g('smp_distro'),
-    status:g('smp_status')||'sent', contactName:g('smp_cname'), contactPhone:g('smp_cphone'), contactEmail:g('smp_cemail'), notes:g('smp_notes') };
-}
+function smpReadShared(){ const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  return { dateSent:g('smp_date')||smpTodayStr(), store:g('smp_store'), distributor:g('smp_distro'), brand:g('smp_brand'), spirit:g('smp_spirit'), age:g('smp_age'), status:g('smp_status')||'sent', contactName:g('smp_cname'), contactPhone:g('smp_cphone'), contactEmail:g('smp_cemail'), notes:g('smp_notes') }; }
 function smpSave(){
   if(!requireCap('write'))return;
-  const d=smpRead();
-  if(!d.sampleNo && !d.barrelNo && !d.store){ alert('Enter at least a sample #, a barrel #, or a store.'); return; }
+  const shared=smpReadShared();
   if(!state.samples) state.samples=[];
   if(_smpEditId){
     const s=state.samples.find(x=>x.id===_smpEditId); if(!s){ _smpEditId=null; return; }
-    Object.assign(s,d,{_upd:Date.now()});
-    _smpEditId=null; save('Updated a sample'+(d.sampleNo?(' #'+d.sampleNo):'')); refreshAll(); flash('Sample updated.');
-  } else {
-    state.samples.push(Object.assign({id:uid(),ts:Date.now(),_upd:Date.now(),by:(SESSION?SESSION.name:'')},d));
-    save('Logged a sample'+(d.sampleNo?(' #'+d.sampleNo):'')); refreshAll(); flash('Sample logged.');
+    const ln=(_smpReadLinesDom()||[])[0]||{};
+    Object.assign(s, shared, { sampleNo:(ln.sampleNo||'').trim(), barrelNo:(ln.barrelNo||'').trim(), _upd:Date.now() });
+    _smpEditId=null; save('Updated a sample'); refreshAll(); flash('Sample updated.');
+    return;
   }
+  const lines=(_smpReadLinesDom()||[]).map(l=>({sampleNo:(l.sampleNo||'').trim(),barrelNo:(l.barrelNo||'').trim()})).filter(l=>l.sampleNo||l.barrelNo);
+  if(!lines.length){ alert('Add at least one barrel — a sample # or a barrel #.'); return; }
+  if(!shared.store){ if(!confirm('No store entered. Save these samples anyway?')) return; }
+  const sendId=uid();
+  lines.forEach(l=>{ state.samples.push(Object.assign({id:uid(),sendId:sendId,ts:Date.now(),_upd:Date.now(),by:(SESSION?SESSION.name:'')}, shared, {sampleNo:l.sampleNo,barrelNo:l.barrelNo})); });
+  _smpLines=[{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''}];
+  save('Logged '+lines.length+' sample'+(lines.length===1?'':'s')+(shared.store?(' to '+shared.store):'')); refreshAll();
+  flash('Logged '+lines.length+' sample'+(lines.length===1?'':'s')+(shared.store?(' to '+shared.store):'')+'.');
 }
+function smpSetStatus(id,val){ if(!requireCap('write'))return; const s=(state.samples||[]).find(x=>x.id===id); if(!s)return; s.status=val; s._upd=Date.now(); save('Set a sample to '+val); refreshAll(); }
 function smpEdit(id){ if(!requireCap('write'))return; _smpEditId=id; renderSamples(); try{ document.getElementById('smpFormTitle').scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} }
-function smpCancel(){ _smpEditId=null; renderSamples(); }
+function smpCancel(){ _smpEditId=null; _smpLines=[{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''},{sampleNo:'',barrelNo:''}]; renderSamples(); }
 function smpDelete(id){
   if(!requireCap('write'))return;
   const s=(state.samples||[]).find(x=>x.id===id); if(!s)return;
   if(!confirm('Delete sample'+(s.sampleNo?(' #'+s.sampleNo):'')+'?'))return;
   state.samples=(state.samples||[]).filter(x=>x.id!==id); if(_smpEditId===id)_smpEditId=null;
   save('Deleted a sample'); refreshAll(); flash('Sample deleted.');
+}
+function smpDeleteSend(k){
+  if(!requireCap('write'))return;
+  const g=(state.samples||[]).filter(s=>(s.sendId||s.id)===k); if(!g.length)return;
+  if(!confirm('Delete this whole send ('+g.length+' barrel'+(g.length===1?'':'s')+')?'))return;
+  state.samples=(state.samples||[]).filter(s=>(s.sendId||s.id)!==k);
+  save('Deleted a sample send'); refreshAll(); flash('Send deleted.');
 }
 function smpMove(id){
   if(!requireCap('write'))return;
