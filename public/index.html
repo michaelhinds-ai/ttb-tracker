@@ -244,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831n</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831p</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -2082,7 +2082,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831n·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831p·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -2186,6 +2186,26 @@ function gs1128Bars(scc){
   for(const ch of widths){ const w=(+ch); total+=w; if(bar) bars.push({x:x,w:w}); x+=w; bar=!bar; }
   return {bars:bars,total:total};
 }
+/* Flatten a (possibly transparent) logo onto white and return an opaque JPEG
+   data URL — so mobile PDF viewers that ignore PNG alpha still show the logo. */
+function labelFlattenLogo(dataURL){
+  return new Promise(function(res){
+    try{
+      var img=new Image();
+      img.onload=function(){
+        try{
+          var w=img.naturalWidth||img.width||300, h=img.naturalHeight||img.height||150;
+          var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+          var cx=cv.getContext('2d'); cx.fillStyle='#ffffff'; cx.fillRect(0,0,w,h); cx.drawImage(img,0,0,w,h);
+          var out=null; try{ out=cv.toDataURL('image/jpeg',0.92); }catch(e){ out=null; }
+          res(out);
+        }catch(e){ res(null); }
+      };
+      img.onerror=function(){ res(null); };
+      img.src=dataURL;
+    }catch(e){ res(null); }
+  });
+}
 /* Reliable label printing on EVERY device (iPhone/iPad included): build a real
    letter-size PDF with 6 labels and open it. Browser print() is flaky on iOS. */
 async function labelsPdf(){
@@ -2208,10 +2228,16 @@ async function labelsPdf(){
     const pdf=await PDFDocument.create();
     const helv=await pdf.embedFont(StandardFonts.Helvetica);
     const helvB=await pdf.embedFont(StandardFonts.HelveticaBold);
-    // Embed the logo (PNG/JPEG data URLs only; anything else falls back to the brand name).
+    // Embed the logo. First flatten it onto a WHITE background and embed as JPEG —
+    // a transparent PNG's alpha layer is dropped by some mobile PDF viewers
+    // (Samsung/Android), making the logo vanish. Flattening removes the alpha so
+    // it renders on every device. Falls back to a direct embed, then brand name.
     let logoImg=null; const logo=companyLogo(s.company);
-    if(logo && /^data:image\/(png|jpe?g|jpg)/i.test(logo)){
-      try{ const b64=logo.split(',')[1]||''; const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)); logoImg = /image\/png/i.test(logo) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes); }catch(e){ logoImg=null; }
+    if(logo && /^data:image\//i.test(logo)){
+      try{ const flat=await labelFlattenLogo(logo); if(flat){ const bytes=Uint8Array.from(atob(flat.split(',')[1]||''),c=>c.charCodeAt(0)); logoImg=await pdf.embedJpg(bytes); } }catch(e){ logoImg=null; }
+      if(!logoImg && /^data:image\/(png|jpe?g|jpg)/i.test(logo)){
+        try{ const b64=logo.split(',')[1]||''; const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)); logoImg = /image\/png/i.test(logo) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes); }catch(e){ logoImg=null; }
+      }
     }
     const IN=72, page=pdf.addPage([8.5*IN,11*IN]);
     const labelW=4*IN, labelH=3.333*IN, gap=0.19*IN;
@@ -5128,7 +5154,21 @@ async function loadReviews(){
   let st=null;
   try{ st=await fetch('/api/reviews/list',{cache:'no-store'}).then(r=>r.json()); }catch(e){ st={connected:false,error:'network'}; }
   if(!st || !st.connected){ box.innerHTML=reviewsConnectPanel(st||{}); return; }
+  if(st.error){ box.innerHTML=reviewsApiPendingPanel(st); return; } // signed in, but Google returned an error (usually API not approved yet)
   renderReviewsUI(st);
+}
+function reviewsApiPendingPanel(st){
+  const blob=((st.error||'')+' '+(st.detail||'')).toString();
+  const notApproved=/403|permission|denied|not\s*allow|allowlist|quota|has not been used|disabled/i.test(blob);
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="pill" style="background:#e7f0e3;color:#2f6b34">✓ Signed in to Google</span>${notApproved?'<span class="pill" style="background:#fff4e0;color:#8a5a12">⏳ API access not approved yet</span>':'<span class="pill" style="background:#f6e9e7;color:#9a3a2e">⚠ Google returned an error</span>'}</div>
+    <p class="hint" style="margin:10px 0 2px">${notApproved
+      ? 'You’re connected, but Google hasn’t granted your project access to the Business Profile API yet, so Mikey can’t read or reply to reviews. This is Google’s one-time approval — it usually lands by email a few days to ~2 weeks after you submit the access form. Nothing is broken; weekly replies start automatically the moment it’s approved.'
+      : 'Signed in, but Google returned an error while reading your reviews. The message from Google is below.'}</p>
+    ${st.detail?`<div class="note" style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-word">${esc(String(st.detail))}</div>`:''}
+    <div class="row-actions" style="margin-top:12px"><button class="btn sm" onclick="loadReviews()">Check again</button><button class="btn ghost sm" onclick="gbpDisconnect()">Disconnect</button></div>
+    <div class="hint" style="margin-top:10px">Until it’s approved you can still reply to reviews directly in your Google Business Profile (or the Google Maps app). Once Google approves, this screen takes over automatically.</div>
+  </div>`;
 }
 
 function reviewsConnectPanel(st){
