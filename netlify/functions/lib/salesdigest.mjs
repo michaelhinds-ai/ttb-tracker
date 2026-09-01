@@ -71,6 +71,7 @@ export async function accountDigest(acct, startYmd, endYmd) {
   }
   const OK = new Set(["COMPLETED", "APPROVED", "CAPTURED"]);
   const byLoc = {};
+  const orderAttr = {}; // order_id -> { locId, tmId } so we can attribute units sold
   for (const p of payments) {
     if (p.status && !OK.has(p.status)) continue;
     const amt = (p.amount_money && p.amount_money.amount) || 0;
@@ -80,8 +81,24 @@ export async function accountDigest(acct, startYmd, endYmd) {
     const loc = (byLoc[locId] || (byLoc[locId] = { locId, name: locNames[locId] || locId, sales: 0, txns: 0, emp: {} }));
     loc.sales += net; loc.txns += 1;
     const tmId = p.team_member_id || "__unattributed";
-    const e = (loc.emp[tmId] || (loc.emp[tmId] = { name: tmId === "__unattributed" ? "Unattributed" : (tmNames[tmId] || tmId), txns: 0, sales: 0 }));
+    const e = (loc.emp[tmId] || (loc.emp[tmId] = { name: tmId === "__unattributed" ? "Unattributed" : (tmNames[tmId] || tmId), txns: 0, sales: 0, units: 0 }));
     e.txns += 1; e.sales += net;
+    if (p.order_id) orderAttr[p.order_id] = { locId, tmId };
+  }
+  // Units (bottles/items) sold per employee: pull the orders behind those payments
+  // and sum their line-item quantities, attributed to whoever took the payment.
+  const orderIds = Object.keys(orderAttr);
+  for (let i = 0; i < orderIds.length; i += 100) {
+    const chunk = orderIds.slice(i, i + 100);
+    let r = null;
+    try { r = await sqFor(acct, "/v2/orders/batch-retrieve", { method: "POST", body: { order_ids: chunk } }); } catch (e) { r = null; }
+    for (const o of (r && r.orders) || []) {
+      const attr = orderAttr[o.id]; if (!attr) continue;
+      let units = 0;
+      for (const li of (o.line_items || [])) { const q = Math.round(parseFloat(li.quantity || "0")); if (q > 0) units += q; }
+      const l = byLoc[attr.locId]; if (!l) continue;
+      const e = l.emp[attr.tmId]; if (e) e.units = (e.units || 0) + units;
+    }
   }
   const seller = acct.label || "";
   return Object.values(byLoc).map((l) => ({
@@ -90,7 +107,7 @@ export async function accountDigest(acct, startYmd, endYmd) {
     sales: l.sales,
     txns: l.txns,
     employees: Object.values(l.emp)
-      .map((e) => ({ name: e.name, txns: e.txns, salesCents: e.sales, avgCents: e.txns ? Math.round(e.sales / e.txns) : 0 }))
+      .map((e) => ({ name: e.name, txns: e.txns, salesCents: e.sales, units: e.units || 0, avgCents: e.txns ? Math.round(e.sales / e.txns) : 0 }))
       .sort((a, b) => b.salesCents - a.salesCents),
   })).sort((a, b) => b.sales - a.sales);
 }
