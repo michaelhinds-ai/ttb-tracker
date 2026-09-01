@@ -167,7 +167,6 @@
   body.role-production #view-home .apptile:not(.prod-ok){display:none!important}
   /* Retail: only the sales KPIs + the Retail tile — hide tasks, alerts, other apps, the location pills. */
   body.role-retail #view-home .card,body.role-retail #view-home .entsw,body.role-retail #homeSalesDetail{display:none!important}
-  body.role-retail #view-home .apptile:not(.retail-ok){display:none!important}
   body.role-retail #view-home>*:first-child{margin-bottom:6px}
   .locboxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px}
   .locbox{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;cursor:pointer}
@@ -245,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831g</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831h</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1061,8 +1060,10 @@
       <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"><input type="email" id="salesRecipInput" placeholder="name@company.com" style="max-width:280px" onkeydown="if(event.key==='Enter'){event.preventDefault();salesRecipAdd();}"><button type="button" class="btn sm" onclick="salesRecipAdd()">Add person</button></div>
       <div class="row-actions" style="margin-top:12px">
         <button class="btn gray" onclick="sendSalesTest()">Send test now</button>
+        <button class="btn ghost" onclick="runNightlyNow()" title="Runs the exact 9 PM job on demand and reports what it found">Run the automatic job now</button>
         <span id="salesTestMsg" class="hint" style="margin:0"></span>
       </div>
+      <p class="hint" style="margin:8px 0 0"><b>Send test now</b> emails the list above. <b>Run the automatic job now</b> runs the real 9 PM job (which finds recipients from Netlify's BACKUP_WS setting) so you can confirm the nightly is wired up.</p>
     </div>
 
     <div class="card cap-setup">
@@ -1351,7 +1352,7 @@ function _locNorm(s){ return String(s||'').trim().toLowerCase(); }
 function locNameMatch(a,b){ a=_locNorm(a); b=_locNorm(b); if(!a||!b) return false; return a===b||a.startsWith(b)||b.startsWith(a)||a.indexOf(b)>=0||b.indexOf(a)>=0; }
 function locAllowed(name){ const L=currentLocations(); if(!L.length) return true; return L.some(l=>locNameMatch(l,name)); }
 // Roles an admin can tune section-visibility for (admin always sees everything).
-const CONFIG_ROLES=['editor','manager','barrelmgr','production','reports','viewer'];
+const CONFIG_ROLES=['editor','manager','barrelmgr','production','reports','viewer','retail'];
 // The navigable sections that can be shown/hidden per role.
 const SECTIONS=[
   {v:'lrs',label:'Live Retail Sales'},{v:'salesrpt',label:'Sales Report'},{v:'retail',label:'Retail Sales'},
@@ -1368,9 +1369,14 @@ const DEFAULT_HIDDEN={
   production:['payroll','expenses','pnl','lrs','salesrpt','retail','reports','kentucky','dashboard','marketing','reviews','data','orders','customers','ledger'],
   reports:['payroll','expenses','pnl','data','production'],
   viewer:['payroll','expenses','pnl','data','production'],
+  // Retail Manager: locked to the Retail dashboard by default. Admin can tick any
+  // section here to grant a Retail Manager access to it.
+  retail:['lrs','salesrpt','retail','reports','kentucky','dashboard','payroll','expenses','pnl','marketing','reviews','barrels','bottling','finished','orders','customers','compliance','labels','barrelsproc','production','ledger','data'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(role==='admin') return false; if(role==='retail') return ['home','retailhub','clockrpt','emprpt'].indexOf(v)<0; return roleHiddenList(role).indexOf(v)>=0; }
+function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(role==='admin') return false;
+  if(role==='retail'){ if(v==='home'||v==='retailhub') return false; if(SECTIONS.some(s=>s.v===v)) return roleHiddenList('retail').indexOf(v)>=0; return true; }
+  return roleHiddenList(role).indexOf(v)>=0; }
 function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
@@ -2058,7 +2064,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831g·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831h·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3436,6 +3442,15 @@ function _salesEmails(){ return String((state.settings&&state.settings.salesEmai
 function renderSalesRecips(){ const box=$('#salesRecipList'); if(!box) return; box.innerHTML=emailChips(_salesEmails(),'salesRecipRemove'); }
 function salesRecipAdd(){ if(!requireCap('setup'))return; const i=$('#salesRecipInput'); const v=((i&&i.value)||'').trim(); if(!v) return; if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){ flash('Enter a valid email address.'); return; } const list=_salesEmails(); if(list.some(e=>e.toLowerCase()===v.toLowerCase())){ flash('That email is already on the list.'); if(i)i.value=''; return; } list.push(v); state.settings.salesEmailTo=list.join(', '); if(i) i.value=''; save('Added nightly sales email recipient'); renderSalesRecips(); flash('Added '+v+'.'); }
 function salesRecipRemove(idx){ if(!requireCap('setup'))return; const list=_salesEmails(); const removed=list[idx]; if(removed==null) return; list.splice(idx,1); state.settings.salesEmailTo=list.join(', '); save('Removed nightly sales email recipient'); renderSalesRecips(); flash('Removed '+removed+'.'); }
+async function runNightlyNow(){
+  if(!requireCap('setup'))return;
+  const msg=$('#salesTestMsg'); if(msg){ msg.textContent='Running the automatic 9 PM job…'; msg.style.color='var(--muted)'; }
+  try{
+    const r=await fetch('/api/sales/run'); const d=await r.json().catch(()=>null);
+    if(d&&d.ok){ if(msg){ msg.textContent='✓ The automatic job sent to '+((d.sentTo||[]).join(', '))+' — this is exactly what runs at 9 PM. Check your inbox.'; msg.style.color='var(--green)'; } }
+    else { const why=(d&&d.detail)||(d&&d.error)||('HTTP '+(r&&r.status)); if(msg){ msg.textContent='Automatic job did not send: '+why; msg.style.color='var(--red)'; } }
+  }catch(e){ if(msg){ msg.textContent='Could not run it (is the latest netlify/functions deployed?): '+((e&&e.message)||e); msg.style.color='var(--red)'; } }
+}
 async function sendSalesTest(){
   if(!requireCap('setup'))return;
   const to=_salesEmails().join(',');
@@ -5683,17 +5698,20 @@ let _retDate=null;
 function retHubToolbar(){ if(!_retDate)_retDate=rptTodayStr(); return `<div class="toolbar" style="align-items:end;flex-wrap:wrap;gap:10px"><div><label class="fld">Day</label><input type="date" id="ret_date" value="${_retDate}" onchange="_retDate=this.value;renderRetailHub()"></div><button class="btn ghost sm" onclick="_retDate=rptTodayStr();renderRetailHub()">Today</button><button class="btn ky sm" onclick="renderRetailHub()">Refresh</button></div>`; }
 async function renderRetailHub(){
   const box=document.getElementById('retailhubBody'); if(!box) return;
-  if(!_retDate)_retDate=rptTodayStr();
+  // Retail managers are locked to TODAY — no date scrubbing, no drill-out to past data.
+  const locked=(typeof currentRole==='function'&&currentRole()==='retail');
+  if(locked||!_retDate)_retDate=rptTodayStr();
   const scoped=(typeof locScoped==='function'&&locScoped());
   const allow=r=>(typeof locAllowed!=='function')||locAllowed(r);
   const locLbl=scoped?currentLocations().join(' · '):'all locations';
-  box.innerHTML=retHubToolbar()+`<div class="empty" style="padding:24px">⏳ Loading retail dashboard for ${esc(fmtDate(_retDate))}…</div>`;
+  const tb=locked?'':retHubToolbar();
+  box.innerHTML=tb+`<div class="empty" style="padding:24px">⏳ Loading retail dashboard for ${esc(fmtDate(_retDate))}…</div>`;
   let day=null,clk=null;
   try{ [day,clk]=await Promise.all([
     rptFetchDay(_retDate,_retDate),
     fetch('/api/square/clockins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({date:_retDate})}).then(r=>r.json()).catch(()=>null)
   ]); }catch(e){}
-  let html=retHubToolbar()+`<h3 style="margin:6px 0 2px">Retail — ${esc(fmtDate(_retDate))}</h3><div class="hint" style="margin:0 0 10px">${esc(locLbl)}</div>`;
+  let html=tb+`<h3 style="margin:6px 0 2px">Retail — ${esc(fmtDate(_retDate))}${locked?' (today)':''}</h3><div class="hint" style="margin:0 0 10px">${esc(locLbl)}</div>`;
   // ---- Sales KPIs (per location, summed) ----
   let rows=(day&&day.ok&&day.rows)||[]; rows=rows.filter(r=>allow(r.location));
   if(day&&day.ok){
@@ -5735,7 +5753,7 @@ async function renderRetailHub(){
         `</tbody></table></div></div>`).join('');
     } else { html+=`<div class="note">No clock-ins recorded for ${esc(fmtDate(_retDate))}${scoped?(' at '+esc(locLbl)):''}.</div>`; }
   } else { html+=`<div class="note">⚠️ ${esc((clk&&(clk.error||(clk.errors&&clk.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; }
-  html+=`<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost sm" onclick="switchView('emprpt')">Sales by Employee ▸</button></div>`;
+  if(!locked) html+=`<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost sm" onclick="switchView('emprpt')">Sales by Employee ▸</button></div>`;
   html+=`<div class="disclaimer">Live from Square for the selected day. Sales exclude tips; average ticket = net sales ÷ transactions. ${scoped?('You see only: '+esc(locLbl)+'.'):'Showing every location.'}</div>`;
   box.innerHTML=html;
 }
