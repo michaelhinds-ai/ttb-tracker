@@ -244,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831i</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831l</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1377,7 +1377,10 @@ function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleView
 function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(role==='admin') return false;
   if(role==='retail'){ if(v==='home'||v==='retailhub') return false; if(SECTIONS.some(s=>s.v===v)) return roleHiddenList('retail').indexOf(v)>=0; return true; }
   return roleHiddenList(role).indexOf(v)>=0; }
-function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
+// Stamp settings as just-edited so the newest change wins the cross-device merge
+// (a stale device can no longer revert what you just set here).
+function touchSettings(){ try{ if(state&&state.settings) state.settings._updAt=Date.now(); }catch(e){} }
+function setRoleView(role, v, visible){ if(!requireCap('setup'))return; if(!state.settings.roleViews)state.settings.roleViews={}; let list=Array.isArray(state.settings.roleViews[role])?state.settings.roleViews[role].slice():roleHiddenList(role).slice(); if(visible){ list=list.filter(x=>x!==v); } else if(list.indexOf(v)<0){ list.push(v); } state.settings.roleViews[role]=list; touchSettings(); save('Updated '+ (ROLE_LABEL[role]||role) +' access'); applyPermissions(); renderRolePanel(); }
 let _rolePanelRole='barrelmgr';
 function renderRolePanel(){
   const box=document.getElementById('rolePanel'); if(!box) return;
@@ -1405,16 +1408,20 @@ function can(cap){ return (ROLE_CAPS[currentRole()]||[]).includes(cap); }
 function requireCap(cap){ if(can(cap)) return true; flash('Your role ('+ROLE_LABEL[currentRole()]+') can’t do that.'); return false; }
 async function hashPin(pin){ const enc=new TextEncoder().encode('ttbsalt:'+pin); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
 function sessKey(){ return 'ttb_sess_'+(WS||''); }
-const SESS_MAX_MS=30*24*3600*1000; // stay signed in on this device for 30 days of inactivity
+const SESS_MAX_MS=60*60*1000;    // idle timeout — 1 hour of no activity signs the user out (shared-register safety)
+const SESS_ABS_MS=18*3600*1000;  // absolute cap — any session older than ~18h must sign in again regardless of activity
+let _lastActivity=Date.now();    // updated on real user interaction (tap / key), drives the idle auto-logout
 function loadSession(){
   try{
     // Prefer the persistent (this-device) login; fall back to any older tab-only session.
     const j=localStorage.getItem(sessKey())||sessionStorage.getItem(sessKey());
     if(!j) return;
     const s=JSON.parse(j);
-    if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // expired → require sign-in
+    if(s && s.exp && s.exp<Date.now()){ clearSession(); return; }   // idle-expired → require sign-in
+    if(s && s.loginAt && (Date.now()-s.loginAt)>SESS_ABS_MS){ clearSession(); return; } // session too old overall → require sign-in
     const su=state.auth.users.find(u=>u.id===s.userId&&u.role===s.role);
-    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||'',locations:userLocations(su)}; saveSession(); } // valid → slide the expiry forward
+    if(su && su.stok && s.stok && su.stok!==s.stok){ clearSession(); return; } // this user signed in elsewhere → this device is signed out
+    if(su){ SESSION={userId:s.userId,name:s.name,role:s.role,location:su.location||'',locations:userLocations(su),loginAt:s.loginAt||Date.now(),stok:s.stok||null}; saveSession(); } // valid → slide the idle expiry forward
   }catch(e){}
 }
 function saveSession(){ try{ const rec=Object.assign({},SESSION,{exp:Date.now()+SESS_MAX_MS}); localStorage.setItem(sessKey(),JSON.stringify(rec)); sessionStorage.removeItem(sessKey()); }catch(e){} }
@@ -1445,7 +1452,8 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||'',locations:userLocations(u)}; saveSession(); ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}} else if(currentRole()==='retail'){try{switchView('retailhub');}catch(e){}}
+    const stok=uid(); u.stok=stok; u._upd=Date.now(); // claim this device as the user's active session (syncs out; older devices get signed out)
+    SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||'',locations:userLocations(u),loginAt:Date.now(),stok:stok}; saveSession(); try{ save(false); }catch(e){} ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}} else if(currentRole()==='retail'){try{switchView('retailhub');}catch(e){}}
   };
   $('#authGo').onclick=go;
   $('#authPin').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
@@ -1570,9 +1578,9 @@ async function enableLogin(){
   if(!requireCap('users'))return;
   const name=prompt('Create the first ADMIN account.\n\nAdmin name:',state.settings.signer||''); if(name===null)return; if(!name.trim()){ alert('Enter a name.'); return; }
   const pin=prompt('Set a PIN for '+name.trim()+' (4+ digits) — you’ll use it to sign in:'); if(pin===null)return; if((pin||'').length<4){ alert('PIN must be at least 4 digits.'); return; }
-  const u={id:uid(),name:name.trim(),role:'admin',pinHash:await hashPin(pin)};
+  const stok=uid(); const u={id:uid(),name:name.trim(),role:'admin',pinHash:await hashPin(pin),stok:stok,_upd:Date.now()};
   state.auth.users=[u]; state.auth.enabled=true;
-  SESSION={userId:u.id,name:u.name,role:'admin'}; saveSession();
+  SESSION={userId:u.id,name:u.name,role:'admin',loginAt:Date.now(),stok:stok}; saveSession();
   save('Enabled user login'); applyPermissions(); refreshAll();
   flash('Login enabled — you’re signed in as Admin.');
 }
@@ -1804,9 +1812,12 @@ function beaconFlush(){
 }
 (function wireSafeguards(){
   try{
+    // Track real user activity so we can auto-logout an idle register.
+    var _bump=function(){ _lastActivity=Date.now(); };
+    ['pointerdown','keydown','touchstart','mousemove','wheel'].forEach(function(ev){ try{ window.addEventListener(ev,_bump,{passive:true}); }catch(e){ window.addEventListener(ev,_bump); } });
     document.addEventListener('visibilitychange',()=>{
       if(document.visibilityState==='hidden'){ flushSave(); beaconFlush(); }
-      else if(document.visibilityState==='visible'){ resync(); }
+      else if(document.visibilityState==='visible'){ _bump(); resync(); }
     });
     window.addEventListener('pagehide',beaconFlush);
     window.addEventListener('beforeunload',()=>{ flushSave(); beaconFlush(); });
@@ -1814,6 +1825,13 @@ function beaconFlush(){
     // flight, and the user isn't actively typing in a field (so it can't wipe
     // a half-filled form).
     setInterval(()=>{
+      // Force re-login once a session passes its absolute age — even if the tab is
+      // never refreshed — so a shared device left signed in can't linger for days.
+      try{ if(authOn()&&SESSION&&SESSION.loginAt&&(Date.now()-SESSION.loginAt)>SESS_ABS_MS){ clearSession(); lockApp(); if(typeof showLogin==='function') showLogin(); return; } }catch(e){}
+      // Idle auto-logout: signed out after SESS_MAX_MS of no activity (even without a refresh).
+      try{ if(authOn()&&SESSION&&(Date.now()-_lastActivity)>SESS_MAX_MS){ clearSession(); lockApp(); if(typeof showLogin==='function') showLogin(); return; } }catch(e){}
+      // Single active session per user: if this user signed in on another device, sign this one out.
+      try{ if(authOn()&&SESSION&&SESSION.stok){ const cu=(state.auth.users||[]).find(u=>u.id===SESSION.userId); if(cu&&cu.stok&&cu.stok!==SESSION.stok){ clearSession(); lockApp(); if(typeof showLogin==='function') showLogin(); return; } } }catch(e){}
       if(document.visibilityState!=='visible' || saving) return;
       const ae=document.activeElement, tag=ae&&ae.tagName;
       if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') return; // don't yank a half-typed form
@@ -2064,7 +2082,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831i·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831l·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -3406,7 +3424,7 @@ function rtlCsv(){
 
 /* ================= Setup / sync / data ================= */
 function loadSettingsForm(){const s=state.settings;$('#s_name').value=s.name||'';$('#s_permit').value=s.permit||'';$('#s_addr1').value=s.addr1||'';$('#s_addr2').value=s.addr2||'';$('#s_ein').value=s.ein||'';$('#s_signer').value=s.signer||'';$('#s_title').value=s.title||'';$('#s_freq').value=s.freq||'quarterly';$('#s_year').value=s.year||new Date().getFullYear();$('#s_bpc').value=(s.bottlesPerCase!=null?s.bottlesPerCase:6);$('#s_kyExcise').value=(s.kyExcise!=null?s.kyExcise:1.92);$('#s_kyWholesale').value=(s.kyWholesale!=null?s.kyWholesale:11);$('#s_kyCase').value=(s.kyCase!=null?s.kyCase:0.05);const se=$('#s_salesEmail');if(se)se.value=s.salesEmailTo||'';const le=$('#s_lateEmail');if(le)le.value=s.lateEmailTo||'';const lt=$('#s_lateThreshold');if(lt)lt.value=s.lateThresholdMin||15;const lo=$('#s_lateOn');if(lo)lo.checked=(s.lateAlertOn!==false);try{renderSalesRecips();renderLateLocBoxes();if(typeof loadPickerLocations==='function'&&!(typeof _sqLocNames!=='undefined'&&_sqLocNames.length))loadPickerLocations();}catch(e){}}
-function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); s.lateEmailByLoc=_readLateLocs(); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
+function saveLateAlert(){ if(!requireCap('setup'))return; const s=state.settings; s.lateEmailTo=(($('#s_lateEmail')||{}).value||'').trim(); s.lateThresholdMin=Math.max(1,+(($('#s_lateThreshold')||{}).value)||15); s.lateAlertOn=!!(($('#s_lateOn')||{}).checked); s.lateEmailByLoc=_readLateLocs(); touchSettings(); save('Updated clock-in alert settings'); flash('Clock-in alert settings saved.'); }
 /* Per-location clock-in alert recipients. Reuses the Square location list. */
 let _lateLocOpts=[];
 function _lateKnownLocs(){ const sq=(typeof _sqLocNames!=='undefined'?_sqLocNames:[]); return [...new Set([...sq, ...Object.keys((state.settings&&state.settings.lateEmailByLoc)||{}), ..._lateLocOpts].filter(Boolean))]; }
@@ -3435,13 +3453,13 @@ async function testLateAlert(){
     if(msg){ msg.textContent=t; msg.style.color=d.lateCount>0?'var(--amber)':'var(--green)'; }
   }catch(e){ if(msg){ msg.textContent='Test failed: '+(e&&e.message||e); msg.style.color='var(--red)'; } }
 }
-function saveSalesEmail(){ if(!requireCap('setup'))return; const el=$('#s_salesEmail'); if(!el)return; state.settings.salesEmailTo=(el.value||'').trim(); save('Updated nightly sales email recipients'); flash('Recipients saved.'); }
+function saveSalesEmail(){ if(!requireCap('setup'))return; const el=$('#s_salesEmail'); if(!el)return; state.settings.salesEmailTo=(el.value||'').trim(); touchSettings(); save('Updated nightly sales email recipients'); flash('Recipients saved.'); }
 /* Managed recipient list for the nightly sales email (add / remove people). */
 function emailChips(list, removeFn){ if(!list.length) return '<span class="hint">No one yet — add an email below.</span>'; return list.map((e,i)=>`<span class="echip">${esc(e)}<button type="button" title="Remove" onclick="${removeFn}(${i})">×</button></span>`).join(''); }
 function _salesEmails(){ return String((state.settings&&state.settings.salesEmailTo)||'').split(',').map(s=>s.trim()).filter(Boolean); }
 function renderSalesRecips(){ const box=$('#salesRecipList'); if(!box) return; box.innerHTML=emailChips(_salesEmails(),'salesRecipRemove'); }
-function salesRecipAdd(){ if(!requireCap('setup'))return; const i=$('#salesRecipInput'); const v=((i&&i.value)||'').trim(); if(!v) return; if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){ flash('Enter a valid email address.'); return; } const list=_salesEmails(); if(list.some(e=>e.toLowerCase()===v.toLowerCase())){ flash('That email is already on the list.'); if(i)i.value=''; return; } list.push(v); state.settings.salesEmailTo=list.join(', '); if(i) i.value=''; save('Added nightly sales email recipient'); renderSalesRecips(); flash('Added '+v+'.'); }
-function salesRecipRemove(idx){ if(!requireCap('setup'))return; const list=_salesEmails(); const removed=list[idx]; if(removed==null) return; list.splice(idx,1); state.settings.salesEmailTo=list.join(', '); save('Removed nightly sales email recipient'); renderSalesRecips(); flash('Removed '+removed+'.'); }
+function salesRecipAdd(){ if(!requireCap('setup'))return; const i=$('#salesRecipInput'); const v=((i&&i.value)||'').trim(); if(!v) return; if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){ flash('Enter a valid email address.'); return; } const list=_salesEmails(); if(list.some(e=>e.toLowerCase()===v.toLowerCase())){ flash('That email is already on the list.'); if(i)i.value=''; return; } list.push(v); state.settings.salesEmailTo=list.join(', '); if(i) i.value=''; touchSettings(); save('Added nightly sales email recipient'); renderSalesRecips(); flash('Added '+v+'.'); }
+function salesRecipRemove(idx){ if(!requireCap('setup'))return; const list=_salesEmails(); const removed=list[idx]; if(removed==null) return; list.splice(idx,1); state.settings.salesEmailTo=list.join(', '); touchSettings(); save('Removed nightly sales email recipient'); renderSalesRecips(); flash('Removed '+removed+'.'); }
 async function runNightlyNow(){
   if(!requireCap('setup'))return;
   const msg=$('#salesTestMsg'); if(msg){ msg.textContent='Running the automatic 9 PM job…'; msg.style.color='var(--muted)'; }
@@ -3464,7 +3482,7 @@ async function sendSalesTest(){
     else { const why=(d&&(d.detail||d.error))||('HTTP '+r.status); if(msg){ msg.textContent='Could not send: '+why; msg.style.color='var(--red)'; } }
   }catch(e){ if(msg){ msg.textContent='Could not send: '+(e&&e.message||e); msg.style.color='var(--red)'; } }
 }
-function saveSettings(){if(!requireCap('setup'))return;const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;save('Updated plant details / settings');refreshAll();flash('Details saved.');}
+function saveSettings(){if(!requireCap('setup'))return;const s=state.settings;s.name=$('#s_name').value.trim();s.permit=$('#s_permit').value.trim();s.addr1=$('#s_addr1').value.trim();s.addr2=$('#s_addr2').value.trim();s.ein=$('#s_ein').value.trim();s.signer=$('#s_signer').value.trim();s.title=$('#s_title').value.trim();s.freq=$('#s_freq').value;s.year=+$('#s_year').value||new Date().getFullYear();s.bottlesPerCase=Math.max(1,+$('#s_bpc').value||6);s.kyExcise=+$('#s_kyExcise').value||0;s.kyWholesale=+$('#s_kyWholesale').value||0;s.kyCase=+$('#s_kyCase').value||0;touchSettings();save('Updated plant details / settings');refreshAll();flash('Details saved.');}
 function syncUI(){ const link=location.origin+location.pathname+'#ws='+WS; $('#syncLink').value= location.protocol==='file:'?'(host online to get a shareable link)':link; $('#wsCode').textContent=WS; }
 function copyLink(){ const v=$('#syncLink').value; if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(()=>flash('Link copied.'),()=>flash('Copy failed — select and copy manually.')); } else { try{ const el=$('#syncLink'); el.focus(); el.select(); document.execCommand('copy'); flash('Link copied.'); }catch(e){ flash('Copy failed — select and copy manually.'); } } }
 function joinWorkspace(){ if(!requireCap('setup'))return; const code=$('#joinCode').value.trim(); if(code.length<8){alert('That code looks too short.');return;} WS=code; writeWStoHash(WS); localStorage.setItem('ttb_ws',WS); boot(true); flash('Switched workspace.'); switchView('dashboard'); }
@@ -5667,6 +5685,13 @@ async function runEmpRpt(){
 
 /* ---------- Who's clocked in / out (Square timecards) ---------- */
 let _clockDate=null;
+// Late-arrival / past-scheduled-end badges for a clock row (from Square schedules).
+function clockBadges(r){ let out='';
+  if(r&&r.lateInMin!=null&&r.lateInMin>=5) out+=`<span class="pill" style="background:#fff4e0;color:#8a5a12">${numf(r.lateInMin,0)} min late in</span> `;
+  if(r&&r.open&&r.overMin!=null&&r.overMin>=1) out+=`<span class="pill" style="background:#f6e9e7;color:#9a3a2e">${numf(r.overMin,0)} min past end</span>`;
+  if(!out&&r&&r.lateInMin!=null&&r.lateInMin<5&&r.lateInMin>-999) out=`<span class="pill" style="background:#e7f0e3;color:#2f6b34">on time</span>`;
+  return out||'<span style="color:var(--muted)">—</span>';
+}
 function clockToolbar(){ if(!_clockDate)_clockDate=rptTodayStr(); return `<div class="toolbar" style="align-items:end;flex-wrap:wrap;gap:10px"><div><label class="fld">Date</label><input type="date" id="clock_date" value="${_clockDate}" onchange="_clockDate=this.value;runClockRpt()"></div><button class="btn ghost sm" onclick="_clockDate=rptTodayStr();runClockRpt()">Today</button><button class="btn ky sm" onclick="runClockRpt()">Refresh</button></div>`; }
 async function runClockRpt(){
   const box=document.getElementById('clockrptBody'); if(!box) return;
@@ -5683,8 +5708,8 @@ async function runClockRpt(){
     `<div class="kpis" style="margin:12px 0">`+kpi('green','Clocked in now',String(openCount),'of '+rows.length+' shift'+(rows.length===1?'':'s'))+kpi('copper','People today',String(new Set(rows.map(r=>r.name)).size),'across '+Object.keys(byLoc).length+' location'+(Object.keys(byLoc).length===1?'':'s'))+`</div>`;
   html+=Object.keys(byLoc).sort().map(loc=>{
     const rs=byLoc[loc];
-    return `<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th></tr></thead><tbody>`+
-      rs.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td></tr>`).join('')+
+    return `<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th><th>Status</th></tr></thead><tbody>`+
+      rs.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td><td>${clockBadges(r)}</td></tr>`).join('')+
       `</tbody></table></div></div>`;
   }).join('');
   html+=`<div class="disclaimer">From Square timecards for the selected day, in each account’s timezone. “Still in” means Square has no clock-out recorded yet. Needs the Square token to have Timecards read access.</div>`;
@@ -5748,8 +5773,8 @@ async function renderRetailHub(){
       const byLoc={}; crows.forEach(r=>{ (byLoc[r.location||'—']||(byLoc[r.location||'—']=[])).push(r); });
       const openCount=crows.filter(r=>r.open).length, ppl=new Set(crows.map(r=>r.name)).size;
       html+=`<div class="hint" style="margin:2px 0 8px">${openCount} on the clock now · ${ppl} ${ppl===1?'person':'people'} today</div>`;
-      html+=Object.keys(byLoc).sort().map(loc=>`<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th></tr></thead><tbody>`+
-        byLoc[loc].map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td></tr>`).join('')+
+      html+=Object.keys(byLoc).sort().map(loc=>`<div class="card"><h3 style="margin-top:0">${esc(loc)}</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th>Clocked in</th><th>Clocked out</th><th>Status</th></tr></thead><tbody>`+
+        byLoc[loc].map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(fmtT(r.clockIn))}</td><td>${r.open?'<span class="pill" style="background:var(--green-bg);color:var(--green)">● still in</span>':esc(fmtT(r.clockOut))}</td><td>${clockBadges(r)}</td></tr>`).join('')+
         `</tbody></table></div></div>`).join('');
     } else { html+=`<div class="note">No clock-ins recorded for ${esc(fmtDate(_retDate))}${scoped?(' at '+esc(locLbl)):''}.</div>`; }
   } else { html+=`<div class="note">⚠️ ${esc((clk&&(clk.error||(clk.errors&&clk.errors.join('; '))))||'Could not read timecards — the Square token may need Timecards read access.')}</div>`; }
