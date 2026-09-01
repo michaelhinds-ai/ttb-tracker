@@ -244,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831h</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831i</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -2064,7 +2064,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831h·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831i·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
@@ -5651,17 +5651,17 @@ async function runEmpRpt(){
   const cur=await rptFetchDay(_rptFrom,_rptTo);
   const cmp=rptCompareRange(_rptFrom,_rptTo,_rptCompare);
   const prev=cmp?await rptFetchDay(cmp.from,cmp.to):null;
-  const agg=d=>{ const by={}; if(d&&d.ok)(d.rows||[]).filter(r=>typeof locAllowed!=='function'||locAllowed(r.location)).forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'').toLowerCase(); const o=by[k]||(by[k]={name:e.name,txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); })); return by; };
+  const agg=d=>{ const by={}; if(d&&d.ok)(d.rows||[]).filter(r=>typeof locAllowed!=='function'||locAllowed(r.location)).forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'').toLowerCase(); const o=by[k]||(by[k]={name:e.name,txns:0,sales:0,units:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); o.units+=(+e.units||0); })); return by; };
   const curBy=agg(cur), prevBy=cmp?agg(prev):null;
   const list=Object.values(curBy).map(o=>({...o,avg:o.txns?Math.round(o.sales/o.txns):0})).sort((a,b)=>b.sales-a.sales);
   if(!cur||!cur.ok){ box.innerHTML=rptToolbar('runEmpRpt')+`<div class="note">⚠️ ${esc((cur&&cur.detail)||'Could not load employee sales.')}</div>`; return; }
   if(!list.length){ box.innerHTML=rptToolbar('runEmpRpt')+`<div class="note">No employee-level Square data for this range. Staff must sign in individually on the Square device, and the token needs Payments read access.</div>`; return; }
   const showCmp=!!(cmp&&prev&&prev.ok);
-  const rows=list.map(o=>{ const p=prevBy&&prevBy[(o.name||'').toLowerCase()]; return `<tr><td>${esc(o.name)}</td><td class="num">${numf(o.txns,0)}</td><td class="num">${money(o.sales/100)}${showCmp?rptDelta(o.sales,p?p.sales:0):''}</td><td class="num" style="font-weight:700">${money(o.avg/100)}</td></tr>`; }).join('');
-  const tSales=list.reduce((s,o)=>s+o.sales,0), tTx=list.reduce((s,o)=>s+o.txns,0);
+  const rows=list.map(o=>{ const p=prevBy&&prevBy[(o.name||'').toLowerCase()]; return `<tr><td>${esc(o.name)}</td><td class="num" style="font-weight:700">${numf(o.units,0)}</td><td class="num">${numf(o.txns,0)}</td><td class="num">${money(o.sales/100)}${showCmp?rptDelta(o.sales,p?p.sales:0):''}</td><td class="num">${money(o.avg/100)}</td></tr>`; }).join('');
+  const tSales=list.reduce((s,o)=>s+o.sales,0), tTx=list.reduce((s,o)=>s+o.txns,0), tUnits=list.reduce((s,o)=>s+(o.units||0),0);
   box.innerHTML=rptToolbar('runEmpRpt')+`<h3 style="margin:0 0 6px">Sales by Employee — ${esc(rptRangeLabel())}</h3>
-    <div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales${showCmp?` <span style="font-weight:400;color:var(--muted)">vs ${esc(cmp.label)}</span>`:''}</th><th class="num">Avg ticket</th></tr></thead>
-    <tbody>${rows}</tbody><tfoot><tr class="total" style="font-weight:700"><td>All employees</td><td class="num">${numf(tTx,0)}</td><td class="num">${money(tSales/100)}</td><td class="num">${money(tTx?tSales/tTx/100:0)}</td></tr></tfoot></table></div>
+    <div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Bottles</th><th class="num">Transactions</th><th class="num">Sales${showCmp?` <span style="font-weight:400;color:var(--muted)">vs ${esc(cmp.label)}</span>`:''}</th><th class="num">Avg ticket</th></tr></thead>
+    <tbody>${rows}</tbody><tfoot><tr class="total" style="font-weight:700"><td>All employees</td><td class="num">${numf(tUnits,0)}</td><td class="num">${numf(tTx,0)}</td><td class="num">${money(tSales/100)}</td><td class="num">${money(tTx?tSales/tTx/100:0)}</td></tr></tfoot></table></div>
     <div class="disclaimer">From Square payments across every location. Sales exclude tips; average ticket = an employee’s sales ÷ their transactions. “Unattributed” covers payments Square didn’t tie to a team member.</div>`;
 }
 
@@ -5731,12 +5731,12 @@ async function renderRetailHub(){
   // ---- By employee (transactions, sales, average ticket) ----
   if(day&&day.ok&&rows.length){
     const empBy={};
-    rows.forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'—').toLowerCase(); const o=empBy[k]||(empBy[k]={name:e.name||'—',txns:0,sales:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); }));
+    rows.forEach(r=>(r.employees||[]).forEach(e=>{ const k=(e.name||'—').toLowerCase(); const o=empBy[k]||(empBy[k]={name:e.name||'—',txns:0,sales:0,units:0}); o.txns+=(+e.txns||0); o.sales+=(+e.salesCents||0); o.units+=(+e.units||0); }));
     const emps=Object.keys(empBy).map(k=>empBy[k]).map(o=>{ o.avg=o.txns?Math.round(o.sales/o.txns):0; return o; }).sort((a,b)=>b.sales-a.sales);
     if(emps.length){
-      html+=`<h3 style="margin:20px 0 2px">By employee</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
-        emps.map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${numf(e.txns,0)}</td><td class="num">${money(e.sales/100)}</td><td class="num" style="font-weight:700">${money(e.avg/100)}</td></tr>`).join('')+
-        `</tbody></table></div><div class="hint" style="margin-top:4px">Average ticket = that employee's sales ÷ their transactions (tips excluded). Staff must be signed in individually on the Square device to be attributed.</div>`;
+      html+=`<h3 style="margin:20px 0 2px">By employee</h3><div class="tablewrap"><table><thead><tr><th>Employee</th><th class="num">Bottles</th><th class="num">Transactions</th><th class="num">Sales</th><th class="num">Avg ticket</th></tr></thead><tbody>`+
+        emps.map(e=>`<tr><td>${esc(e.name)}</td><td class="num" style="font-weight:700">${numf(e.units,0)}</td><td class="num">${numf(e.txns,0)}</td><td class="num">${money(e.sales/100)}</td><td class="num">${money(e.avg/100)}</td></tr>`).join('')+
+        `</tbody></table></div><div class="hint" style="margin-top:4px">Bottles = total items sold on that employee's orders. Average ticket = their sales ÷ transactions (tips excluded). Staff must be signed in individually on the Square device to be attributed.</div>`;
     }
   }
   // ---- Who's clocked in ----
