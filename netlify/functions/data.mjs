@@ -8,7 +8,7 @@ import { getStore } from "@netlify/blobs";
 const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
-  "expenses", "salaried", "attention",
+  "expenses", "salaried", "attention", "samples",
 ];
 
 function mergeById(cloudArr, incArr) {
@@ -28,6 +28,16 @@ function mergeById(cloudArr, incArr) {
   return out;
 }
 
+// Settings fields that must never be wiped by a device that simply hasn't seen
+// them yet (email recipient lists, alert config). If the incoming save is empty
+// or missing one of these but the cloud has a value, keep the cloud value.
+const STICKY_SETTINGS = ["salesEmailTo", "lateEmailTo", "lateEmailByLoc", "lateThresholdMin"];
+function isEmptyVal(v) {
+  if (v == null || v === "") return true;
+  if (typeof v === "object" && !Array.isArray(v)) return Object.keys(v).length === 0;
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
 function mergeStates(cloud, inc) {
   const out = { ...inc };
   for (const k of ARR_KEYS) out[k] = mergeById(cloud[k], inc[k]);
@@ -35,6 +45,15 @@ function mergeStates(cloud, inc) {
   if ((cloud.auth && Array.isArray(cloud.auth.users)) || (inc.auth && Array.isArray(inc.auth.users))) {
     out.auth = { ...(inc.auth || {}), users: mergeById(cloud.auth && cloud.auth.users, inc.auth && inc.auth.users) };
   }
+  // Merge settings key-by-key (incoming wins for keys it has; cloud fills gaps),
+  // then protect the sticky recipient fields from being blanked by a stale device.
+  const cs = (cloud && cloud.settings) || {};
+  const is = (inc && inc.settings) || {};
+  const merged = { ...cs, ...is };
+  for (const k of STICKY_SETTINGS) {
+    if (isEmptyVal(is[k]) && !isEmptyVal(cs[k])) merged[k] = cs[k];
+  }
+  out.settings = merged;
   return out;
 }
 
