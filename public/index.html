@@ -244,7 +244,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831l</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260831m</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1452,7 +1452,7 @@ function showLogin(){
     if(!u){ $('#authErr').textContent='Pick a user.'; return; }
     const h=await hashPin(pin);
     if(h!==u.pinHash){ $('#authErr').textContent='Incorrect PIN.'; $('#authPin').value=''; $('#authPin').focus(); return; }
-    const stok=uid(); u.stok=stok; u._upd=Date.now(); // claim this device as the user's active session (syncs out; older devices get signed out)
+    const stok=genKey(); u.stok=stok; u._upd=Date.now(); // claim this device as the user's active session (syncs out; older devices get signed out) — genKey (not uid, which is shadowed by the selected-user id here)
     SESSION={userId:u.id,name:u.name,role:u.role,location:u.location||'',locations:userLocations(u),loginAt:Date.now(),stok:stok}; saveSession(); try{ save(false); }catch(e){} ov.remove(); unlockApp(); applyPermissions(); refreshAll(); if(currentRole()==='production'){try{switchView('labels');}catch(e){}} else if(currentRole()==='retail'){try{switchView('retailhub');}catch(e){}}
   };
   $('#authGo').onclick=go;
@@ -2082,7 +2082,7 @@ const C128=["212222","222122","222221","121223","121322","131222","122213","1223
 
 /* Build stamp set by JS — lets us confirm the NEW app code is actually running
    (not a stale cached copy). If the header shows "·js" the new JS is live. */
-try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831l·inline'; }catch(e){}
+try{ const _bt=document.getElementById('buildTag'); if(_bt) _bt.textContent='v20260831m·inline'; }catch(e){}
 
 ;
 function gs1128Svg(scc,opt){
