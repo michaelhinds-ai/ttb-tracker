@@ -8,7 +8,7 @@ import { getStore } from "@netlify/blobs";
 const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
-  "expenses", "salaried", "attention", "samples",
+  "expenses", "salaried", "attention", "samples", "upcs",
 ];
 
 function mergeById(cloudArr, incArr) {
@@ -45,13 +45,17 @@ function mergeStates(cloud, inc) {
   if ((cloud.auth && Array.isArray(cloud.auth.users)) || (inc.auth && Array.isArray(inc.auth.users))) {
     out.auth = { ...(inc.auth || {}), users: mergeById(cloud.auth && cloud.auth.users, inc.auth && inc.auth.users) };
   }
-  // Merge settings key-by-key (incoming wins for keys it has; cloud fills gaps),
-  // then protect the sticky recipient fields from being blanked by a stale device.
+  // Settings: whichever side was edited most recently (settings._updAt) wins
+  // overall, the other fills gaps — so a stale device can't revert a just-made
+  // change (role access, alert config). Recipient lists are additionally
+  // protected from being blanked by an empty side.
   const cs = (cloud && cloud.settings) || {};
   const is = (inc && inc.settings) || {};
-  const merged = { ...cs, ...is };
+  const csNewer = (+cs._updAt || 0) > (+is._updAt || 0);
+  const primary = csNewer ? cs : is, secondary = csNewer ? is : cs;
+  const merged = { ...secondary, ...primary };
   for (const k of STICKY_SETTINGS) {
-    if (isEmptyVal(is[k]) && !isEmptyVal(cs[k])) merged[k] = cs[k];
+    if (isEmptyVal(merged[k])) { if (!isEmptyVal(cs[k])) merged[k] = cs[k]; else if (!isEmptyVal(is[k])) merged[k] = is[k]; }
   }
   out.settings = merged;
   return out;
