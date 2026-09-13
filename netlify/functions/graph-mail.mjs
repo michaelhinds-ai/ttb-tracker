@@ -70,14 +70,26 @@ export default async (req) => {
     if (action === "send") {
       const mb = (b.mailbox || "").trim(); if (!mb) return jsonResp({ ok: false, error: "no_mailbox" }, 400);
       const comment = String(b.comment || "");
-      if (b.messageId) {
-        await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/reply`, { method: "POST", body: JSON.stringify({ comment }) });
+      const emails = (v) => (Array.isArray(v) ? v : String(v || "").split(/[,;\s]+/)).map((x) => String(x || "").trim()).filter((x) => x.indexOf("@") > 0);
+      const recips = (arr) => arr.map((a) => ({ emailAddress: { address: a } }));
+      const cc = emails(b.cc), toExtra = emails(b.to);
+
+      if (b.mode === "forward" && b.messageId) {
+        if (!toExtra.length) return jsonResp({ ok: false, error: "no_recipient", detail: "Add at least one address to forward to." }, 200);
+        await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/forward`, { method: "POST", body: JSON.stringify({ comment, toRecipients: recips(toExtra) }) });
+      } else if (b.messageId) {
+        // Reply on the thread (to the original sender). Cc anyone extra — coworkers or outside.
+        const payload = { comment };
+        const message = {};
+        if (cc.length) message.ccRecipients = recips(cc);
+        if (toExtra.length) message.toRecipients = recips(toExtra);
+        if (Object.keys(message).length) payload.message = message;
+        await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/reply`, { method: "POST", body: JSON.stringify(payload) });
       } else {
-        const to = (b.to || "").trim(); if (!to) return jsonResp({ ok: false, error: "no_recipient" }, 400);
-        await graph(`/users/${enc(mb)}/sendMail`, { method: "POST", body: JSON.stringify({
-          message: { subject: b.subject || "", body: { contentType: "Text", content: comment }, toRecipients: [{ emailAddress: { address: to } }] },
-          saveToSentItems: true,
-        }) });
+        if (!toExtra.length) return jsonResp({ ok: false, error: "no_recipient" }, 400);
+        const message = { subject: b.subject || "", body: { contentType: "Text", content: comment }, toRecipients: recips(toExtra) };
+        if (cc.length) message.ccRecipients = recips(cc);
+        await graph(`/users/${enc(mb)}/sendMail`, { method: "POST", body: JSON.stringify({ message, saveToSentItems: true }) });
       }
       return jsonResp({ ok: true });
     }
