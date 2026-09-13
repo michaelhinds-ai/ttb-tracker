@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913f</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913i</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6623,6 +6623,32 @@ function mailTaskId(conv){ return ((state.settings&&state.settings.mailTasks)||{
 function mailStrip(html){ return String(html||'').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#39;|&apos;/gi,"'").replace(/&quot;/gi,'"').replace(/\s+/g,' ').trim(); }
 function mailWhen(d){ if(!d)return''; try{ return new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } }
 async function mailApi(body){ try{ const r=await fetch('/api/graph-mail',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); return await r.json(); }catch(e){ return {ok:false,error:String((e&&e.message)||e)}; } }
+// Follow-up flag (keeps a message pinned/visible), ignored-senders list, per-row task assignee.
+let _mailShowHidden=false; function mailToggleHidden(){ _mailShowHidden=!_mailShowHidden; mailRenderInbox(); }
+function mailFollowed(conv){ return !!((state.settings&&state.settings.mailFollow)||{})[_mailKey(conv)]; }
+function mailFollowToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} if(!state.settings)state.settings={}; const f=Object.assign({},state.settings.mailFollow||{}); if(on)f[_mailKey(conv)]=1; else delete f[_mailKey(conv)]; state.settings.mailFollow=f; try{touchSettings();}catch(e){} save('Flagged follow-up'); mailRenderInbox(); }
+function mailIgnoreList(){ return (state.settings&&Array.isArray(state.settings.mailIgnore))?state.settings.mailIgnore:[]; }
+function mailIgnored(addr){ addr=String(addr||'').toLowerCase(); if(!addr)return false; return mailIgnoreList().some(x=>x===addr || (x.charAt(0)==='@' && addr.indexOf(x)>=0)); }
+function mailIgnoreSender(addr){ if(!canWorkMailbox(_mailCur))return; addr=String(addr||'').toLowerCase(); if(!addr)return; if(!confirm('Hide all messages from '+addr+' — now and in the future?'))return; if(!state.settings)state.settings={}; const l=mailIgnoreList().slice(); if(l.indexOf(addr)<0)l.push(addr); state.settings.mailIgnore=l; try{touchSettings();}catch(e){} save('Ignored a sender'); mailRenderInbox(); }
+function mailUnignore(addr){ if(!state.settings)state.settings={}; state.settings.mailIgnore=mailIgnoreList().filter(x=>x!==String(addr||'').toLowerCase()); try{touchSettings();}catch(e){} save('Un-ignored a sender'); mailRenderInbox(); }
+function mailTaskWho(conv){ return ((state.settings&&state.settings.mailTaskWho)||{})[_mailKey(conv)]||''; }
+function mailSetTaskWho(conv,userId){ if(!canWorkMailbox(_mailCur))return; if(!state.settings)state.settings={}; const w=Object.assign({},state.settings.mailTaskWho||{}); if(userId)w[_mailKey(conv)]=userId; else delete w[_mailKey(conv)]; state.settings.mailTaskWho=w;
+  const tid=mailTaskId(conv); if(tid){ const a=(state.attention||[]).find(x=>x.id===tid); if(a){ const u=mailUsers().find(x=>x.id===userId); a.forId=userId||''; a.forName=u?(u.name||''):''; a._upd=Date.now(); } }
+  try{touchSettings();}catch(e){} save('Set task assignee'); mailRenderInbox(); }
+// Curated visibility: a "full viewer" (super-admin or the mailbox's owner) sees every
+// message; a shared helper sees ONLY the messages the full viewer has shared to them.
+function isFullViewer(mb){ return isMailAdmin() || mailOwnerId(mb)===_mailMe(); }
+function mailHelpers(mb){ const ids=mailAccess(mb); return mailUsers().filter(u=>ids.indexOf(u.id)>=0); }
+function mailSharedWith(conv){ const m=(state.settings&&state.settings.mailShare)||{}; const a=m[_mailKey(conv)]; return Array.isArray(a)?a:[]; }
+function mailShareToggle(conv,userId,on){ if(!isFullViewer(_mailCur)||!userId)return; if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailShare||{}); const key=_mailKey(conv); const arr=(m[key]||[]).slice(); const idx=arr.indexOf(userId); if(on===undefined)on=idx<0; if(on){ if(idx<0)arr.push(userId);} else { if(idx>=0)arr.splice(idx,1);} m[key]=arr; state.settings.mailShare=m; try{touchSettings();}catch(e){} save('Shared a message'); mailRenderInbox(); }
+// Auto-share rules: "everything from sender@x.com (or @domain.com) → this person".
+function mailRulesFor(mb){ const m=(state.settings&&state.settings.mailRules)||{}; return Array.isArray(m[mb])?m[mb]:[]; }
+function _ruleMatch(rule,addr){ addr=String(addr||'').toLowerCase(); const mt=String(rule.match||'').toLowerCase(); if(!mt||!addr)return false; if(mt.charAt(0)==='@') return addr.slice(addr.indexOf('@'))===mt || addr.indexOf(mt)>=0; return addr===mt; }
+function mailRuleUsersFor(mb,addr){ const out=[]; mailRulesFor(mb).forEach(r=>{ if(_ruleMatch(r,addr)&&r.userId&&out.indexOf(r.userId)<0) out.push(r.userId); }); return out; }
+function effectiveShared(conv,addr){ const base=mailSharedWith(conv).slice(); mailRuleUsersFor(_mailCur,addr).forEach(id=>{ if(base.indexOf(id)<0)base.push(id); }); return base; }
+function mailAddRule(mb,match,userId){ if(!isFullViewer(mb)||!userId)return; match=String(match||'').trim().toLowerCase(); if(!match||(match.indexOf('@')<0)){ flash('Enter an email address or @domain.'); return; } if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailRules||{}); const arr=(m[mb]||[]).slice(); if(!arr.some(r=>r.match===match&&r.userId===userId)) arr.push({id:uid(),match,userId}); m[mb]=arr; state.settings.mailRules=m; try{touchSettings();}catch(e){} save('Added an auto-share rule'); mailRenderInbox(); }
+function mailRmRule(mb,rid){ if(!isFullViewer(mb))return; if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailRules||{}); m[mb]=(m[mb]||[]).filter(r=>r.id!==rid); state.settings.mailRules=m; try{touchSettings();}catch(e){} save('Removed an auto-share rule'); mailRenderInbox(); }
+function mailAddRuleFromForm(){ const mi=document.getElementById('mail_rule_match'), ui=document.getElementById('mail_rule_user'); if(!mi||!ui)return; mailAddRule(_mailCur, mi.value, ui.value); if(mi)mi.value=''; }
 
 function renderMail(){
   const box=document.getElementById('mailBody'); if(!box) return;
@@ -6644,7 +6670,7 @@ function renderMail(){
       return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="hint">Also worked by:</span>${chips||'<span class="hint">owner/admin only</span>'}<select onchange="if(this.value){mailAddAccess('${esc(mb)}',this.value);}"><option value="">+ share with…</option>${addable.map(u=>`<option value="${u.id}">${esc(u.name||'')}</option>`).join('')}</select></div>`; };
     const rows=boxes.map(mb=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:150px;font-family:-apple-system,Segoe UI,monospace">${esc(mb)}</div><span class="hint">Owner:</span>${ownerSel(mb)}<button class="btn" onclick="mailPick('${esc(mb)}')">Open</button><button class="del" onclick="mailDelBox('${esc(mb)}')">Remove</button></div><div style="margin-top:6px">${accessEd(mb)}</div></div>`).join('');
     const cfg=`<div class="card"><div style="font-weight:700;margin-bottom:6px">Monitored mailboxes</div>
-      <div class="hint" style="margin-bottom:8px">Add each address to watch. The <b>owner</b> is that person’s own inbox — set it (or match it by their user email) and they can log into Mikey and work their own mail. <b>Share</b> a box (e.g. support@) with anyone else who works it. Addresses must be in the group your Microsoft 365 app is scoped to.</div>
+      <div class="hint" style="margin-bottom:8px">Add each address to watch. The <b>owner</b> is that person’s own inbox — set it (or match it by their user email) and they can log into Mikey and work their own mail. Add helpers under <b>“Also worked by”</b> for a shared box (e.g. support@) — they can only see the individual messages you share to them (the “Visible to” control on each message). Addresses must be in the group your Microsoft 365 app is scoped to.</div>
       ${rows||'<div class="hint">No mailboxes yet.</div>'}
       <div style="display:flex;gap:8px;margin-top:10px"><input id="mail_add" placeholder="name@yourdomain.com" style="flex:1" onkeydown="if(event.key==='Enter')mailAddBox()"><button class="btn primary" onclick="mailAddBox()">Add</button></div></div>`;
     adminCards=accessCard+cfg;
@@ -6675,29 +6701,53 @@ function mailRenderInbox(){ const el=document.getElementById('mailInbox'); if(el
 function mailInboxHtml(){
   if(_mailLoading) return '<div class="empty" style="padding:20px">Loading…</div>';
   if(_mailErr) return '<div class="note" style="border-left-color:var(--red)">'+esc(_mailErr)+'</div>';
-  const rows=_mailRows||[]; if(!rows.length) return '<div class="empty" style="padding:20px">No recent inbox messages.</div>';
-  const owner=mailOwnerName(_mailCur);
-  return rows.map(m=>{ const dis=mailDismissed(m.conversationId), tasked=!!mailTaskId(m.conversationId);
+  const me=_mailMe(), fullView=isFullViewer(_mailCur), helpers=mailHelpers(_mailCur);
+  let rows=(_mailRows||[]).filter(m=>!mailIgnored(m.from&&m.from.address)); // drop ignored senders
+  if(!fullView) rows=rows.filter(m=>effectiveShared(m.conversationId, m.from&&m.from.address).indexOf(me)>=0); // helpers see only what's shared/routed to them
+  const hidden=rows.filter(m=>mailDismissed(m.conversationId)&&!mailFollowed(m.conversationId));
+  let show=rows.filter(m=> _mailShowHidden || !(mailDismissed(m.conversationId)&&!mailFollowed(m.conversationId)) );
+  show=show.slice().sort((a,b)=>(mailFollowed(b.conversationId)?1:0)-(mailFollowed(a.conversationId)?1:0)); // follow-ups pinned on top
+  const users=mailUsers(), ownerId=mailOwnerId(_mailCur);
+  let head='';
+  if(fullView && mailIgnoreList().length) head+=`<div class="hint" style="margin-bottom:6px">Ignored: ${mailIgnoreList().map(a=>`${esc(a)} <a onclick="mailUnignore('${esc(a)}')" style="cursor:pointer;color:#b23a2e;font-weight:700">×</a>`).join(' · ')}</div>`;
+  if(fullView && helpers.length){ const rls=mailRulesFor(_mailCur);
+    head+=`<div class="card" style="padding:10px 12px;margin-bottom:10px"><div style="font-weight:700;font-size:13px">Auto-share rules</div><div class="hint" style="margin:2px 0 6px">Automatically show messages from a sender or whole domain to someone — e.g. <b>@acme.com → Kelly</b>.</div>${rls.map(r=>{const u=users.find(x=>x.id===r.userId);return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:13px"><span style="font-family:-apple-system,Segoe UI,monospace">${esc(r.match)}</span> → <b>${esc(u?u.name:'?')}</b> <a onclick="mailRmRule('${esc(_mailCur)}','${r.id}')" style="cursor:pointer;color:#b23a2e;font-weight:700">×</a></div>`;}).join('')||'<div class="hint">No rules yet.</div>'}<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="mail_rule_match" placeholder="sender@x.com or @domain.com" style="flex:1;min-width:170px"><select id="mail_rule_user">${helpers.map(h=>`<option value="${h.id}">${esc(h.name||'')}</option>`).join('')}</select><button class="btn" onclick="mailAddRuleFromForm()">Add rule</button></div></div>`;
+  }
+  if(hidden.length) head+=`<div style="margin-bottom:8px"><a class="link" onclick="mailToggleHidden()">${_mailShowHidden?'Hide':'Show'} ${hidden.length} “no reply needed”</a></div>`;
+  if(!show.length) return head+'<div class="empty" style="padding:20px">'+(rows.length?'All caught up — nothing needs attention.':'No recent inbox messages.')+'</div>';
+  return head+show.map(m=>{ const dis=mailDismissed(m.conversationId), fol=mailFollowed(m.conversationId), tasked=!!mailTaskId(m.conversationId);
+    const who=mailTaskWho(m.conversationId)||ownerId||me;
     const badge = m.replied?'<span class="pill" style="background:#eef7ee;color:#3f7d54;font-weight:700">Replied</span>'
       : dis?'<span class="pill" style="background:#eee7d7;color:#7a6a56;font-weight:700">No reply needed</span>'
       : '<span class="pill" style="background:#f7e7e4;color:#b23a2e;font-weight:700">Needs reply</span>';
-    const conv=esc(m.conversationId), subj=JSON.stringify(m.subject||'').replace(/"/g,'&quot;');
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
-      <div style="display:flex;gap:8px;align-items:baseline;cursor:pointer" onclick="mailOpenThread('${conv}',${subj})"><div style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.from.name||m.from.address||'—')}</div>${badge}<div style="color:var(--muted);font-size:12px;white-space:nowrap">${mailWhen(m.received)}</div></div>
+    const folBadge = fol?' <span class="pill" style="background:#eaf0f7;color:#3a5f8f;font-weight:700">Follow up</span>':'';
+    const conv=esc(m.conversationId), subj=JSON.stringify(m.subject||'').replace(/"/g,'&quot;'), addr=esc((m.from&&m.from.address)||'');
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line);${fol?'background:#f6f9fc':''}">
+      <div style="display:flex;gap:8px;align-items:baseline"><div style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="mailOpenThread('${conv}',${subj})">${esc(m.from.name||m.from.address||'—')}</div>${(fullView&&addr)?`<a class="link" style="font-size:11px;white-space:nowrap" title="Hide this sender from now on" onclick="mailIgnoreSender('${addr}')">ignore these</a>`:''}${folBadge}${badge}<div style="color:var(--muted);font-size:12px;white-space:nowrap">${mailWhen(m.received)}</div></div>
       <div style="font-size:14px;margin-top:2px;cursor:pointer" onclick="mailOpenThread('${conv}',${subj})">${esc(m.subject||'(no subject)')}</div>
       <div style="color:var(--muted);font-size:13px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.preview||'')}</div>
-      <div style="display:flex;gap:16px;margin-top:6px;font-size:13px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${dis?'checked':''} onclick="event.stopPropagation();mailDismissToggle('${conv}',this.checked)"> No reply needed</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${tasked?'checked':''} onclick="event.stopPropagation();mailTaskToggle('${conv}',this.checked)"> Make task${owner?(' → '+esc(owner)):' → me'}</label>
+      <div style="display:flex;gap:16px;margin-top:6px;font-size:13px;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${dis?'checked':''} onclick="mailDismissToggle('${conv}',this.checked)"> No reply needed</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${fol?'checked':''} onclick="mailFollowToggle('${conv}',this.checked)"> Follow up</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${tasked?'checked':''} onclick="mailTaskToggle('${conv}',this.checked)"> Make task</label>
+        <select onchange="mailSetTaskWho('${conv}',this.value)" style="max-width:150px">${users.map(u=>`<option value="${u.id}"${u.id===who?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
       </div>
+      ${(fullView&&helpers.length)?(()=>{ const expl=mailSharedWith(m.conversationId); const auto=mailRuleUsersFor(_mailCur,addr).filter(id=>expl.indexOf(id)<0);
+        const explChips=expl.map(id=>{const u=helpers.find(h=>h.id===id);return u?`<span class="pill" style="background:#eef3f7">${esc(u.name)} <a onclick="mailShareToggle('${conv}','${id}',false)" style="cursor:pointer;color:#b23a2e;font-weight:700">×</a></span>`:'';}).filter(Boolean);
+        const autoChips=auto.map(id=>{const u=helpers.find(h=>h.id===id)||users.find(x=>x.id===id);return u?`<span class="pill" style="background:#eef7ee;color:#3f7d54" title="by an auto-share rule">${esc(u.name)} · auto</span>`:'';}).filter(Boolean);
+        const chips=explChips.concat(autoChips).join(' ')||'<span class="hint">just you</span>';
+        const canAdd=helpers.filter(h=>expl.indexOf(h.id)<0);
+        return `<div style="display:flex;gap:8px;margin-top:6px;font-size:12px;align-items:center;flex-wrap:wrap"><span class="hint">Visible to:</span>${chips}<select onchange="if(this.value){mailShareToggle('${conv}',this.value,true);}"><option value="">+ share this one…</option>${canAdd.map(h=>`<option value="${h.id}">${esc(h.name||'')}</option>`).join('')}</select>${addr?`<select onchange="if(this.value){mailAddRule('${esc(_mailCur)}','${addr}',this.value);}"><option value="">+ auto-share this sender…</option>${helpers.map(h=>`<option value="${h.id}">${esc(h.name||'')}</option>`).join('')}</select>`:''}</div>`;
+      })():''}
     </div>`; }).join('');
 }
 function mailDismissToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} if(!state.settings)state.settings={}; const d=Object.assign({},state.settings.mailDismiss||{}); if(on)d[_mailKey(conv)]=1; else delete d[_mailKey(conv)]; state.settings.mailDismiss=d; try{touchSettings();}catch(e){} save('Marked mail no-reply'); mailRenderInbox(); }
 function mailTaskToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const row=(_mailRows||[]).find(r=>r.conversationId===conv); if(!state.settings)state.settings={}; const map=Object.assign({},state.settings.mailTasks||{}); const key=_mailKey(conv);
-  if(on){ const ownerId=mailOwnerId(_mailCur)||_mailMe(); const owner=mailUsers().find(u=>u.id===ownerId); const tid=uid(); if(!state.attention)state.attention=[];
+  if(on){ const ownerId=mailTaskWho(conv)||mailOwnerId(_mailCur)||_mailMe(); const owner=mailUsers().find(u=>u.id===ownerId); const tid=uid(); if(!state.attention)state.attention=[];
     const fromName=(row&&row.from&&(row.from.name||row.from.address))||'';
     state.attention.push({id:tid,text:'Reply needed: '+((row&&row.subject)||'(email)')+(fromName?(' — from '+fromName):'')+' ['+_mailCur+']',tone:'amber',forId:ownerId||'',forName:owner?owner.name:'',byId:_mailMe()||'',byName:(authOn()&&SESSION)?SESSION.name:'',ts:Date.now(),_upd:Date.now()});
     map[key]=tid;
+    if(isFullViewer(_mailCur)&&ownerId){ const sm=Object.assign({},state.settings.mailShare||{}); const sa=(sm[key]||[]).slice(); if(sa.indexOf(ownerId)<0)sa.push(ownerId); sm[key]=sa; state.settings.mailShare=sm; } // assignee can now see it
   } else { const tid=map[key]; if(tid) state.attention=(state.attention||[]).filter(a=>a.id!==tid); delete map[key]; }
   state.settings.mailTasks=map; try{touchSettings();}catch(e){} save(on?'Made an email task':'Cleared an email task'); mailRenderInbox();
 }
