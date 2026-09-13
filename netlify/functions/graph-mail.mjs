@@ -92,6 +92,23 @@ export default async (req) => {
       return jsonResp({ ok: true, name: a.name || "attachment", contentType: a.contentType || "application/octet-stream", dataUrl: `data:${a.contentType || "application/octet-stream"};base64,${a.contentBytes}` });
     }
 
+    if (action === "markRead") {
+      // Mark one or more messages read/unread in Outlook (used by "no reply needed").
+      // Requires the app to have Mail.ReadWrite (read-only Mail.Read can't change flags).
+      const mb = (b.mailbox || "").trim();
+      const ids = Array.isArray(b.messageIds) ? b.messageIds : (b.messageId ? [b.messageId] : []);
+      const isRead = b.isRead === false ? false : true;
+      if (!mb || !ids.length) return jsonResp({ ok: false, error: "bad_request" }, 400);
+      let updated = 0, lastErr = "";
+      for (const id of ids) {
+        try { await graph(`/users/${enc(mb)}/messages/${enc(id)}`, { method: "PATCH", body: JSON.stringify({ isRead }) }); updated++; }
+        catch (e) { lastErr = String((e && e.message) || e); }
+      }
+      // Best-effort: report ok when at least one updated; otherwise surface why (e.g. missing Mail.ReadWrite).
+      if (updated) return jsonResp({ ok: true, updated });
+      return jsonResp({ ok: false, error: lastErr || "no_update", needsWrite: /ErrorAccessDenied|Access is denied|Forbidden|permission/i.test(lastErr) }, 200);
+    }
+
     if (action === "send") {
       const mb = (b.mailbox || "").trim(); if (!mb) return jsonResp({ ok: false, error: "no_mailbox" }, 400);
       const comment = String(b.comment || "");
