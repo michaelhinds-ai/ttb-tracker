@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913l</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913m</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6632,11 +6632,12 @@ function mailAddrSuggestions(){ const s={}; mailUsers().forEach(u=>{ if(u.email)
 let _mailAiText=null;
 async function mailAskAI(){ const ta=document.getElementById('mail_reply'); const draft=((ta&&ta.value)||''); const t=_mailThread; const inMsg=(t&&t.messages&&t.messages.filter(m=>!m.outgoing).slice(-1)[0])||(t&&t.messages&&t.messages.slice(-1)[0])||{}; const incoming=inMsg.html?mailStrip(inMsg.html):(inMsg.preview||'');
   const box=document.getElementById('mail_ai'), btn=document.getElementById('mail_aibtn'); if(btn){btn.disabled=true;btn.textContent='Thinking…';} if(box)box.innerHTML='<div class="hint" style="margin-top:8px">Asking AI…</div>';
-  const r=await mailPost('/api/ai-reply',{draft:draft,incoming:incoming,mailbox:_mailCur}); if(btn){btn.disabled=false;btn.textContent='Ask AI';}
+  const r=await mailPost('/api/ai-reply',{draft:draft,incoming:incoming,mailbox:_mailCur}); if(btn){btn.disabled=false;} mailAiLabel();
   if(!r||!r.ok){ if(box)box.innerHTML='<div class="note" style="border-left-color:var(--amber);margin-top:8px">'+esc((r&&r.error)||'AI not available')+'</div>'; return; }
   _mailAiText=r.reply||''; if(box)box.innerHTML=`<div class="card" style="margin-top:8px;background:#f6f9fc"><div style="font-weight:700;font-size:13px;margin-bottom:4px">AI suggestion</div><div style="white-space:pre-wrap;font-size:14px">${esc(_mailAiText)}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn primary" onclick="mailUseAI()">Use this</button><button class="link" onclick="mailClearAI()">Dismiss</button></div></div>`;
 }
-function mailUseAI(){ const ta=document.getElementById('mail_reply'); if(ta&&_mailAiText!=null){ ta.value=_mailAiText; ta.focus(); } mailClearAI(); }
+function mailUseAI(){ const ta=document.getElementById('mail_reply'); if(ta&&_mailAiText!=null){ ta.value=_mailAiText; ta.focus(); } try{mailAiLabel();}catch(e){} mailClearAI(); }
+function mailAiLabel(){ const ta=document.getElementById('mail_reply'), btn=document.getElementById('mail_aibtn'); if(!btn||btn.disabled)return; btn.textContent=(((ta&&ta.value)||'').trim())?'✨ Polish my reply':'✨ Draft a reply'; }
 function mailClearAI(){ _mailAiText=null; const box=document.getElementById('mail_ai'); if(box)box.innerHTML=''; }
 // Follow-up flag (keeps a message pinned/visible), ignored-senders list, per-row task assignee.
 let _mailShowHidden=false; function mailToggleHidden(){ _mailShowHidden=!_mailShowHidden; mailRenderInbox(); }
@@ -6799,10 +6800,10 @@ function mailThreadHtml(){
   const coworkers=users.filter(u=>u.email); const addrs=mailAddrSuggestions();
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
     <datalist id="mailAddrList">${addrs.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
-    <textarea id="mail_reply" rows="4" spellcheck="true" style="width:100%" placeholder="Type your reply…"></textarea>
+    <textarea id="mail_reply" rows="4" spellcheck="true" oninput="mailAiLabel()" style="width:100%" placeholder="Type your reply…"></textarea>
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="hint">Cc:</span><input id="mail_cc" list="mailAddrList" autocomplete="off" style="flex:1;min-width:170px" placeholder="add a coworker or outside email — comma separated">${coworkers.length?`<select onchange="if(this.value){mailAddCc(this.value);this.value='';}" style="max-width:150px"><option value="">+ coworker</option>${coworkers.map(u=>`<option value="${esc(u.email)}">${esc(u.name||u.email)}</option>`).join('')}</select>`:''}</div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="btn primary" id="mail_send" onclick="mailReply()">Send reply</button>
-      <button class="btn" id="mail_aibtn" onclick="mailAskAI()" title="Let AI polish your draft">✨ Ask AI</button>
+      <button class="btn" id="mail_aibtn" onclick="mailAskAI()" title="Draft a reply, or polish yours">✨ Draft a reply</button>
       ${mailTemplates().length?`<select onchange="if(this.value){mailInsertTemplate(this.value);this.value='';}" style="max-width:190px"><option value="">Insert quick reply…</option>${mailTemplates().map(t=>`<option value="${t.id}">${esc(t.name||'')}</option>`).join('')}</select>`:''}
       <span style="flex:1"></span><span class="hint">Turn into a task:</span>
       <select id="mail_assign">${users.map(u=>`<option value="${u.id}"${u.id===ownerId?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
