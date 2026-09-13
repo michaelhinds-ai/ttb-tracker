@@ -8,7 +8,7 @@ export default async (req) => {
   let b = {}; try { b = await req.json(); } catch { b = {}; }
   const key = (process.env.ANTHROPIC_API_KEY || "").trim();
   if (!key) return json({ ok: false, error: "AI isn’t set up yet — add ANTHROPIC_API_KEY in Netlify and redeploy." }, 200);
-  const model = (process.env.AI_MODEL || "claude-3-5-haiku-latest").trim();
+  const model = (process.env.AI_MODEL || "claude-haiku-4-5-20251001").trim();
 
   const draft = String(b.draft || "").slice(0, 4000);
   const incoming = String(b.incoming || "").slice(0, 6000);
