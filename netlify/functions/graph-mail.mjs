@@ -60,8 +60,19 @@ export default async (req) => {
       // Expand attachment METADATA only (no contentBytes) so the payload stays small;
       // the actual bytes are fetched per-attachment via the "attachment" action.
       const sel = "$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,bodyPreview,hasAttachments";
-      const exp = "$expand=attachments($select=id,name,contentType,size,isInline,contentId)";
-      const res = await graph(`/users/${enc(mb)}/messages?$filter=conversationId eq '${conv.replace(/'/g, "''")}'&${sel}&${exp}&$top=50`);
+      // Only properties that exist on the BASE attachment type may be selected here
+      // (contentId lives on fileAttachment, not the base type — selecting it makes
+      // Graph reject the whole request). Attachment bytes are fetched separately.
+      const exp = "$expand=attachments($select=id,name,contentType,size,isInline)";
+      const base = `/users/${enc(mb)}/messages?$filter=conversationId eq '${conv.replace(/'/g, "''")}'&${sel}`;
+      let res;
+      try {
+        res = await graph(`${base}&${exp}&$top=50`);
+      } catch (e) {
+        // Never let an attachment-expansion problem break the whole conversation —
+        // fall back to loading the messages without attachment metadata.
+        res = await graph(`${base}&$top=50`);
+      }
       const msgs = (res.value || []).map((m) => {
         const from = addr(m.from);
         const atts = (m.attachments || [])
