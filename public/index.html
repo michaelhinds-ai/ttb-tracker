@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913i</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913j</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6649,6 +6649,18 @@ function effectiveShared(conv,addr){ const base=mailSharedWith(conv).slice(); ma
 function mailAddRule(mb,match,userId){ if(!isFullViewer(mb)||!userId)return; match=String(match||'').trim().toLowerCase(); if(!match||(match.indexOf('@')<0)){ flash('Enter an email address or @domain.'); return; } if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailRules||{}); const arr=(m[mb]||[]).slice(); if(!arr.some(r=>r.match===match&&r.userId===userId)) arr.push({id:uid(),match,userId}); m[mb]=arr; state.settings.mailRules=m; try{touchSettings();}catch(e){} save('Added an auto-share rule'); mailRenderInbox(); }
 function mailRmRule(mb,rid){ if(!isFullViewer(mb))return; if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailRules||{}); m[mb]=(m[mb]||[]).filter(r=>r.id!==rid); state.settings.mailRules=m; try{touchSettings();}catch(e){} save('Removed an auto-share rule'); mailRenderInbox(); }
 function mailAddRuleFromForm(){ const mi=document.getElementById('mail_rule_match'), ui=document.getElementById('mail_rule_user'); if(!mi||!ui)return; mailAddRule(_mailCur, mi.value, ui.value); if(mi)mi.value=''; }
+// Quick-reply templates (shared, synced). Admin manages; anyone working a thread can insert.
+let _mailTplEdit=null;
+function mailTemplates(){ return (state.settings&&Array.isArray(state.settings.mailTemplates))?state.settings.mailTemplates:[]; }
+function mailAddTemplateFromForm(){ if(!isMailAdmin())return; const n=document.getElementById('mail_tpl_name'), bd=document.getElementById('mail_tpl_body'); const name=((n&&n.value)||'').trim(), body=((bd&&bd.value)||''); if(!name||!body.trim()){ flash('Give the reply a name and some text.'); return; }
+  if(!state.settings)state.settings={}; const list=mailTemplates().slice();
+  if(_mailTplEdit){ const t=list.find(x=>x.id===_mailTplEdit); if(t){t.name=name;t.body=body;} _mailTplEdit=null; } else list.push({id:uid(),name,body});
+  state.settings.mailTemplates=list; try{touchSettings();}catch(e){} save('Saved a quick reply'); renderMail(); }
+function mailEditTemplate(id){ if(!isMailAdmin())return; _mailTplEdit=id; renderMail(); }
+function mailDelTemplate(id){ if(!isMailAdmin())return; if(!confirm('Delete this quick reply?'))return; state.settings.mailTemplates=mailTemplates().filter(t=>t.id!==id); if(_mailTplEdit===id)_mailTplEdit=null; try{touchSettings();}catch(e){} save('Deleted a quick reply'); renderMail(); }
+function mailInsertTemplate(id){ const t=mailTemplates().find(x=>x.id===id); if(!t)return; const ta=document.getElementById('mail_reply'); if(!ta)return; const cur=ta.value||''; const st=ta.selectionStart, en=ta.selectionEnd;
+  if(typeof st==='number'){ ta.value=cur.slice(0,st)+t.body+cur.slice(en); const pos=st+t.body.length; try{ta.selectionStart=ta.selectionEnd=pos;}catch(e){} } else { ta.value=(cur?cur+'\n':'')+t.body; }
+  ta.focus(); }
 
 function renderMail(){
   const box=document.getElementById('mailBody'); if(!box) return;
@@ -6673,7 +6685,11 @@ function renderMail(){
       <div class="hint" style="margin-bottom:8px">Add each address to watch. The <b>owner</b> is that person’s own inbox — set it (or match it by their user email) and they can log into Mikey and work their own mail. Add helpers under <b>“Also worked by”</b> for a shared box (e.g. support@) — they can only see the individual messages you share to them (the “Visible to” control on each message). Addresses must be in the group your Microsoft 365 app is scoped to.</div>
       ${rows||'<div class="hint">No mailboxes yet.</div>'}
       <div style="display:flex;gap:8px;margin-top:10px"><input id="mail_add" placeholder="name@yourdomain.com" style="flex:1" onkeydown="if(event.key==='Enter')mailAddBox()"><button class="btn primary" onclick="mailAddBox()">Add</button></div></div>`;
-    adminCards=accessCard+cfg;
+    const etpl=_mailTplEdit?mailTemplates().find(t=>t.id===_mailTplEdit):null;
+    const tplCard=`<div class="card"><div style="font-weight:700;margin-bottom:6px">Quick replies</div><div class="hint" style="margin-bottom:8px">Save canned replies your team can drop into any message with one click.</div>
+      ${mailTemplates().map(t=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--line)"><div style="flex:1;min-width:0"><b>${esc(t.name)}</b><div class="hint" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.body)}</div></div><button class="link" onclick="mailEditTemplate('${t.id}')">Edit</button><button class="del" onclick="mailDelTemplate('${t.id}')">Delete</button></div>`).join('')||'<div class="hint">No quick replies yet.</div>'}
+      <div style="margin-top:8px"><label class="fld">Name</label><input id="mail_tpl_name" value="${etpl?esc(etpl.name):''}" placeholder="e.g. Distributor pricing"><label class="fld" style="margin-top:6px">Reply text</label><textarea id="mail_tpl_body" rows="4" spellcheck="true" placeholder="Hi, thanks for reaching out…">${etpl?esc(etpl.body):''}</textarea><div style="margin-top:6px"><button class="btn primary" onclick="mailAddTemplateFromForm()">${etpl?'Save changes':'Add quick reply'}</button>${etpl?' <button class="link" onclick="_mailTplEdit=null;renderMail()">Cancel</button>':''}</div></div></div>`;
+    adminCards=accessCard+cfg+tplCard;
   }
 
   let main='';
@@ -6768,6 +6784,7 @@ function mailThreadHtml(){
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
     <textarea id="mail_reply" rows="4" spellcheck="true" style="width:100%" placeholder="Type your reply…"></textarea>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="btn primary" id="mail_send" onclick="mailReply()">Send reply</button>
+      ${mailTemplates().length?`<select onchange="if(this.value){mailInsertTemplate(this.value);this.value='';}" style="max-width:190px"><option value="">Insert quick reply…</option>${mailTemplates().map(t=>`<option value="${t.id}">${esc(t.name||'')}</option>`).join('')}</select>`:''}
       <span style="flex:1"></span><span class="hint">Turn into a task:</span>
       <select id="mail_assign">${users.map(u=>`<option value="${u.id}"${u.id===ownerId?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
       <button class="btn" onclick="mailAssign()">Assign</button></div></div>`;
