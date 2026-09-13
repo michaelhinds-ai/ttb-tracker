@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913a</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913f</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -1151,6 +1151,7 @@
           <div><label class="fld">Name</label><input type="text" id="u_name" placeholder="e.g. Sarah"></div>
           <div><label class="fld">Role</label><select id="u_role"><option value="admin">Admin</option><option value="editor">Editor</option><option value="manager">Manager</option><option value="barrelmgr">Barrel Manager</option><option value="retail">Retail Manager</option><option value="production">Production</option><option value="reports">Reports</option><option value="viewer">Viewer</option></select></div>
           <div><label class="fld">PIN <span style="font-weight:400;color:var(--muted)">— digits</span></label><input type="password" id="u_pin" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>
+          <div><label class="fld">Email <span style="font-weight:400;color:var(--muted)">— for their mailbox</span></label><input type="email" id="u_email" autocapitalize="none" placeholder="name@nashvillebarrelco.com"></div>
         </div>
         <div style="margin-top:12px">
           <label class="fld">Locations this user can see <span style="font-weight:400;color:var(--muted)">— tick one or more to limit them to those stores (and hide back office). Leave all unticked for full access to every location.</span></label>
@@ -1403,7 +1404,7 @@ const DEFAULT_HIDDEN={
   retail:['lrs','salesrpt','retail','reports','kentucky','dashboard','payroll','expenses','pnl','marketing','reviews','barrels','bottling','finished','orders','customers','compliance','labels','barrelsproc','production','ledger','data'],
 };
 function roleHiddenList(role){ const rv=(state.settings&&state.settings.roleViews)||{}; return Array.isArray(rv[role])?rv[role]:(DEFAULT_HIDDEN[role]||[]); }
-function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(role==='admin') return false;
+function viewBlocked(v){ const role=currentRole(); if(v==='samples') v='production'; if(v==='mail') return (typeof canOpenMail==='function')?!canOpenMail():false; if(role==='admin') return false;
   if(role==='retail'){ if(v==='home'||v==='retailhub') return false; if(SECTIONS.some(s=>s.v===v)) return roleHiddenList('retail').indexOf(v)>=0; return true; }
   return roleHiddenList(role).indexOf(v)>=0; }
 // Stamp settings as just-edited so the newest change wins the cross-device merge
@@ -1579,7 +1580,7 @@ function renderUsers(){
   if(mg) mg.style.display='';
   const db=$('#disableLogin'); if(db) db.onclick=disableLogin;
   const rows=[...state.auth.users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>{ const ul=userLocations(u); const locTxt=ul.length?ul.join(', '):'All locations'; return `<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)} <span style="color:var(--muted);font-size:12px">· ${esc(locTxt)}</span></td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`; }).join('');
+  const ub=$('#userBody'); if(ub) ub.innerHTML=rows.map(u=>{ const ul=userLocations(u); const locTxt=ul.length?ul.join(', '):'All locations'; return `<tr><td><b>${esc(u.name||'')}</b>${SESSION&&SESSION.userId===u.id?' <span class="pill tax">you</span>':''}</td><td>${esc(ROLE_LABEL[u.role]||u.role)} <span style="color:var(--muted);font-size:12px">· ${esc(locTxt)}</span>${u.email?` <span style="color:var(--muted);font-size:12px">· ${esc(u.email)}</span>`:``}</td><td class="noprint"><button class="link" onclick="editUser('${u.id}')">Edit</button> · <button class="del" onclick="deleteUser('${u.id}')">Del</button></td></tr>`; }).join('');
   // Render the location checkboxes, preserving any in-progress selection across refreshes.
   const keep=_readUserLocs(); renderUserLocBoxes(keep.length?keep:(editingUserId?userLocations(state.auth.users.find(x=>x.id===editingUserId)):[]));
   // Pull the real store names from Square so the tick-boxes fill in automatically.
@@ -1631,32 +1632,32 @@ function disableLogin(){
 }
 async function userSave(){
   if(!requireCap('users'))return;
-  const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||'';
+  const name=$('#u_name').value.trim(), role=$('#u_role').value, pin=$('#u_pin').value||''; const email=(($('#u_email')||{}).value||'').trim().toLowerCase();
   const locations=_readUserLocs(); const location=locations[0]||'';
   if(!name){ alert('Enter a name.'); return; }
   if(role==='retail' && !locations.length){ alert('A Retail Manager needs at least one location — tick the store(s) they should see (or add one) so their dashboard shows the right data.'); return; }
   if(editingUserId){
     const u=state.auth.users.find(x=>x.id===editingUserId); if(!u)return;
     if(u.role==='admin' && role!=='admin' && state.auth.users.filter(x=>x.role==='admin').length<=1){ alert('You can’t change the last admin’s role — add another admin first.'); return; }
-    u.name=name; u.role=role; u.locations=locations; u.location=location;
+    u.name=name; u.email=email; u.role=role; u.locations=locations; u.location=location;
     if(pin){ if(pin.length<4){alert('PIN must be at least 4 digits.');return;} u.pinHash=await hashPin(pin); }
     if(SESSION&&SESSION.userId===u.id){ SESSION.name=u.name; SESSION.role=u.role; SESSION.locations=locations.slice(); SESSION.location=location; saveSession(); }
     cancelUser(); save('Updated a user'); applyPermissions(); refreshAll(); flash('User updated.');
   } else {
     if(pin.length<4){ alert('PIN must be at least 4 digits.'); return; }
-    state.auth.users.push({id:uid(),name,role,locations,location,pinHash:await hashPin(pin)});
+    state.auth.users.push({id:uid(),name,email,role,locations,location,pinHash:await hashPin(pin)});
     cancelUser(); save('Added a user'); refreshAll(); flash('User added.');
   }
 }
 function editUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
-  editingUserId=id; $('#u_name').value=u.name||''; $('#u_role').value=u.role; $('#u_pin').value=''; renderUserLocBoxes(userLocations(u));
+  editingUserId=id; $('#u_name').value=u.name||''; if($('#u_email'))$('#u_email').value=u.email||''; $('#u_role').value=u.role; $('#u_pin').value=''; renderUserLocBoxes(userLocations(u));
   $('#u_pin').placeholder='Leave blank to keep current PIN';
   $('#userFormTitle').textContent='Edit '+(u.name||'user'); $('#userCancel').style.display='inline-block';
   switchView('data'); $('#u_name').scrollIntoView({behavior:'smooth',block:'center'});
 }
-function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; renderUserLocBoxes([]); $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
+function cancelUser(){ editingUserId=null; const n=$('#u_name'); if(!n)return; n.value=''; if($('#u_email'))$('#u_email').value=''; $('#u_pin').value=''; $('#u_pin').placeholder='4+ digits'; $('#u_role').value='admin'; renderUserLocBoxes([]); $('#userFormTitle').textContent='Add a user'; $('#userCancel').style.display='none'; }
 function deleteUser(id){
   if(!requireCap('users'))return;
   const u=state.auth.users.find(x=>x.id===id); if(!u)return;
@@ -6585,59 +6586,120 @@ function lblDelete(id){ if(typeof requireCap==='function'&&!requireCap('write'))
 
 /* ---- Monitored Inbox ---- */
 /* ===================== Monitored Inbox (Microsoft 365) =====================
-   Admin oversight of selected employee mailboxes via the /api/graph-mail function
-   (Microsoft Graph). See each person's threads, whether they've been replied to,
-   reply through Mikey, and turn an email into a task for a teammate.            */
+   Oversight of employee mailboxes via /api/graph-mail (Microsoft Graph).
+   Access model:
+     • A SUPER-ADMIN (settings.mailAdminId) manages the screen — adds mailboxes,
+       sets owners, shares mailboxes, and sees every mailbox.
+     • Any other user can be given access to specific mailboxes (settings.mailAccess),
+       e.g. a shared support@ box worked by two people. They see ONLY their assigned
+       mailboxes and can reply, mark "no reply needed", and set tasks on those.       */
 let _mailCur='', _mailRows=null, _mailThread=null, _mailConfigured=null, _mailErr='', _mailLoading=false;
 function mailboxes(){ return (state.settings&&Array.isArray(state.settings.mailboxes))?state.settings.mailboxes:[]; }
+function mailUsers(){ return [...((state.auth&&state.auth.users)||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||'')); }
+function _mailMe(){ return (typeof SESSION!=='undefined'&&SESSION)?SESSION.userId:null; }
+// Super-admin gate. Until one is designated, any admin (setup cap) qualifies — so the
+// first admin can open it and lock it to themselves.
+function isMailAdmin(){ const id=(state.settings&&state.settings.mailAdminId)||''; const me=_mailMe();
+  if(id) return !!me && me===id;
+  return (typeof can==='function')?can('setup'):true; }
+function mailSetAdmin(id){ if(!isMailAdmin())return; if(!state.settings)state.settings={}; if(id)state.settings.mailAdminId=id; else delete state.settings.mailAdminId; try{touchSettings();}catch(e){} save('Set Monitored Inbox admin'); try{applyPermissions();}catch(e){} renderMail(); }
+// Per-mailbox owner (task default) and shared-access list.
+function mailOwners(){ return (state.settings&&state.settings.mailOwners&&typeof state.settings.mailOwners==='object')?state.settings.mailOwners:{}; }
+function mailOwnerId(mb){ const explicit=mailOwners()[mb]; if(explicit)return explicit;
+  const t=String(mb||'').toLowerCase(); const u=mailUsers().find(x=>[x.email,x.mail,x.username,x.login].some(v=>String(v||'').toLowerCase()===t)); return u?u.id:''; }
+function mailOwnerName(mb){ const u=mailUsers().find(x=>x.id===mailOwnerId(mb)); return u?(u.name||''):''; }
+function mailAccess(mb){ const m=(state.settings&&state.settings.mailAccess)||{}; return Array.isArray(m[mb])?m[mb]:[]; }
+// A user can work a mailbox if: they're the super-admin, they're its owner (their own
+// inbox — set explicitly or matched by their email), or it's been shared with them.
+function canWorkMailbox(mb){ if(isMailAdmin())return true; const me=_mailMe(); if(!me)return false; if(mailOwnerId(mb)===me)return true; return mailAccess(mb).indexOf(me)>=0; }
+function visibleMailboxes(){ const all=mailboxes(); return isMailAdmin()?all:all.filter(canWorkMailbox); }
+function canOpenMail(){ return isMailAdmin() || visibleMailboxes().length>0; }
+function mailAddAccess(mb,userId){ if(!isMailAdmin()||!userId)return; if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailAccess||{}); const arr=(m[mb]||[]).slice(); if(arr.indexOf(userId)<0)arr.push(userId); m[mb]=arr; state.settings.mailAccess=m; try{touchSettings();}catch(e){} save('Shared a mailbox'); renderMail(); }
+function mailRmAccess(mb,userId){ if(!isMailAdmin())return; if(!state.settings)state.settings={}; const m=Object.assign({},state.settings.mailAccess||{}); m[mb]=(m[mb]||[]).filter(x=>x!==userId); state.settings.mailAccess=m; try{touchSettings();}catch(e){} save('Unshared a mailbox'); renderMail(); }
+
+function _mailKey(conv){ return _mailCur+'|'+conv; }
+function mailDismissed(conv){ return !!((state.settings&&state.settings.mailDismiss)||{})[_mailKey(conv)]; }
+function mailTaskId(conv){ return ((state.settings&&state.settings.mailTasks)||{})[_mailKey(conv)]||''; }
 function mailStrip(html){ return String(html||'').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#39;|&apos;/gi,"'").replace(/&quot;/gi,'"').replace(/\s+/g,' ').trim(); }
 function mailWhen(d){ if(!d)return''; try{ return new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } }
 async function mailApi(body){ try{ const r=await fetch('/api/graph-mail',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); return await r.json(); }catch(e){ return {ok:false,error:String((e&&e.message)||e)}; } }
 
 function renderMail(){
   const box=document.getElementById('mailBody'); if(!box) return;
-  if(typeof can==='function' && !can('setup')){ box.innerHTML='<div class="empty" style="padding:32px">The Monitored Inbox is available to admins only.</div>'; return; }
+  if(!canOpenMail()){ box.innerHTML='<div class="empty" style="padding:32px">You don’t have access to the Monitored Inbox.</div>'; return; }
   if(_mailConfigured===null){ mailPing(); }
-  const boxes=mailboxes();
+  const admin=isMailAdmin(), boxes=visibleMailboxes(), users=mailUsers();
+  if(_mailCur && boxes.indexOf(_mailCur)<0){ _mailCur=''; _mailRows=null; _mailThread=null; }
   const statusBanner = _mailConfigured===false
-    ? `<div class="note" style="border-left-color:var(--amber)">Microsoft 365 isn’t connected yet. Follow the setup guide, add the <b>MSGRAPH_*</b> variables in Netlify and redeploy — then this turns on. Nothing else is needed here.</div>`
+    ? `<div class="note" style="border-left-color:var(--amber)">Microsoft 365 isn’t connected yet. Add the <b>MSGRAPH_*</b> variables in Netlify and redeploy — then this turns on.</div>`
     : _mailConfigured===true ? `<div class="note" style="border-left-color:var(--green)">Connected to Microsoft 365 ✓</div>` : '';
 
-  const cfg=`<div class="card"><div style="font-weight:700;margin-bottom:6px">Monitored mailboxes</div>
-    <div class="hint" style="margin-bottom:8px">Add the employee addresses to watch. They must be inside the group your Microsoft 365 app is scoped to.</div>
-    ${boxes.length? boxes.map(mb=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)"><div style="flex:1;font-family:-apple-system,Segoe UI,monospace">${esc(mb)}</div><button class="btn" onclick="mailPick('${esc(mb)}')">Open</button><button class="del" onclick="mailDelBox('${esc(mb)}')">Remove</button></div>`).join(''):'<div class="hint">No mailboxes yet.</div>'}
-    <div style="display:flex;gap:8px;margin-top:10px"><input id="mail_add" placeholder="name@yourdomain.com" style="flex:1" onkeydown="if(event.key==='Enter')mailAddBox()"><button class="btn primary" onclick="mailAddBox()">Add</button></div>
-  </div>`;
+  let adminCards='';
+  if(admin){
+    const adminId=(state.settings&&state.settings.mailAdminId)||'';
+    const accessCard=`<div class="card" style="border-left:3px solid var(--copper)"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-weight:700">Admin</div><span class="hint">Who manages this screen:</span><select onchange="mailSetAdmin(this.value)"><option value="">Any admin</option>${users.map(u=>`<option value="${u.id}"${adminId===u.id?' selected':''}>${esc(u.name||'')} only</option>`).join('')}</select></div></div>`;
+    const ownerSel=(mb)=>`<select onchange="mailSetOwner('${esc(mb)}',this.value)" style="max-width:150px"><option value="">— owner —</option>${users.map(u=>`<option value="${u.id}"${mailOwnerId(mb)===u.id?' selected':''}>${esc(u.name||'')}</option>`).join('')}</select>`;
+    const accessEd=(mb)=>{ const ids=mailAccess(mb); const chips=ids.map(id=>{const u=users.find(x=>x.id===id);return u?`<span class="pill" style="background:#eef3f7">${esc(u.name)} <a onclick="mailRmAccess('${esc(mb)}','${id}')" style="cursor:pointer;color:#b23a2e;font-weight:700">×</a></span>`:'';}).join(' ');
+      const addable=users.filter(u=>ids.indexOf(u.id)<0);
+      return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="hint">Also worked by:</span>${chips||'<span class="hint">owner/admin only</span>'}<select onchange="if(this.value){mailAddAccess('${esc(mb)}',this.value);}"><option value="">+ share with…</option>${addable.map(u=>`<option value="${u.id}">${esc(u.name||'')}</option>`).join('')}</select></div>`; };
+    const rows=boxes.map(mb=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:150px;font-family:-apple-system,Segoe UI,monospace">${esc(mb)}</div><span class="hint">Owner:</span>${ownerSel(mb)}<button class="btn" onclick="mailPick('${esc(mb)}')">Open</button><button class="del" onclick="mailDelBox('${esc(mb)}')">Remove</button></div><div style="margin-top:6px">${accessEd(mb)}</div></div>`).join('');
+    const cfg=`<div class="card"><div style="font-weight:700;margin-bottom:6px">Monitored mailboxes</div>
+      <div class="hint" style="margin-bottom:8px">Add each address to watch. The <b>owner</b> is that person’s own inbox — set it (or match it by their user email) and they can log into Mikey and work their own mail. <b>Share</b> a box (e.g. support@) with anyone else who works it. Addresses must be in the group your Microsoft 365 app is scoped to.</div>
+      ${rows||'<div class="hint">No mailboxes yet.</div>'}
+      <div style="display:flex;gap:8px;margin-top:10px"><input id="mail_add" placeholder="name@yourdomain.com" style="flex:1" onkeydown="if(event.key==='Enter')mailAddBox()"><button class="btn primary" onclick="mailAddBox()">Add</button></div></div>`;
+    adminCards=accessCard+cfg;
+  }
 
   let main='';
-  if(_mailCur){
+  if(boxes.length){
     const tabs=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${boxes.map(mb=>`<button class="btn${mb===_mailCur?' primary':''}" onclick="mailPick('${esc(mb)}')">${esc(mb)}</button>`).join('')}</div>`;
-    if(_mailThread){ main=tabs+mailThreadHtml(); }
-    else main=tabs+`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:700">${esc(_mailCur)}</div><button class="link" onclick="mailLoadInbox()">↻ Refresh</button></div><div id="mailInbox">${mailInboxHtml()}</div></div>`;
-  } else if(boxes.length){ main=`<div class="hint">Pick a mailbox above to see its inbox.</div>`; }
+    if(_mailCur && _mailThread){ main=tabs+mailThreadHtml(); }
+    else if(_mailCur){ main=tabs+`<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:700">${esc(_mailCur)}${mailOwnerName(_mailCur)?(' <span class="hint" style="font-weight:400">· '+esc(mailOwnerName(_mailCur))+'</span>'):''}</div><button class="link" onclick="mailLoadInbox()">↻ Refresh</button></div><div id="mailInbox">${mailInboxHtml()}</div></div>`; }
+    else main=tabs+`<div class="hint">Pick a mailbox above to see its inbox.</div>`;
+  } else if(!admin){ main=`<div class="hint">No mailboxes are shared with you yet.</div>`; }
 
-  box.innerHTML=statusBanner+cfg+main;
+  box.innerHTML=statusBanner+adminCards+main;
 }
 async function mailPing(){ const r=await mailApi({action:'ping'}); _mailConfigured=!!(r&&r.configured); renderMail(); }
-function mailAddBox(){ if(!requireCap('setup'))return; const i=document.getElementById('mail_add'); const v=((i&&i.value)||'').trim().toLowerCase(); if(!v||v.indexOf('@')<1){ if(i)i.focus(); return; } if(!state.settings)state.settings={}; const list=mailboxes().slice(); if(!list.includes(v))list.push(v); state.settings.mailboxes=list; try{touchSettings();}catch(e){} save('Added a monitored mailbox'); if(i)i.value=''; renderMail(); }
-function mailDelBox(mb){ if(!requireCap('setup'))return; if(!confirm('Stop monitoring '+mb+'?'))return; state.settings.mailboxes=mailboxes().filter(x=>x!==mb); try{touchSettings();}catch(e){} if(_mailCur===mb){_mailCur='';_mailRows=null;_mailThread=null;} save('Removed a monitored mailbox'); renderMail(); }
-function mailPick(mb){ _mailCur=mb; _mailThread=null; _mailRows=null; renderMail(); mailLoadInbox(); }
+function mailAddBox(){ if(!isMailAdmin())return; const i=document.getElementById('mail_add'); const v=((i&&i.value)||'').trim().toLowerCase(); if(!v||v.indexOf('@')<1){ if(i)i.focus(); return; } if(!state.settings)state.settings={}; const list=mailboxes().slice(); if(!list.includes(v))list.push(v); state.settings.mailboxes=list; try{touchSettings();}catch(e){} save('Added a monitored mailbox'); if(i)i.value=''; renderMail(); }
+function mailDelBox(mb){ if(!isMailAdmin())return; if(!confirm('Stop monitoring '+mb+'?'))return; state.settings.mailboxes=mailboxes().filter(x=>x!==mb); const o=Object.assign({},mailOwners()); delete o[mb]; state.settings.mailOwners=o; const a=Object.assign({},state.settings.mailAccess||{}); delete a[mb]; state.settings.mailAccess=a; try{touchSettings();}catch(e){} if(_mailCur===mb){_mailCur='';_mailRows=null;_mailThread=null;} save('Removed a monitored mailbox'); renderMail(); }
+function mailSetOwner(mb,userId){ if(!isMailAdmin())return; if(!state.settings)state.settings={}; const o=Object.assign({},mailOwners()); if(userId)o[mb]=userId; else delete o[mb]; state.settings.mailOwners=o; try{touchSettings();}catch(e){} save('Set mailbox owner'); renderMail(); }
+function mailPick(mb){ if(!canWorkMailbox(mb)){ flash('You can’t open that mailbox.'); return; } _mailCur=mb; _mailThread=null; _mailRows=null; renderMail(); mailLoadInbox(); }
 
 async function mailLoadInbox(){ if(!_mailCur)return; _mailLoading=true; _mailErr=''; const el=document.getElementById('mailInbox'); if(el)el.innerHTML='<div class="empty" style="padding:20px">Loading…</div>';
   const r=await mailApi({action:'inbox',mailbox:_mailCur,top:30}); _mailLoading=false;
   if(!r||!r.ok){ _mailErr=(r&&r.error)||'Could not load'; _mailRows=[]; } else { _mailRows=r.rows||[]; _mailErr=''; }
   renderMail();
 }
+function mailRenderInbox(){ const el=document.getElementById('mailInbox'); if(el) el.innerHTML=mailInboxHtml(); }
 function mailInboxHtml(){
   if(_mailLoading) return '<div class="empty" style="padding:20px">Loading…</div>';
   if(_mailErr) return '<div class="note" style="border-left-color:var(--red)">'+esc(_mailErr)+'</div>';
   const rows=_mailRows||[]; if(!rows.length) return '<div class="empty" style="padding:20px">No recent inbox messages.</div>';
-  return rows.map(m=>{ const badge=m.replied?'<span class="pill" style="background:#eef7ee;color:#3f7d54;font-weight:700">Replied</span>':'<span class="pill" style="background:#f7e7e4;color:#b23a2e;font-weight:700">Needs reply</span>';
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick="mailOpenThread('${esc(m.conversationId)}',${JSON.stringify(m.subject||'').replace(/"/g,'&quot;')})">
-      <div style="display:flex;gap:8px;align-items:baseline"><div style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.from.name||m.from.address||'—')}</div>${badge}<div style="color:var(--muted);font-size:12px;white-space:nowrap">${mailWhen(m.received)}</div></div>
-      <div style="font-size:14px;margin-top:2px">${esc(m.subject||'(no subject)')}</div>
+  const owner=mailOwnerName(_mailCur);
+  return rows.map(m=>{ const dis=mailDismissed(m.conversationId), tasked=!!mailTaskId(m.conversationId);
+    const badge = m.replied?'<span class="pill" style="background:#eef7ee;color:#3f7d54;font-weight:700">Replied</span>'
+      : dis?'<span class="pill" style="background:#eee7d7;color:#7a6a56;font-weight:700">No reply needed</span>'
+      : '<span class="pill" style="background:#f7e7e4;color:#b23a2e;font-weight:700">Needs reply</span>';
+    const conv=esc(m.conversationId), subj=JSON.stringify(m.subject||'').replace(/"/g,'&quot;');
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;gap:8px;align-items:baseline;cursor:pointer" onclick="mailOpenThread('${conv}',${subj})"><div style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.from.name||m.from.address||'—')}</div>${badge}<div style="color:var(--muted);font-size:12px;white-space:nowrap">${mailWhen(m.received)}</div></div>
+      <div style="font-size:14px;margin-top:2px;cursor:pointer" onclick="mailOpenThread('${conv}',${subj})">${esc(m.subject||'(no subject)')}</div>
       <div style="color:var(--muted);font-size:13px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.preview||'')}</div>
+      <div style="display:flex;gap:16px;margin-top:6px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${dis?'checked':''} onclick="event.stopPropagation();mailDismissToggle('${conv}',this.checked)"> No reply needed</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${tasked?'checked':''} onclick="event.stopPropagation();mailTaskToggle('${conv}',this.checked)"> Make task${owner?(' → '+esc(owner)):' → me'}</label>
+      </div>
     </div>`; }).join('');
+}
+function mailDismissToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} if(!state.settings)state.settings={}; const d=Object.assign({},state.settings.mailDismiss||{}); if(on)d[_mailKey(conv)]=1; else delete d[_mailKey(conv)]; state.settings.mailDismiss=d; try{touchSettings();}catch(e){} save('Marked mail no-reply'); mailRenderInbox(); }
+function mailTaskToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const row=(_mailRows||[]).find(r=>r.conversationId===conv); if(!state.settings)state.settings={}; const map=Object.assign({},state.settings.mailTasks||{}); const key=_mailKey(conv);
+  if(on){ const ownerId=mailOwnerId(_mailCur)||_mailMe(); const owner=mailUsers().find(u=>u.id===ownerId); const tid=uid(); if(!state.attention)state.attention=[];
+    const fromName=(row&&row.from&&(row.from.name||row.from.address))||'';
+    state.attention.push({id:tid,text:'Reply needed: '+((row&&row.subject)||'(email)')+(fromName?(' — from '+fromName):'')+' ['+_mailCur+']',tone:'amber',forId:ownerId||'',forName:owner?owner.name:'',byId:_mailMe()||'',byName:(authOn()&&SESSION)?SESSION.name:'',ts:Date.now(),_upd:Date.now()});
+    map[key]=tid;
+  } else { const tid=map[key]; if(tid) state.attention=(state.attention||[]).filter(a=>a.id!==tid); delete map[key]; }
+  state.settings.mailTasks=map; try{touchSettings();}catch(e){} save(on?'Made an email task':'Cleared an email task'); mailRenderInbox();
 }
 async function mailOpenThread(conv,subject){ _mailThread={conversationId:conv,subject:subject||'',messages:null,loading:true}; renderMail();
   const r=await mailApi({action:'thread',mailbox:_mailCur,conversationId:conv});
@@ -6646,7 +6708,7 @@ async function mailOpenThread(conv,subject){ _mailThread={conversationId:conv,su
 }
 function mailCloseThread(){ _mailThread=null; renderMail(); }
 function mailThreadHtml(){
-  const t=_mailThread; const users=[...((state.auth&&state.auth.users)||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const t=_mailThread; const users=mailUsers(); const ownerId=mailOwnerId(_mailCur);
   const head=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button class="link" onclick="mailCloseThread()">&larr; Inbox</button><div style="font-weight:700;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subject||'(no subject)')}</div><span style="width:60px"></span></div>`;
   let body;
   if(t.loading) body='<div class="empty" style="padding:20px">Loading…</div>';
@@ -6654,16 +6716,14 @@ function mailThreadHtml(){
   else body=(t.messages||[]).map(m=>{ const who=m.outgoing?(_mailCur+' (sent)'):(m.from.name||m.from.address||'—'); const side=m.outgoing?'background:#eef3f7':'background:#faf7f2';
       return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;${side}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px">${esc(who)}</div><div style="color:var(--muted);font-size:12px">${mailWhen(m.date)}</div></div><div style="font-size:14px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(mailStrip(m.html)||m.preview||'')}</div></div>`; }).join('')||'<div class="empty" style="padding:16px">No messages.</div>';
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
-    <textarea id="mail_reply" rows="4" style="width:100%" placeholder="Type your reply…"></textarea>
+    <textarea id="mail_reply" rows="4" spellcheck="true" style="width:100%" placeholder="Type your reply…"></textarea>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="btn primary" id="mail_send" onclick="mailReply()">Send reply</button>
-      <span style="flex:1"></span>
-      <span class="hint">Turn into a task:</span>
-      <select id="mail_assign">${users.map(u=>`<option value="${u.id}">${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
-      <button class="btn" onclick="mailAssign()">Assign</button>
-    </div></div>`;
+      <span style="flex:1"></span><span class="hint">Turn into a task:</span>
+      <select id="mail_assign">${users.map(u=>`<option value="${u.id}"${u.id===ownerId?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
+      <button class="btn" onclick="mailAssign()">Assign</button></div></div>`;
   return `<div class="card">${head}<div>${body}</div></div>${reply}`;
 }
-async function mailReply(){ if(!requireCap('write'))return; const t=_mailThread; if(!t||!t.messages||!t.messages.length){ flash('Open a thread first.'); return; }
+async function mailReply(){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const t=_mailThread; if(!t||!t.messages||!t.messages.length){ flash('Open a thread first.'); return; }
   const ta=document.getElementById('mail_reply'); const text=((ta&&ta.value)||'').trim(); if(!text){ if(ta)ta.focus(); return; }
   const last=t.messages[t.messages.length-1]; const btn=document.getElementById('mail_send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
   const r=await mailApi({action:'send',mailbox:_mailCur,messageId:last.id,comment:text});
@@ -6671,10 +6731,10 @@ async function mailReply(){ if(!requireCap('write'))return; const t=_mailThread;
   if(!r||!r.ok){ alert('Could not send: '+((r&&r.error)||'error')); return; }
   flash('Reply sent.'); mailOpenThread(t.conversationId,t.subject);
 }
-function mailAssign(){ if(!requireCap('setup'))return; const t=_mailThread; if(!t)return; const sel=document.getElementById('mail_assign'); const forId=sel?sel.value:''; const forU=((state.auth&&state.auth.users)||[]).find(u=>u.id===forId);
+function mailAssign(){ if(!canWorkMailbox(_mailCur))return; const t=_mailThread; if(!t)return; const sel=document.getElementById('mail_assign'); const forId=sel?sel.value:''; const forU=mailUsers().find(u=>u.id===forId);
   const first=(t.messages&&t.messages.find(m=>!m.outgoing))||{from:{}}; const fromName=(first.from&&(first.from.name||first.from.address))||'';
   if(!state.attention)state.attention=[];
-  state.attention.push({id:uid(),text:'Reply needed: '+(t.subject||'(no subject)')+(fromName?(' — from '+fromName):'')+' ['+_mailCur+']',tone:'amber',forId:forId||'',forName:forU?forU.name:'',byId:SESSION?SESSION.userId:'',byName:(authOn()&&SESSION)?SESSION.name:'',ts:Date.now(),_upd:Date.now()});
+  state.attention.push({id:uid(),text:'Reply needed: '+(t.subject||'(no subject)')+(fromName?(' — from '+fromName):'')+' ['+_mailCur+']',tone:'amber',forId:forId||'',forName:forU?forU.name:'',byId:_mailMe()||'',byName:(authOn()&&SESSION)?SESSION.name:'',ts:Date.now(),_upd:Date.now()});
   save('Assigned an email task'+(forU?(' to '+forU.name):'')); flash('Task assigned'+(forU?(' to '+forU.name):'')+'.');
 }
 
