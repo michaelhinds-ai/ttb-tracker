@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913k</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913l</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6623,6 +6623,21 @@ function mailTaskId(conv){ return ((state.settings&&state.settings.mailTasks)||{
 function mailStrip(html){ return String(html||'').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#39;|&apos;/gi,"'").replace(/&quot;/gi,'"').replace(/\s+/g,' ').trim(); }
 function mailWhen(d){ if(!d)return''; try{ return new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } }
 async function mailApi(body){ try{ const r=await fetch('/api/graph-mail',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); return await r.json(); }catch(e){ return {ok:false,error:String((e&&e.message)||e)}; } }
+async function mailPost(path,body){ try{ const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); return await r.json(); }catch(e){ return {ok:false,error:String((e&&e.message)||e)}; } }
+// Address autocomplete: team emails + inbox senders + people you've emailed before.
+function mailContacts(){ return (state.settings&&Array.isArray(state.settings.mailContacts))?state.settings.mailContacts:[]; }
+function mailRememberContacts(list){ if(!list||!list.length)return; if(!state.settings)state.settings={}; const set=mailContacts().slice(); let changed=false; list.forEach(a=>{ a=String(a||'').trim().toLowerCase(); if(a&&a.indexOf('@')>0&&set.indexOf(a)<0){ set.push(a); changed=true; } }); if(changed){ state.settings.mailContacts=set.slice(-300); try{touchSettings();}catch(e){} try{save('Saved a contact');}catch(e){} } }
+function mailAddrSuggestions(){ const s={}; mailUsers().forEach(u=>{ if(u.email)s[String(u.email).toLowerCase()]=1; }); (_mailRows||[]).forEach(m=>{ const a=m.from&&m.from.address; if(a)s[String(a).toLowerCase()]=1; }); mailContacts().forEach(a=>{ if(a)s[a]=1; }); return Object.keys(s).filter(Boolean).sort(); }
+// Ask AI to polish a draft reply.
+let _mailAiText=null;
+async function mailAskAI(){ const ta=document.getElementById('mail_reply'); const draft=((ta&&ta.value)||''); const t=_mailThread; const inMsg=(t&&t.messages&&t.messages.filter(m=>!m.outgoing).slice(-1)[0])||(t&&t.messages&&t.messages.slice(-1)[0])||{}; const incoming=inMsg.html?mailStrip(inMsg.html):(inMsg.preview||'');
+  const box=document.getElementById('mail_ai'), btn=document.getElementById('mail_aibtn'); if(btn){btn.disabled=true;btn.textContent='Thinking…';} if(box)box.innerHTML='<div class="hint" style="margin-top:8px">Asking AI…</div>';
+  const r=await mailPost('/api/ai-reply',{draft:draft,incoming:incoming,mailbox:_mailCur}); if(btn){btn.disabled=false;btn.textContent='Ask AI';}
+  if(!r||!r.ok){ if(box)box.innerHTML='<div class="note" style="border-left-color:var(--amber);margin-top:8px">'+esc((r&&r.error)||'AI not available')+'</div>'; return; }
+  _mailAiText=r.reply||''; if(box)box.innerHTML=`<div class="card" style="margin-top:8px;background:#f6f9fc"><div style="font-weight:700;font-size:13px;margin-bottom:4px">AI suggestion</div><div style="white-space:pre-wrap;font-size:14px">${esc(_mailAiText)}</div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn primary" onclick="mailUseAI()">Use this</button><button class="link" onclick="mailClearAI()">Dismiss</button></div></div>`;
+}
+function mailUseAI(){ const ta=document.getElementById('mail_reply'); if(ta&&_mailAiText!=null){ ta.value=_mailAiText; ta.focus(); } mailClearAI(); }
+function mailClearAI(){ _mailAiText=null; const box=document.getElementById('mail_ai'); if(box)box.innerHTML=''; }
 // Follow-up flag (keeps a message pinned/visible), ignored-senders list, per-row task assignee.
 let _mailShowHidden=false; function mailToggleHidden(){ _mailShowHidden=!_mailShowHidden; mailRenderInbox(); }
 function mailFollowed(conv){ return !!((state.settings&&state.settings.mailFollow)||{})[_mailKey(conv)]; }
@@ -6781,16 +6796,19 @@ function mailThreadHtml(){
   else if(t.error) body='<div class="note" style="border-left-color:var(--red)">'+esc(t.error)+'</div>';
   else body=(t.messages||[]).map(m=>{ const who=m.outgoing?(_mailCur+' (sent)'):(m.from.name||m.from.address||'—'); const side=m.outgoing?'background:#eef3f7':'background:#faf7f2';
       return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;${side}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px">${esc(who)}</div><div style="color:var(--muted);font-size:12px">${mailWhen(m.date)}</div></div><div style="font-size:14px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(mailStrip(m.html)||m.preview||'')}</div></div>`; }).join('')||'<div class="empty" style="padding:16px">No messages.</div>';
-  const coworkers=users.filter(u=>u.email);
+  const coworkers=users.filter(u=>u.email); const addrs=mailAddrSuggestions();
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
+    <datalist id="mailAddrList">${addrs.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
     <textarea id="mail_reply" rows="4" spellcheck="true" style="width:100%" placeholder="Type your reply…"></textarea>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="hint">Cc:</span><input id="mail_cc" style="flex:1;min-width:170px" placeholder="add a coworker or outside email — comma separated">${coworkers.length?`<select onchange="if(this.value){mailAddCc(this.value);this.value='';}" style="max-width:150px"><option value="">+ coworker</option>${coworkers.map(u=>`<option value="${esc(u.email)}">${esc(u.name||u.email)}</option>`).join('')}</select>`:''}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="hint">Cc:</span><input id="mail_cc" list="mailAddrList" autocomplete="off" style="flex:1;min-width:170px" placeholder="add a coworker or outside email — comma separated">${coworkers.length?`<select onchange="if(this.value){mailAddCc(this.value);this.value='';}" style="max-width:150px"><option value="">+ coworker</option>${coworkers.map(u=>`<option value="${esc(u.email)}">${esc(u.name||u.email)}</option>`).join('')}</select>`:''}</div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="btn primary" id="mail_send" onclick="mailReply()">Send reply</button>
+      <button class="btn" id="mail_aibtn" onclick="mailAskAI()" title="Let AI polish your draft">✨ Ask AI</button>
       ${mailTemplates().length?`<select onchange="if(this.value){mailInsertTemplate(this.value);this.value='';}" style="max-width:190px"><option value="">Insert quick reply…</option>${mailTemplates().map(t=>`<option value="${t.id}">${esc(t.name||'')}</option>`).join('')}</select>`:''}
       <span style="flex:1"></span><span class="hint">Turn into a task:</span>
       <select id="mail_assign">${users.map(u=>`<option value="${u.id}"${u.id===ownerId?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
       <button class="btn" onclick="mailAssign()">Assign</button></div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap"><span class="hint">Forward to:</span><input id="mail_fwd" style="flex:1;min-width:170px" placeholder="someone@company.com"><button class="btn" id="mail_fwdbtn" onclick="mailForward()">Forward</button><span class="hint">forwards this message; the text above goes along as a note</span></div></div>`;
+    <div id="mail_ai"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap"><span class="hint">Forward to:</span><input id="mail_fwd" list="mailAddrList" autocomplete="off" style="flex:1;min-width:170px" placeholder="someone@company.com"><button class="btn" id="mail_fwdbtn" onclick="mailForward()">Forward</button><span class="hint">forwards this message; the text above goes along as a note</span></div></div>`;
   return `<div class="card">${head}<div>${body}</div></div>${reply}`;
 }
 async function mailReply(){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const t=_mailThread; if(!t||!t.messages||!t.messages.length){ flash('Open a thread first.'); return; }
@@ -6799,6 +6817,7 @@ async function mailReply(){ if(!canWorkMailbox(_mailCur)){flash('You can’t wor
   const r=await mailApi({action:'send',mailbox:_mailCur,messageId:last.id,comment:text,cc:cc});
   if(btn){btn.disabled=false;btn.textContent='Send reply';}
   if(!r||!r.ok){ alert('Could not send: '+((r&&r.error)||'error')); return; }
+  if(cc.trim()) mailRememberContacts(cc.split(/[,;\s]+/));
   flash('Reply sent'+(cc.trim()?' (cc’d)':'')+'.'); mailOpenThread(t.conversationId,t.subject);
 }
 function mailAddCc(email){ if(!email)return; const el=document.getElementById('mail_cc'); if(!el)return; const cur=(el.value||'').trim(); const parts=cur?cur.split(/[,;\s]+/).filter(Boolean):[]; if(parts.indexOf(email)<0)parts.push(email); el.value=parts.join(', '); }
@@ -6808,6 +6827,7 @@ async function mailForward(){ if(!canWorkMailbox(_mailCur)){flash('You can’t w
   const r=await mailApi({action:'send',mode:'forward',mailbox:_mailCur,messageId:last.id,to:to,comment:note});
   if(btn){btn.disabled=false;btn.textContent='Forward';}
   if(!r||!r.ok){ alert('Could not forward: '+((r&&r.error)||'error')); return; }
+  mailRememberContacts([to]);
   flash('Forwarded to '+to+'.'); mailOpenThread(t.conversationId,t.subject);
 }
 function mailAssign(){ if(!canWorkMailbox(_mailCur))return; const t=_mailThread; if(!t)return; const sel=document.getElementById('mail_assign'); const forId=sel?sel.value:''; const forU=mailUsers().find(u=>u.id===forId);
