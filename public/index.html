@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913o</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913p</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6802,7 +6802,19 @@ function mailTaskToggle(conv,on){ if(!canWorkMailbox(_mailCur)){flash('You can�
 async function mailOpenThread(conv,subject){ _mailThread={conversationId:conv,subject:subject||'',messages:null,loading:true}; renderMail();
   const r=await mailApi({action:'thread',mailbox:_mailCur,conversationId:conv});
   if(!r||!r.ok){ _mailThread.error=(r&&r.error)||'Could not load'; _mailThread.loading=false; } else { _mailThread.messages=r.messages||[]; _mailThread.loading=false; }
-  renderMail();
+  renderMail(); try{ mailLoadThreadImages(); }catch(e){}
+}
+function mailBytes(n){ n=+n||0; return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(Math.round(n/1024)+' KB'):(n+' B'); }
+// Fetch inline/photo attachment bytes and swap them into their placeholders (no full
+// re-render, so a reply in progress isn't lost). Cached on the message for later renders.
+async function mailLoadThreadImages(){ const t=_mailThread; if(!t||!t.messages)return;
+  for(const m of (t.messages||[])){ for(const a of (m.attachments||[])){ if(a.dataUrl)continue; if(!/^image\//i.test(a.contentType||''))continue; if((a.size||0)>6*1048576)continue;
+    const r=await mailApi({action:'attachment',mailbox:_mailCur,messageId:m.id,attachmentId:a.id});
+    if(r&&r.ok&&r.dataUrl){ a.dataUrl=r.dataUrl; if(_mailThread!==t)return; const el=[...document.querySelectorAll('.mailatt')].find(n=>n.getAttribute('data-att')===a.id); if(el)el.innerHTML=`<img src="${a.dataUrl}" style="max-width:100%;max-height:420px;border-radius:6px;display:block"><div class="hint" style="margin-top:2px">${esc(a.name||'')}</div>`; }
+  } }
+}
+async function mailDownloadAtt(mid,aid,name){ const r=await mailApi({action:'attachment',mailbox:_mailCur,messageId:mid,attachmentId:aid}); if(!r||!r.ok||!r.dataUrl){ alert((r&&r.error)||'Could not load that attachment.'); return; }
+  try{ const a=document.createElement('a'); a.href=r.dataUrl; a.download=name||r.name||'attachment'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ try{window.open(r.dataUrl,'_blank');}catch(e2){} }
 }
 function mailCloseThread(){ _mailThread=null; renderMail(); }
 function mailThreadHtml(){
@@ -6812,7 +6824,11 @@ function mailThreadHtml(){
   if(t.loading) body='<div class="empty" style="padding:20px">Loading…</div>';
   else if(t.error) body='<div class="note" style="border-left-color:var(--red)">'+esc(t.error)+'</div>';
   else body=(t.messages||[]).map(m=>{ const who=m.outgoing?(_mailCur+' (sent)'):(m.from.name||m.from.address||'—'); const side=m.outgoing?'background:#eef3f7':'background:#faf7f2';
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;${side}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px">${esc(who)}</div><div style="color:var(--muted);font-size:12px">${mailWhen(m.date)}</div></div><div style="font-size:14px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(mailStrip(m.html)||m.preview||'')}</div></div>`; }).join('')||'<div class="empty" style="padding:16px">No messages.</div>';
+      const atts=m.attachments||[]; const attHtml= atts.length? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">${atts.map(a=>{ const img=/^image\//i.test(a.contentType||'');
+        if(img) return a.dataUrl?`<div class="mailatt" data-msg="${esc(m.id)}" data-att="${esc(a.id)}"><img src="${a.dataUrl}" style="max-width:100%;max-height:420px;border-radius:6px;display:block"><div class="hint" style="margin-top:2px">${esc(a.name||'')}</div></div>`:`<div class="mailatt" data-msg="${esc(m.id)}" data-att="${esc(a.id)}"><div class="hint">🖼 ${esc(a.name||'image')} — loading…</div></div>`;
+        return `<div style="display:flex;align-items:center;gap:8px"><span>📎</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name||'file')}</span><span class="hint">${mailBytes(a.size)}</span><button class="link" onclick="mailDownloadAtt('${esc(m.id)}','${esc(a.id)}',${JSON.stringify(a.name||'file').replace(/"/g,'&quot;')})">Download</button></div>`;
+      }).join('')}</div>`:'';
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;${side}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px">${esc(who)}</div><div style="color:var(--muted);font-size:12px">${mailWhen(m.date)}</div></div><div style="font-size:14px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(mailStrip(m.html)||m.preview||'')}</div>${attHtml}</div>`; }).join('')||'<div class="empty" style="padding:16px">No messages.</div>';
   const coworkers=users.filter(u=>u.email); const addrs=mailAddrSuggestions();
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
     <datalist id="mailAddrList">${addrs.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
