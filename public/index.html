@@ -245,7 +245,7 @@
     <div class="headright">
       <button class="undo noprint cap-delete" id="undoBtn" style="display:none">↶ Undo</button>
       <div class="whoami noprint" id="whoami" style="display:none"></div>
-      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913j</span></div>
+      <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Connecting…</span><span id="buildTag" style="opacity:.45;font-size:10px;margin-left:6px">v20260913k</span></div>
       <div class="dspbadge" id="dspBadge"></div>
     </div>
   </div>
@@ -6781,22 +6781,34 @@ function mailThreadHtml(){
   else if(t.error) body='<div class="note" style="border-left-color:var(--red)">'+esc(t.error)+'</div>';
   else body=(t.messages||[]).map(m=>{ const who=m.outgoing?(_mailCur+' (sent)'):(m.from.name||m.from.address||'—'); const side=m.outgoing?'background:#eef3f7':'background:#faf7f2';
       return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;${side}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px">${esc(who)}</div><div style="color:var(--muted);font-size:12px">${mailWhen(m.date)}</div></div><div style="font-size:14px;margin-top:6px;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(mailStrip(m.html)||m.preview||'')}</div></div>`; }).join('')||'<div class="empty" style="padding:16px">No messages.</div>';
+  const coworkers=users.filter(u=>u.email);
   const reply=`<div class="card" style="margin-top:10px"><div style="font-weight:700;margin-bottom:6px">Reply as ${esc(_mailCur)}</div>
     <textarea id="mail_reply" rows="4" spellcheck="true" style="width:100%" placeholder="Type your reply…"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="hint">Cc:</span><input id="mail_cc" style="flex:1;min-width:170px" placeholder="add a coworker or outside email — comma separated">${coworkers.length?`<select onchange="if(this.value){mailAddCc(this.value);this.value='';}" style="max-width:150px"><option value="">+ coworker</option>${coworkers.map(u=>`<option value="${esc(u.email)}">${esc(u.name||u.email)}</option>`).join('')}</select>`:''}</div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="btn primary" id="mail_send" onclick="mailReply()">Send reply</button>
       ${mailTemplates().length?`<select onchange="if(this.value){mailInsertTemplate(this.value);this.value='';}" style="max-width:190px"><option value="">Insert quick reply…</option>${mailTemplates().map(t=>`<option value="${t.id}">${esc(t.name||'')}</option>`).join('')}</select>`:''}
       <span style="flex:1"></span><span class="hint">Turn into a task:</span>
       <select id="mail_assign">${users.map(u=>`<option value="${u.id}"${u.id===ownerId?' selected':''}>${esc(u.name||'')}</option>`).join('')||'<option value="">(no users)</option>'}</select>
-      <button class="btn" onclick="mailAssign()">Assign</button></div></div>`;
+      <button class="btn" onclick="mailAssign()">Assign</button></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap"><span class="hint">Forward to:</span><input id="mail_fwd" style="flex:1;min-width:170px" placeholder="someone@company.com"><button class="btn" id="mail_fwdbtn" onclick="mailForward()">Forward</button><span class="hint">forwards this message; the text above goes along as a note</span></div></div>`;
   return `<div class="card">${head}<div>${body}</div></div>${reply}`;
 }
 async function mailReply(){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const t=_mailThread; if(!t||!t.messages||!t.messages.length){ flash('Open a thread first.'); return; }
   const ta=document.getElementById('mail_reply'); const text=((ta&&ta.value)||'').trim(); if(!text){ if(ta)ta.focus(); return; }
-  const last=t.messages[t.messages.length-1]; const btn=document.getElementById('mail_send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
-  const r=await mailApi({action:'send',mailbox:_mailCur,messageId:last.id,comment:text});
+  const last=t.messages[t.messages.length-1]; const cc=((document.getElementById('mail_cc')||{}).value||''); const btn=document.getElementById('mail_send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  const r=await mailApi({action:'send',mailbox:_mailCur,messageId:last.id,comment:text,cc:cc});
   if(btn){btn.disabled=false;btn.textContent='Send reply';}
   if(!r||!r.ok){ alert('Could not send: '+((r&&r.error)||'error')); return; }
-  flash('Reply sent.'); mailOpenThread(t.conversationId,t.subject);
+  flash('Reply sent'+(cc.trim()?' (cc’d)':'')+'.'); mailOpenThread(t.conversationId,t.subject);
+}
+function mailAddCc(email){ if(!email)return; const el=document.getElementById('mail_cc'); if(!el)return; const cur=(el.value||'').trim(); const parts=cur?cur.split(/[,;\s]+/).filter(Boolean):[]; if(parts.indexOf(email)<0)parts.push(email); el.value=parts.join(', '); }
+async function mailForward(){ if(!canWorkMailbox(_mailCur)){flash('You can’t work this mailbox.');return;} const t=_mailThread; if(!t||!t.messages||!t.messages.length){ flash('Open a thread first.'); return; }
+  const el=document.getElementById('mail_fwd'); const to=((el&&el.value)||'').trim(); if(!to||to.indexOf('@')<1){ if(el)el.focus(); flash('Enter who to forward to.'); return; }
+  const note=((document.getElementById('mail_reply')||{}).value||''); const last=t.messages[t.messages.length-1]; const btn=document.getElementById('mail_fwdbtn'); if(btn){btn.disabled=true;btn.textContent='Forwarding…';}
+  const r=await mailApi({action:'send',mode:'forward',mailbox:_mailCur,messageId:last.id,to:to,comment:note});
+  if(btn){btn.disabled=false;btn.textContent='Forward';}
+  if(!r||!r.ok){ alert('Could not forward: '+((r&&r.error)||'error')); return; }
+  flash('Forwarded to '+to+'.'); mailOpenThread(t.conversationId,t.subject);
 }
 function mailAssign(){ if(!canWorkMailbox(_mailCur))return; const t=_mailThread; if(!t)return; const sel=document.getElementById('mail_assign'); const forId=sel?sel.value:''; const forU=mailUsers().find(u=>u.id===forId);
   const first=(t.messages&&t.messages.find(m=>!m.outgoing))||{from:{}}; const fromName=(first.from&&(first.from.name||first.from.address))||'';
