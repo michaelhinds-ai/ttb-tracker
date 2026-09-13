@@ -57,14 +57,28 @@ export default async (req) => {
       const mb = (b.mailbox || "").trim(), conv = (b.conversationId || "").trim();
       if (!mb || !conv) return jsonResp({ ok: false, error: "bad_request" }, 400);
       // $filter on conversationId can't combine with $orderby — sort client-side.
-      const sel = "$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,bodyPreview";
-      const res = await graph(`/users/${enc(mb)}/messages?$filter=conversationId eq '${conv.replace(/'/g, "''")}'&${sel}&$top=50`);
+      // Expand attachment METADATA only (no contentBytes) so the payload stays small;
+      // the actual bytes are fetched per-attachment via the "attachment" action.
+      const sel = "$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,bodyPreview,hasAttachments";
+      const exp = "$expand=attachments($select=id,name,contentType,size,isInline,contentId)";
+      const res = await graph(`/users/${enc(mb)}/messages?$filter=conversationId eq '${conv.replace(/'/g, "''")}'&${sel}&${exp}&$top=50`);
       const msgs = (res.value || []).map((m) => {
         const from = addr(m.from);
+        const atts = (m.attachments || [])
+          .filter((a) => (a["@odata.type"] || "").indexOf("fileAttachment") >= 0 || a.contentType)
+          .map((a) => ({ id: a.id, name: a.name || "attachment", contentType: a.contentType || "", size: a.size || 0, isInline: !!a.isInline }));
         return { id: m.id, from, to: (m.toRecipients || []).map(addr), date: m.receivedDateTime || m.sentDateTime,
-          outgoing: from.address === mb.toLowerCase(), preview: m.bodyPreview || "", html: (m.body && m.body.content) || "" };
+          outgoing: from.address === mb.toLowerCase(), preview: m.bodyPreview || "", html: (m.body && m.body.content) || "", attachments: atts };
       }).sort((x, y) => (+new Date(x.date || 0)) - (+new Date(y.date || 0)));
       return jsonResp({ ok: true, messages: msgs });
+    }
+
+    if (action === "attachment") {
+      const mb = (b.mailbox || "").trim(), mid = b.messageId, aid = b.attachmentId;
+      if (!mb || !mid || !aid) return jsonResp({ ok: false, error: "bad_request" }, 400);
+      const a = await graph(`/users/${enc(mb)}/messages/${enc(mid)}/attachments/${enc(aid)}`);
+      if (!a || !a.contentBytes) return jsonResp({ ok: false, error: "no_content", detail: "That attachment can't be shown here (it may be a linked/cloud file)." }, 200);
+      return jsonResp({ ok: true, name: a.name || "attachment", contentType: a.contentType || "application/octet-stream", dataUrl: `data:${a.contentType || "application/octet-stream"};base64,${a.contentBytes}` });
     }
 
     if (action === "send") {
