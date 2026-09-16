@@ -121,7 +121,7 @@ export async function accountClockStatus(acct, startISO, endISO) {
       if (diff < best && diff < 6 * 3600 * 1000) { best = diff; sStart = d.start_at; sEnd = d.end_at; sStartMs = ms; sEndMs = Date.parse(d.end_at || ""); }
     }
     const lateInMin = (sStartMs != null && isFinite(clockInMs)) ? Math.round((clockInMs - sStartMs) / 60000) : null;
-    const overMin = (open && isFinite(sEndMs)) ? Math.round((now - sEndMs) / 60000) : null;
+    const overMin = (open && sEndMs != null && Number.isFinite(sEndMs)) ? Math.round((now - sEndMs) / 60000) : null;
     return { id: w.id || (tmId + "|" + clockIn), name: tm[tmId] || tmId, teamMemberId: tmId, location: loc[w.location_id] || w.location_id || "", clockIn, clockOut, open, schedStart: sStart, schedEnd: sEnd, lateInMin, overMin };
   });
 }
