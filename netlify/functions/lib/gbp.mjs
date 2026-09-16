@@ -32,6 +32,27 @@ export class GBPError extends Error {
   constructor(code, status, detail) { super(code); this.code = code; this.status = status; this.detail = detail; }
 }
 
+// Turn any error payload (string, Google OAuth error object {error, error_description},
+// or Google API error {error:{code,message,status}}) into a short READABLE string, so an
+// error never reaches the UI as "[object Object]".
+export function readableErr(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v !== "object") return String(v);
+  try {
+    if (v.error && typeof v.error === "object") {
+      const ge = v.error;
+      return (ge.message || ge.status || ge.code || JSON.stringify(ge));
+    }
+    if (v.error_description || v.error) {
+      return [v.error, v.error_description].filter(Boolean).join(" — ");
+    }
+    if (v.message) return v.message + (v.status ? " (" + v.status + ")" : "");
+    const s = JSON.stringify(v);
+    return (s && s !== "{}") ? s : String(v);
+  } catch (e) { return String(v); }
+}
+
 export async function saveTokens(tok) { await store().setJSON("tokens", { ...tok, savedAt: Date.now() }); }
 export async function loadTokens() { return await store().get("tokens", { type: "json" }); }
 export async function clearTokens() { try { await store().delete("tokens"); } catch (e) {} }
@@ -74,7 +95,7 @@ export async function exchangeCode(req, code) {
     body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri(req), grant_type: "authorization_code" }),
   });
   const t = await r.json().catch(() => null);
-  if (!r.ok || !t || !t.access_token) throw new GBPError("token_exchange_failed", r.status, t);
+  if (!r.ok || !t || !t.access_token) throw new GBPError("token_exchange_failed", r.status, readableErr(t) || ("HTTP " + r.status));
   await saveTokens(t);
   return t;
 }
@@ -93,7 +114,7 @@ export async function getAccess() {
     body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: tok.refresh_token, grant_type: "refresh_token" }),
   });
   const nt = await r.json().catch(() => null);
-  if (!r.ok || !nt || !nt.access_token) throw new GBPError("refresh_failed", r.status, nt);
+  if (!r.ok || !nt || !nt.access_token) throw new GBPError("refresh_failed", r.status, readableErr(nt) || ("HTTP " + r.status));
   tok = { ...tok, ...nt, savedAt: Date.now() };
   await saveTokens(tok);
   return tok.access_token;
@@ -146,14 +167,19 @@ const STAR = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 export function starNum(r) { return STAR[r && r.starRating] || 0; }
 
 // Reviews across ALL managed locations, each tagged with its location.
+// If EVERY location errors (e.g. token expired or API not approved), re-throw the
+// first error so the caller can report it — instead of silently returning 0 reviews.
 export async function listAllReviews(perLocation = 50) {
   const targets = await resolveTargets();
   const all = [];
+  let firstErr = null, attempted = 0;
   for (const t of targets) {
     const url = `https://mybusiness.googleapis.com/v4/accounts/${t.accountId}/locations/${t.locationId}/reviews?pageSize=${Math.min(50, perLocation)}&orderBy=updateTime desc`;
-    let j; try { j = await gapi(url); } catch (e) { continue; } // skip a location that errors, keep the rest
+    attempted++;
+    let j; try { j = await gapi(url); } catch (e) { if (!firstErr) firstErr = e; continue; } // skip a location that errors, keep the rest
     (j.reviews || []).forEach((rv) => { rv.__accountId = t.accountId; rv.__locationId = t.locationId; rv.__locationName = t.title; all.push(rv); });
   }
+  if (!all.length && firstErr && attempted > 0) throw firstErr; // all locations failed — surface why
   return { targets, reviews: all };
 }
 
@@ -233,7 +259,7 @@ export async function runWeeklyReviews() {
     const base = { rating: stars, reviewer: (rv.reviewer && rv.reviewer.displayName) || "Guest", comment: rv.comment || "", draft, location: rv.__locationName || "", accountId: rv.__accountId, locationId: rv.__locationId, updatedAt: Date.now() };
     if (stars >= (settings.autopostMinStars || 4)) {
       try { await replyToReview(rv.__accountId, rv.__locationId, id, draft); log[id] = { ...base, status: "posted", reply: draft, postedAt: Date.now() }; posted++; }
-      catch (e) { log[id] = { ...base, status: "held", error: String((e && e.detail) || e.message || e).slice(0, 300) }; held++; }
+      catch (e) { log[id] = { ...base, status: "held", error: readableErr((e && e.detail) || (e && e.message) || e).slice(0, 300) }; held++; }
     } else {
       log[id] = { ...base, status: "held" }; held++; // low star — needs approval
     }
