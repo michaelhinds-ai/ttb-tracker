@@ -1,4 +1,4 @@
-import { listAllReviews, getLog, getSettings, starNum, loadTokens, GBPError, json } from "./lib/gbp.mjs";
+import { listAllReviews, getLog, getSettings, starNum, loadTokens, GBPError, readableErr, json } from "./lib/gbp.mjs";
 export default async () => {
   const tok = await loadTokens();
   if (!tok || !(tok.access_token || tok.refresh_token)) return json({ connected: false });
@@ -19,7 +19,8 @@ export default async () => {
     return json({ connected: true, locations: targets, settings, reviews: out });
   } catch (e) {
     if (e instanceof GBPError && e.code === "not_connected") return json({ connected: false });
-    return json({ connected: true, error: (e && e.code) || "error", detail: String((e && e.detail) || (e && e.message) || e).slice(0, 400) });
+    // readableErr turns Google's error object into text so the UI never shows "[object Object]".
+    return json({ connected: true, error: (e && e.code) || "error", detail: readableErr((e && e.detail) || (e && e.message) || e).slice(0, 400) });
   }
 };
 export const config = { path: "/api/reviews/list" };
