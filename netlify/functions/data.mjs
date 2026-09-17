@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { authOn, verify, tokenFromReq, isRetailRole, filterForRetail, bootstrap, RETAIL_WRITE_KEYS } from "./lib/authtoken.mjs";
 
 // Synced key-value store for the TTB tracker — one JSON blob per workspace code.
 // Conflict-safe: each save carries the _savedAt it was based on. If the cloud has
@@ -74,7 +75,16 @@ export default async (req) => {
   try {
     if (req.method === "GET") {
       const data = await store.get(key, { type: "json" });
-      return json(data ?? null);
+      if (!data) return json(null);
+      // Enforce role-based access ONLY when server auth is configured AND login is on for this
+      // workspace. Otherwise behave exactly as before (full data), so nothing changes until
+      // AUTH_SECRET is set.
+      const enforce = authOn() && data.auth && data.auth.enabled;
+      if (!enforce) return json(data);
+      const tok = verify(tokenFromReq(req));
+      if (!tok) return json(bootstrap(data));            // not signed in → login screen data only
+      if (isRetailRole(tok.role)) return json(filterForRetail(data)); // employee → no financials
+      return json(data);                                  // back office → full
     }
 
     if (req.method === "POST" || req.method === "PUT") {
@@ -84,6 +94,25 @@ export default async (req) => {
       if ("_baseSavedAt" in body) delete body._baseSavedAt;
 
       const current = await store.get(key, { type: "json" });
+      const enforce = authOn() && current && current.auth && current.auth.enabled;
+
+      if (enforce) {
+        const tok = verify(tokenFromReq(req));
+        if (!tok) return json({ error: "auth_required" }, 401);
+        if (isRetailRole(tok.role)) {
+          // Retail can only touch its own collections — start from the FULL stored blob and
+          // merge in just the allowed keys by id. It can never overwrite financial data
+          // (which it doesn't even have).
+          const out = { ...current };
+          for (const k of RETAIL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);
+          const savedAt = new Date().toISOString();
+          const saved = { ...out, _savedAt: savedAt };
+          await store.setJSON(key, saved);
+          return json({ ok: true, savedAt });
+        }
+        // back office token → full save (fall through to normal handling below)
+      }
+
       let toSave = body, merged = false;
       // Only merge when there's a genuine conflict (the client based its save on an older
       // cloud version). In the normal case (base matches) we save as-is, so deletes/reverses
@@ -91,6 +120,13 @@ export default async (req) => {
       if (current && current._savedAt && base != null && String(current._savedAt) !== String(base)) {
         toSave = mergeStates(current, body);
         merged = true;
+      }
+      // Never let a save WIPE a whole collection just because the client (e.g. an older build)
+      // didn't include it. If a key is entirely absent from the incoming save but present in the
+      // stored blob, keep what's stored. (An intentional clear still works: the client sends [].)
+      if (current) {
+        for (const k of ARR_KEYS) { if (toSave[k] === undefined && current[k] !== undefined) toSave[k] = current[k]; }
+        if (toSave.trustedDevices === undefined && current.trustedDevices !== undefined) toSave.trustedDevices = current.trustedDevices;
       }
       const savedAt = new Date().toISOString();
       const saved = { ...toSave, _savedAt: savedAt };
