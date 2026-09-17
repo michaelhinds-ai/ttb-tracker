@@ -9,6 +9,7 @@ const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
   "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates",
+  "invCats", "invItems", "invCounts", "invSubs",
 ];
 
 function mergeById(cloudArr, incArr) {
@@ -31,7 +32,7 @@ function mergeById(cloudArr, incArr) {
 // Settings fields that must never be wiped by a device that simply hasn't seen
 // them yet (email recipient lists, alert config). If the incoming save is empty
 // or missing one of these but the cloud has a value, keep the cloud value.
-const STICKY_SETTINGS = ["salesEmailTo", "lateEmailTo", "lateEmailByLoc", "lateThresholdMin"];
+const STICKY_SETTINGS = ["salesEmailTo", "lateEmailTo", "lateEmailByLoc", "lateThresholdMin", "invEmailTo", "invEmailByLoc"];
 function isEmptyVal(v) {
   if (v == null || v === "") return true;
   if (typeof v === "object" && !Array.isArray(v)) return Object.keys(v).length === 0;
