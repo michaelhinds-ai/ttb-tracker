@@ -1,8 +1,9 @@
 // Sales breakdown for the Reports hub — one Square Orders pull per account for a
-// date range, aggregated four ways: by item, by category, by day-of-week, and by
-// hour. Net = merchandise after discounts, before tax and tips (matches the
-// other sales reports).
-// POST { startDate, endDate }  ->  { ok, startDate, endDate, items:[], categories:[], byDow:[7], byHour:[24], totals, errors:[] }
+// date range, aggregated: by item, by category, by day-of-week, by hour, and
+// (for the staffing heat map) a per-location weekday×hour transaction-count grid.
+// Net = merchandise after discounts, before tax and tips (matches the other sales reports).
+// POST { startDate, endDate }  ->  { ok, startDate, endDate, items:[], categories:[],
+//        byDow:[7], byHour:[24], byLoc:[{location, grid:[7][24], daysActive:[7], total}], totals, errors:[] }
 import { accounts, sqFor, dayRange, env as sqEnv, json } from "./lib/square.mjs";
 
 const isNum = (v) => typeof v === "number" && isFinite(v);
@@ -38,28 +39,41 @@ async function catalogMap(acct) {
   return varInfo;
 }
 
+// Weekday (0=Sun..6=Sat), hour (0-23), and YYYY-MM-DD — all in the account's timezone.
 function tzParts(iso, tz) {
   try {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "2-digit", hour12: false }).formatToParts(new Date(iso));
-    const wd = (parts.find((p) => p.type === "weekday") || {}).value || "";
-    let hr = +(parts.find((p) => p.type === "hour") || {}).value; if (hr === 24) hr = 0;
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "2-digit", hour12: false, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(iso));
+    const get = (t) => (parts.find((p) => p.type === t) || {}).value || "";
+    const wd = get("weekday");
+    let hr = +get("hour"); if (hr === 24) hr = 0;
     const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    return { dow: dowMap[wd] != null ? dowMap[wd] : 0, hour: isFinite(hr) ? hr : 0 };
-  } catch { return { dow: 0, hour: 0 }; }
+    const ymd = `${get("year")}-${get("month")}-${get("day")}`;
+    return { dow: dowMap[wd] != null ? dowMap[wd] : 0, hour: isFinite(hr) ? hr : 0, ymd };
+  } catch { return { dow: 0, hour: 0, ymd: "" }; }
 }
+
+const zeroGrid = () => Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
 
 async function accountBreakdown(acct, startYmd, endYmd) {
   const tz = acct.tz || sqEnv().tz;
   const startISO = dayRange(startYmd, tz).startISO;
   const endISO = dayRange(endYmd || startYmd, tz).endISO;
-  // Locations for this account.
-  let locIds = [];
-  try { const lr = await sqFor(acct, "/v2/locations"); locIds = ((lr && lr.locations) || []).map((l) => l.id); } catch {}
+  // Locations for this account (id -> name), so the heat map can split by store.
+  let locIds = [], nameById = {};
+  try {
+    const lr = await sqFor(acct, "/v2/locations");
+    for (const l of (lr && lr.locations) || []) { locIds.push(l.id); nameById[l.id] = l.name || l.id; }
+  } catch {}
   const varInfo = await catalogMap(acct);
 
   const items = {}, cats = {};
   const byDow = Array.from({ length: 7 }, () => ({ net: 0, count: 0 }));
   const byHour = Array.from({ length: 24 }, () => ({ net: 0, count: 0 }));
+  // Per-location transaction-count grid + the set of distinct active dates per weekday
+  // (so the client can average "per open day" instead of per calendar day).
+  const locGrid = {};   // locationName -> number[7][24]
+  const locDays = {};   // locationName -> [7] of Set(ymd)
+  const locTotal = {};  // locationName -> total transactions
   let totalNet = 0, orderCount = 0;
 
   let cursor = null;
@@ -76,7 +90,12 @@ async function accountBreakdown(acct, startYmd, endYmd) {
     for (const o of orders) {
       orderCount++;
       const when = o.closed_at || o.created_at;
-      const { dow, hour } = tzParts(when, tz);
+      const { dow, hour, ymd } = tzParts(when, tz);
+      const locName = nameById[o.location_id] || o.location_id || "Unknown";
+      if (!locGrid[locName]) { locGrid[locName] = zeroGrid(); locDays[locName] = Array.from({ length: 7 }, () => new Set()); locTotal[locName] = 0; }
+      locGrid[locName][dow][hour]++;
+      if (ymd) locDays[locName][dow].add(ymd);
+      locTotal[locName]++;
       let orderNet = 0;
       for (const li of o.line_items || []) {
         const net = m(li.gross_sales_money) - m(li.total_discount_money); // merchandise after discount, pre-tax
@@ -98,9 +117,15 @@ async function accountBreakdown(acct, startYmd, endYmd) {
     cursor = r && r.cursor;
     if (!cursor || !orders.length) break;
   }
+  const byLoc = Object.keys(locGrid).map((name) => ({
+    location: name,
+    grid: locGrid[name],
+    daysActive: locDays[name].map((s) => s.size),
+    total: locTotal[name],
+  }));
   return {
     items: Object.values(items), categories: Object.values(cats),
-    byDow, byHour, totalNet, orderCount,
+    byDow, byHour, byLoc, totalNet, orderCount,
   };
 }
 
@@ -119,6 +144,7 @@ export default async (req) => {
   const itemMap = {}, catMap = {};
   const byDow = Array.from({ length: 7 }, () => ({ net: 0, count: 0 }));
   const byHour = Array.from({ length: 24 }, () => ({ net: 0, count: 0 }));
+  const locMap = {}; // location name -> { grid, daysActive, total } (a location belongs to one account)
   let totalNet = 0, orderCount = 0;
   for (const { d } of results) {
     if (!d) continue;
@@ -126,10 +152,16 @@ export default async (req) => {
     for (const c of d.categories) { const e = catMap[c.name] || (catMap[c.name] = { name: c.name, qty: 0, net: 0 }); e.qty += c.qty; e.net += c.net; }
     for (let i = 0; i < 7; i++) { byDow[i].net += d.byDow[i].net; byDow[i].count += d.byDow[i].count; }
     for (let i = 0; i < 24; i++) { byHour[i].net += d.byHour[i].net; byHour[i].count += d.byHour[i].count; }
+    for (const lo of d.byLoc || []) {
+      const e = locMap[lo.location] || (locMap[lo.location] = { location: lo.location, grid: zeroGrid(), daysActive: [0, 0, 0, 0, 0, 0, 0], total: 0 });
+      for (let dd = 0; dd < 7; dd++) { for (let hh = 0; hh < 24; hh++) e.grid[dd][hh] += lo.grid[dd][hh]; e.daysActive[dd] += lo.daysActive[dd]; }
+      e.total += lo.total;
+    }
     totalNet += d.totalNet; orderCount += d.orderCount;
   }
   const items = Object.values(itemMap).map((x) => ({ ...x, netCents: x.net })).sort((a, b) => b.qty - a.qty);
   const categories = Object.values(catMap).map((x) => ({ ...x, netCents: x.net })).sort((a, b) => b.net - a.net);
-  return json({ ok: true, startDate, endDate, items, categories, byDow, byHour, totals: { netCents: totalNet, orderCount }, errors });
+  const byLoc = Object.values(locMap).sort((a, b) => b.total - a.total);
+  return json({ ok: true, startDate, endDate, items, categories, byDow, byHour, byLoc, totals: { netCents: totalNet, orderCount }, errors });
 };
 export const config = { path: "/api/sales/breakdown" };
