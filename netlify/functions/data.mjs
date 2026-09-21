@@ -39,7 +39,18 @@ function isRetailRole(r) { return r === "retail" || r === "retailemp"; }
 // submission log, and duty/supply check-offs. These are ALWAYS merged record-by-record (newest
 // _upd wins, nothing dropped) even on a full-writer save, so a back-office device holding a stale
 // copy can never wipe the store staff's daily work. (Deletes here are rare toggles and low-stakes.)
-const ALWAYS_MERGE_KEYS = ["invCounts", "invSubs", "dutyChecks"];
+const ALWAYS_MERGE_KEYS = ["invCounts", "invSubs", "dutyChecks", "duties", "invItems", "invCats"];
+// The store LIST collections carry soft-delete tombstones ({id,_del:1,_upd}) so that, under the
+// always-merge rule above, a real deletion still propagates (a merge can't drop a record, so a
+// delete has to travel as a tombstone). Purge tombstones older than 60 days when saving.
+const TOMBSTONE_KEYS = ["duties", "invItems", "invCats"];
+function purgeTombstones(obj) {
+  const now = Date.now(), TTL = 60 * 86400000;
+  for (const k of TOMBSTONE_KEYS) {
+    if (Array.isArray(obj[k])) obj[k] = obj[k].filter((r) => !(r && r._del && (now - (Number(r._upd) || 0)) > TTL));
+  }
+  return obj;
+}
 const RETAIL_READ_KEYS = ["invCats", "invItems", "invCounts", "invSubs", "invLocs", "duties", "dutyChecks", "skus", "trustedDevices"];
 const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "invItems", "invLocs", "duties", "tasks", "attention"];
 const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc", "invEmailTo", "invEmailByLoc"];
@@ -145,7 +156,7 @@ export default async (req) => {
           const out = { ...current };
           for (const k of RETAIL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);
           const savedAt = new Date().toISOString();
-          await store.setJSON(key, { ...out, _savedAt: savedAt });
+          await store.setJSON(key, purgeTombstones({ ...out, _savedAt: savedAt }));
           return json({ ok: true, savedAt });
         }
       }
@@ -164,7 +175,7 @@ export default async (req) => {
       // submissions or check-offs. (Runs after the merge above so it wins regardless of base state.)
       if (current) { for (const k of ALWAYS_MERGE_KEYS) toSave[k] = mergeById(current[k], body[k]); }
       const savedAt = new Date().toISOString();
-      const saved = { ...toSave, _savedAt: savedAt };
+      const saved = purgeTombstones({ ...toSave, _savedAt: savedAt });
       await store.setJSON(key, saved);
       return json(merged ? { ok: true, savedAt, merged: true, state: saved } : { ok: true, savedAt });
     }
