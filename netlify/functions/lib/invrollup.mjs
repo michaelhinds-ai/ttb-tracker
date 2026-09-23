@@ -32,13 +32,16 @@ export function buildRollup(data, opts = {}) {
   const cats = (data.invCats || []).filter((c) => c && !c._del).sort((a, b) => ((a.ord || 0) - (b.ord || 0)) || String(a.name || "").localeCompare(String(b.name || "")));
   const items = (data.invItems || []).filter((it) => it && !it._del && it.active !== false);
   // count lookup: loc|itemId|size → qty
+  // Last COUNTED value per store/item/size (newest ts wins). Deliberately ignores the app's
+  // post-submit blank-sheet reset, so a submitted count stays in the totals until recounted.
   const qty = new Map();
   for (const r of data.invCounts || []) {
-    if (!r || r._del) continue;
+    if (!r || r._del || r.qty == null) continue;
     const k = canon(r.loc) + "|" + r.itemId + "|" + (r.size || "");
-    qty.set(k, (qty.get(k) || 0) + (+r.qty || 0));
+    const ex = qty.get(k);
+    if (!ex || (+r.ts || 0) > (+ex.ts || 0)) qty.set(k, r);
   }
-  const q = (loc, id, size) => { const k = loc + "|" + id + "|" + (size || ""); return qty.has(k) ? qty.get(k) : null; };
+  const q = (loc, id, size) => { const r = qty.get(loc + "|" + id + "|" + (size || "")); return r ? (+r.qty || 0) : null; };
   const carries = (it, loc) => !it.locs || !it.locs.length || it.locs.some((l) => locMatch(l, loc));
 
   const locTotals = Object.fromEntries(locs.map((l) => [l, 0]));

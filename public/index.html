@@ -8067,11 +8067,13 @@ function invRollupData(){
     invItemsFor(c.id).forEach(function(it){
       var at=locs.filter(function(l){ return invItemInLoc(it,l); }); if(!at.length) return;
       var row={it:it,at:at,byLoc:{},total:0,sizes:null};
-      var has=function(l,sz){ return (state.invCounts||[]).some(function(r){ return r&&_locSame(r.loc,l)&&r.itemId===it.id&&(r.size||'')===(sz||''); }); };
+      // Last COUNTED value for each store (ignores the post-submit blank-sheet reset, so a store's
+      // submitted numbers stay in the totals until it counts again). Mirrors lib/invrollup.mjs.
+      var last=function(l,sz){ var best=null; (state.invCounts||[]).forEach(function(r){ if(r&&r.qty!=null&&_locSame(r.loc,l)&&r.itemId===it.id&&(r.size||'')===(sz||'')&&(!best||(+r.ts||0)>(+best.ts||0))) best=r; }); return best?(+best.qty||0):null; };
       if(it.apparel){
-        row.sizes=INV_SIZES.map(function(sz){ var s={size:sz,byLoc:{},total:0}; at.forEach(function(l){ var v=has(l,sz)?(+invGetQty(l,it.id,sz)||0):null; s.byLoc[l]=v; s.total+=v||0; }); return s; });
+        row.sizes=INV_SIZES.map(function(sz){ var s={size:sz,byLoc:{},total:0}; at.forEach(function(l){ var v=last(l,sz); s.byLoc[l]=v; s.total+=v||0; }); return s; });
         at.forEach(function(l){ var any=false,t=0; row.sizes.forEach(function(s){ if(s.byLoc[l]!=null){ any=true; t+=s.byLoc[l]; } }); row.byLoc[l]=any?t:null; });
-      } else at.forEach(function(l){ row.byLoc[l]=has(l,'')?(+invGetQty(l,it.id,'')||0):null; });
+      } else at.forEach(function(l){ row.byLoc[l]=last(l,''); });
       at.forEach(function(l){ var v=row.byLoc[l]||0; row.total+=v; locTotals[l]+=v; }); grand+=row.total;
       rows.push(row);
     });
