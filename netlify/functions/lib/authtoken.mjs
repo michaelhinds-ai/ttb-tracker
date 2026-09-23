@@ -41,7 +41,7 @@ export const RETAIL_READ_KEYS = ["invCats", "invItems", "invCounts", "invSubs", 
 export const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "invItems", "invLocs", "duties", "tasks", "attention"];
 
 // Fields on settings that carry money/rates/recipient lists — stripped for retail.
-const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc", "invEmailTo", "invEmailByLoc"];
+const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc"]; // invEmailTo/invEmailByLoc kept — store staff need the reorder address
 export function sanitizeSettings(s, full) {
   const o = { ...(s || {}) };
   if (!full) for (const k of SETTINGS_STRIP) delete o[k];

@@ -53,7 +53,11 @@ function purgeTombstones(obj) {
 }
 const RETAIL_READ_KEYS = ["invCats", "invItems", "invCounts", "invSubs", "invLocs", "duties", "dutyChecks", "skus", "trustedDevices"];
 const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "invItems", "invLocs", "duties", "tasks", "attention"];
-const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc", "invEmailTo", "invEmailByLoc"];
+// invEmailTo / invEmailByLoc are NOT stripped: store staff need the reorder address so their weekly
+// count actually gets emailed, and Inventory-admin (invAdmin) retail users manage those recipients.
+const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc"];
+// Settings an Inventory-admin retail login may change (newest _updAt wins).
+const RETAIL_INVADMIN_SETTINGS = ["invEmailTo", "invEmailByLoc"];
 function sanitizeSettings(s) { const o = { ...(s || {}) }; for (const k of SETTINGS_STRIP) delete o[k]; return o; }
 function sanitizeUsers(users) {
   return (Array.isArray(users) ? users : []).map((u) => ({
@@ -155,6 +159,17 @@ export default async (req) => {
         if (isRetailRole(tok.role)) {
           const out = { ...current };
           for (const k of RETAIL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);
+          // Inventory-admin retail users (e.g. a store manager) can save the reorder recipients.
+          // Previously ignored here, so the save "worked" on screen and then vanished on the next sync.
+          if (tok.ia && !tok.va && body.settings && typeof body.settings === "object") {
+            const cs = current.settings || {}, is = body.settings;
+            if ((+is._updAt || 0) > (+cs._updAt || 0)) {
+              const ns = { ...cs };
+              for (const k of RETAIL_INVADMIN_SETTINGS) if (k in is) ns[k] = is[k];
+              ns._updAt = +is._updAt;
+              out.settings = ns;
+            }
+          }
           const savedAt = new Date().toISOString();
           await store.setJSON(key, purgeTombstones({ ...out, _savedAt: savedAt }));
           return json({ ok: true, savedAt });
