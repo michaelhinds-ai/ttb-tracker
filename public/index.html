@@ -7749,7 +7749,7 @@ function invMoveItem(id,dir){ if(!canInvManage())return; var it=(state.invItems|
 
 // ---- Admin: locations & recipients -------------------------------------------
 function invSaveLocs(){ if(!canInvManage())return; var v=((document.getElementById('inv_locs')||{}).value||''); var arr=v.split(/[\n,]+/).map(function(s){return s.trim();}).filter(Boolean); state.invLocs=arr.length?arr:INV_DEFAULT_LOCS.slice(); if(_invLoc && invLocations().indexOf(_invLoc)<0) _invLoc=null; save('Updated inventory locations'); renderInventory(); flash('Locations saved.'); }
-function invSaveRecipients(){ if(!canInvManage())return; if(!state.settings.invEmailByLoc)state.settings.invEmailByLoc={}; invLocations().forEach(function(l){ var e=document.getElementById('invmail_'+_invSlug(l)); if(e) state.settings.invEmailByLoc[l]=(e.value||'').trim(); }); var def=document.getElementById('invmail_default'); if(def) state.settings.invEmailTo=(def.value||'').trim(); touchSettings(); save('Updated inventory reorder recipients'); flash('Reorder recipients saved.'); }
+function invSaveRecipients(){ if(!canInvManage())return; if(!state.settings.invEmailByLoc)state.settings.invEmailByLoc={}; invLocations().forEach(function(l){ var e=document.getElementById('invmail_'+_invSlug(l)); if(e) state.settings.invEmailByLoc[l]=(e.value||'').trim(); }); var def=document.getElementById('invmail_default'); if(def) state.settings.invEmailTo=(def.value||'').trim(); var ru=document.getElementById('invmail_rollup'); if(ru) state.settings.invRollupTo=(ru.value||'').trim(); touchSettings(); save('Updated inventory reorder recipients'); flash('Reorder recipients saved.'); }
 function _invSlug(s){ return String(s||'').replace(/[^a-z0-9]/gi,''); }
 
 // ---- Submit: snapshot + email the reorder list -------------------------------
@@ -7937,6 +7937,199 @@ function invPickupList(){
 }
 
 // ---- Render ------------------------------------------------------------------
+// ===================== MASTER LIST + ALL-STORES ROLLUP =====================
+// One master item list; each item's store flags (item.locs, empty = every store) decide
+// where it shows. The master list below is Mike's "Inventory List for MS" sheet
+// (HQ / Church Street / Louisville Rickhouse). Loading it UPDATES matching items in place
+// (same id → counts are kept), merges per-store duplicates into one item, and adds the rest.
+var INV_MASTER=[
+ // [name, category, apparel(by size), HQ, Church, LR]
+ ['Tshirt - Blue - It’s a Tasting','Apparel',1,1,1,0],['Tshirt - Black - Large Logo','Apparel',1,1,1,1],['Tshirt - Clay - Stella CEO','Apparel',1,1,1,0],
+ ['Tshirt - Pour Sip Repeat','Apparel',1,1,1,0],['Tshirt - NBC Bourbon Glass','Apparel',1,1,1,0],['Tshirt - Black - N’tucky','Apparel',1,1,1,1],
+ ['Tshirt - White - N’tucky','Apparel',1,1,1,1],['Tshirt - Grey - N’tucky','Apparel',1,1,1,1],['Tshirt - Black - Bourbon $$$','Apparel',1,1,1,0],
+ ['Tshirt - White - Stella Bottle Guitar','Apparel',1,1,1,1],['Tshirt - Blue - LR front - Stella on back','Apparel',1,1,1,1],['Tshirt - Grey - LR front - Stella on back','Apparel',1,1,1,1],
+ ['Tshirt - Flights not Feelings','Apparel',1,1,1,0],['Tshirt - Black - Barrel Pick’n?','Apparel',1,1,0,0],['Tshirt - Black - LR front - Barrels back','Apparel',1,0,0,1],
+ ['Polo - Blue','Apparel',1,1,0,0],['Polo - White','Apparel',1,1,0,0],['Hoodie - Green - Large Logo','Apparel',1,1,1,0],['Hoodie - Blue - LR on front','Apparel',1,0,0,1],
+ ['Hat - NBC Black Hat w/ White Logo','Hats',0,1,1,1],['Hat - NBC Black Hat w/ Black Logo','Hats',0,1,1,1],['Hat - NBC White Hat w/ Orange Puffy Writing','Hats',0,1,1,1],
+ ['Hat - NBC White Hat w/ Black Puffy Writing','Hats',0,1,1,1],['Hat - NBC Red, White, & Blue','Hats',0,1,1,1],['Hat - N’tucky Black Hat w/ White Writing & White Rope','Hats',0,1,1,1],
+ ['Hat - NBC Camo','Hats',0,1,1,1],['Hat - Hazmat','Hats',0,1,1,1],['Hat - LBC - Black Hat w/ White Writing','Hats',0,0,0,1],['Hat - LBC - Black Hat w/ White Logo & White Rope','Hats',0,0,0,1],
+ ['NBC Glens','Glassware',0,1,1,0],['NBC Perfect Drams','Glassware',0,1,1,0],['NBC Bourbon Glasses','Glassware',0,1,1,0],['LR Glens','Glassware',0,0,0,1],
+ ['LR Perfect Drams','Glassware',0,0,0,1],['LR Water Glasses','Glassware',0,0,0,1],['NBC Crystal Decanter','Glassware',0,1,1,0],
+ ['NBC Rail Bar Mat','Bar & Décor',0,1,1,0],['NBC Square Bar Mat','Bar & Décor',0,1,1,0],['LR Rail Bar Mat','Bar & Décor',0,0,0,1],['NBC Tin Sign','Bar & Décor',0,1,1,1],
+ ['LR Circle Tin Sign','Bar & Décor',0,0,0,1],['LR Rectangle Tin Sign','Bar & Décor',0,0,0,1],['Wooden Cradle','Bar & Décor',0,1,0,1],['Metal Cradle','Bar & Décor',0,1,0,1],
+ ['NBC Barrel Dispenser','Bar & Décor',0,1,1,0],['Candles','Bar & Décor',0,1,1,0],['Coasters - Square','Bar & Décor',0,1,1,0],['Coasters - Circle','Bar & Décor',0,1,1,0],['Barrel Staves','Bar & Décor',0,1,1,0],
+ ['Aged & Ore Bottle Kits','Kits & Gifts',0,1,1,1],['Whiskey Barrel Smoker Kit','Kits & Gifts',0,1,1,1],['Jenga','Kits & Gifts',0,1,1,1],['Flask - Leather','Kits & Gifts',0,1,0,0],['Flask - Metal','Kits & Gifts',0,0,1,0],
+ ['Cherries - Large','Food & Pantry',0,1,1,0],['Cherries - Small','Food & Pantry',0,1,1,0],['GooGoo’s','Food & Pantry',0,1,1,0],['Whiskey Nuts','Food & Pantry',0,1,1,0],['Maple Syrup','Food & Pantry',0,1,1,0],['Honey Syrup','Food & Pantry',0,1,1,0]
+];
+var INV_MERCH_CATS=['Apparel','Hats','Glassware','Bar & Décor','Kits & Gifts','Food & Pantry'];
+var _INV_STOP={'with':1,'and':1,'the':1,'on':1,'of':1,'w':1};
+var _INV_TYPE={'hat':1,'tshirt':1,'shirt':1};
+var _INV_COLORS={'black':1,'white':1,'grey':1,'gray':1,'blue':1,'green':1,'red':1,'clay':1};
+function _invTokens(s){
+  s=String(s||'').toLowerCase().replace(/[’'`´]/g,'').replace(/w\//g,' with ').replace(/&/g,' and ').replace(/t-shirt/g,'tshirt')
+    .replace(/nashtucky|ntucky/g,'ntucky').replace(/glencairns?|glens?\b/g,'glens').replace(/\bhoodies\b/g,'hoodie').replace(/\btshirts\b/g,'tshirt').replace(/\bkits\b/g,'kit').replace(/\bglasses\b/g,'glass').replace(/\brectangular\b/g,'rectangle');
+  var out={}; s.split(/[^a-z0-9$]+/).forEach(function(t){ if(t&&!_INV_STOP[t]) out[t]=1; }); return Object.keys(out);
+}
+function _invMatchScore(a,b){ // a,b = token arrays
+  var A={},B={},ia=0; a.forEach(function(t){A[t]=1;}); b.forEach(function(t){B[t]=1;});
+  b.forEach(function(t){ if(A[t]) ia++; });
+  var un=a.length+b.length-ia; if(!un) return 0;
+  if(ia===a.length&&ia===b.length) return 3;
+  var small=a.length<=b.length?a:b, big=small===a?b:a;
+  if(ia===small.length && small.length>=2) return 2+small.length/big.length;
+  // single distinctive word (e.g. "Hazmat" ↔ "Hat - Hazmat", "Jenga Drinking Game" ↔ "Jenga")
+  var core=function(arr){ return arr.filter(function(t){ return !_INV_TYPE[t]; }); };
+  var cs=core(small), cb=core(big);
+  if(cs.length===1 && cs[0].length>=5 && !_INV_COLORS[cs[0]] && cb.indexOf(cs[0])>=0) return 1.5+1/cb.length;
+  var j=ia/un; return j>=0.75?1+j:0;
+}
+// Plan how the master list maps onto what's already in the app (no changes yet).
+function invMasterPlan(){
+  var catName=function(id){ return invCatName(id)||''; };
+  // Never touch the bottle / wine sheets (Church St pars) — only merch & supplies can match.
+  var items=(state.invItems||[]).filter(function(it){ return it&&!it._del&&!/bottle|wine|spirit|liquor/i.test(catName(it.catId)); });
+  // Group existing items that are the same product (e.g. one copy per store from older loaders).
+  var groups={}, order=[];
+  items.forEach(function(it){ var key=_invTokens((it.name||'')+' '+(it.desc||'')).sort().join(' '); if(!groups[key]){ groups[key]={key:key,toks:key.split(' ').filter(Boolean),items:[]}; order.push(key); } groups[key].items.push(it); });
+  var G=order.map(function(k){ return groups[k]; });
+  var rows=INV_MASTER.map(function(m,i){ return {i:i,m:m,toks:_invTokens(m[0]),group:null}; });
+  var pairs=[];
+  rows.forEach(function(r){ G.forEach(function(g,gi){ var sc=_invMatchScore(r.toks,g.toks); if(sc>0) pairs.push({r:r,g:g,sc:sc}); }); });
+  pairs.sort(function(a,b){ return b.sc-a.sc || a.r.i-b.r.i; });
+  var usedG=new Set();
+  pairs.forEach(function(p){ if(p.r.group||usedG.has(p.g)) return; p.r.group=p.g; usedG.add(p.g); });
+  var leftovers=[];
+  G.forEach(function(g){ if(usedG.has(g)) return; g.items.forEach(function(it){ if(INV_MERCH_CATS.some(function(c){ return c.toLowerCase()===catName(it.catId).toLowerCase(); })) leftovers.push(it); }); });
+  return {rows:rows, leftovers:leftovers};
+}
+function invLoadMasterList(){
+  if(!canInvManage()) return;
+  var hq=_invNbcLoc(), cs=_invChurchLoc(), lr=_invLrLoc();
+  if(!hq||!cs||!lr){ flash('Need all three stores (NBC HQ, Church St, Louisville Rickhouse) in Store locations first.'); return; }
+  var plan=invMasterPlan();
+  var matched=plan.rows.filter(function(r){ return r.group; }), fresh=plan.rows.filter(function(r){ return !r.group; });
+  var dups=matched.reduce(function(n,r){ return n+r.group.items.length-1; },0);
+  var ren=matched.filter(function(r){ return r.group.items[0].name!==r.m[0]; }).map(function(r){ return '  '+r.group.items[0].name+(r.group.items[0].desc?(' ('+r.group.items[0].desc+')'):'')+'  →  '+r.m[0]; });
+  var msg='Load the master inventory list ('+INV_MASTER.length+' items)?\n\n'+
+    '• '+matched.length+' match items already here — updated in place, counts kept\n'+
+    '• '+fresh.length+' new items added\n'+
+    (dups?('• '+dups+' per-store duplicate(s) merged into one item\n'):'')+
+    '• Store flags set from the sheet (HQ / Church St / Louisville)\n'+
+    '• Bottle-shop items and pars are not touched\n'+
+    (ren.length?('\nRenamed to match the sheet:\n'+ren.slice(0,30).join('\n')+(ren.length>30?('\n  …and '+(ren.length-30)+' more'):'')):'');
+  if(!confirm(msg)) return;
+  var catIds={}; INV_MERCH_CATS.forEach(function(c){ catIds[c]=_invEnsureCat(c); });
+  var all=invLocations();
+  var locsFor=function(m){ var L=[]; if(m[3])L.push(hq); if(m[4])L.push(cs); if(m[5])L.push(lr); return (L.length>=all.length)?[]:L; };
+  var ordBy={}; var nextOrd=function(cid){ ordBy[cid]=(ordBy[cid]||0)+1; return ordBy[cid]; };
+  var added=0, updated=0, merged=0;
+  plan.rows.forEach(function(r){
+    var m=r.m, cid=catIds[m[1]], locs=locsFor(m);
+    if(r.group){
+      // Keep the copy with the most counts as the master; fold the others into it.
+      var cnt=function(it){ return (state.invCounts||[]).filter(function(c){ return c&&c.itemId===it.id; }).length; };
+      var g=r.group.items.slice().sort(function(a,b){ return cnt(b)-cnt(a); });
+      var master=g[0];
+      master.name=m[0]; master.catId=cid; master.apparel=!!m[2]; master.locs=locs; master.active=true; master.ord=nextOrd(cid);
+      g.slice(1).forEach(function(dup){
+        (state.invCounts||[]).forEach(function(c){
+          if(!c||c.itemId!==dup.id) return;
+          var clash=(state.invCounts||[]).some(function(x){ return x&&x.itemId===master.id&&_locSame(x.loc,c.loc)&&(x.size||'')===(c.size||''); });
+          if(!clash) c.itemId=master.id; // move the dup's count onto the master
+        });
+        _softDelId('invItems',dup.id); merged++;
+      });
+      updated++;
+    } else {
+      state.invItems.push({id:uid(),catId:cid,name:m[0],desc:'',apparel:!!m[2],locs:locs,target:'',active:true,ord:nextOrd(cid)}); added++;
+    }
+  });
+  save('Loaded master inventory list ('+updated+' updated, '+added+' added'+(merged?(', '+merged+' duplicates merged'):'')+')');
+  var left=invMasterPlan().leftovers;
+  if(left.length && confirm('Done. '+left.length+' merch item(s) are NOT on the master list:\n\n'+left.slice(0,40).map(function(it){ return '  '+it.name+(it.desc?(' ('+it.desc+')'):'')+' — '+invItemLocLabel(it); }).join('\n')+(left.length>40?('\n  …and '+(left.length-40)+' more'):'')+'\n\nRemove them from all stores? (Cancel keeps them — you can delete one by one under All items.)')){
+    left.forEach(function(it){ _softDelId('invItems',it.id); });
+    save('Removed '+left.length+' item(s) not on the master list');
+  }
+  renderInventory();
+  flash('Master list loaded — '+updated+' updated, '+added+' added'+(merged?(', '+merged+' merged'):'')+'.');
+}
+
+// ---------- All-stores rollup (mirrors netlify/functions/lib/invrollup.mjs) ----------
+var _invView='count'; // 'count' = one store's sheet, 'all' = all-stores rollup
+function invShowAll(on){ _invView=on?'all':'count'; renderInventory(); }
+function invCanSeeAll(){ return canInvManage() || invLocations().every(function(l){ return invUserLocs().indexOf(l)>=0; }); }
+function invRollupData(){
+  var locs=invLocations(), since=Date.now()-7*86400000, grand=0, locTotals={};
+  locs.forEach(function(l){ locTotals[l]=0; });
+  var groups=[];
+  invCatsSorted().forEach(function(c){
+    var rows=[];
+    invItemsFor(c.id).forEach(function(it){
+      var at=locs.filter(function(l){ return invItemInLoc(it,l); }); if(!at.length) return;
+      var row={it:it,at:at,byLoc:{},total:0,sizes:null};
+      var has=function(l,sz){ return (state.invCounts||[]).some(function(r){ return r&&_locSame(r.loc,l)&&r.itemId===it.id&&(r.size||'')===(sz||''); }); };
+      if(it.apparel){
+        row.sizes=INV_SIZES.map(function(sz){ var s={size:sz,byLoc:{},total:0}; at.forEach(function(l){ var v=has(l,sz)?(+invGetQty(l,it.id,sz)||0):null; s.byLoc[l]=v; s.total+=v||0; }); return s; });
+        at.forEach(function(l){ var any=false,t=0; row.sizes.forEach(function(s){ if(s.byLoc[l]!=null){ any=true; t+=s.byLoc[l]; } }); row.byLoc[l]=any?t:null; });
+      } else at.forEach(function(l){ row.byLoc[l]=has(l,'')?(+invGetQty(l,it.id,'')||0):null; });
+      at.forEach(function(l){ var v=row.byLoc[l]||0; row.total+=v; locTotals[l]+=v; }); grand+=row.total;
+      rows.push(row);
+    });
+    if(rows.length) groups.push({cat:c.name||'',rows:rows});
+  });
+  var status=locs.map(function(l){
+    var subs=(state.invSubs||[]).filter(function(s){ return s&&_locSame(s.loc,l); }).sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
+    var last=subs[0]||null, t=last?Date.parse(last.at||''):NaN;
+    return {loc:l,submitted:!!(last&&!isNaN(t)&&t>=since),last:last};
+  });
+  return {locs:locs,groups:groups,locTotals:locTotals,grand:grand,status:status};
+}
+function _invShort(l){ var n=String(l||'').toLowerCase(); if(/church/.test(n)) return 'Church'; if(/louisville|rickhouse/.test(n)) return 'LR'; if(/nbc|nashville|hq/.test(n)) return 'HQ'; return l; }
+function invRollupHTML(){
+  var r=invRollupData(); var n=function(v){ return v==null?'<span style="color:var(--muted)">–</span>':v; };
+  var th='text-align:right;font-size:12px;color:var(--muted);padding:5px 6px;white-space:nowrap';
+  var td='text-align:right;padding:6px;white-space:nowrap';
+  var stat=r.status.map(function(s){
+    var ok=s.submitted, l=s.last;
+    return '<div style="flex:1;min-width:180px;border:1px solid var(--line);border-left:4px solid '+(ok?'#2f7a3f':'#b3261e')+';border-radius:8px;padding:8px 10px">'+
+      '<div style="font-weight:700">'+(ok?'✅ ':'⚠️ ')+esc(s.loc)+'</div>'+
+      '<div style="font-size:12px;color:'+(ok?'var(--muted)':'#b3261e')+';font-weight:'+(ok?400:700)+'">'+(ok?('Submitted '+relTime(Date.parse(l.at))+(l.by?(' by '+esc(l.by)):'')):(l?('Not submitted this week — last '+relTime(Date.parse(l.at))):'Never submitted'))+'</div></div>';
+  }).join('');
+  var head='<tr><th style="text-align:left;font-size:12px;color:var(--muted);padding:5px 6px">Item</th>'+r.locs.map(function(l){ return '<th style="'+th+'">'+esc(_invShort(l))+'</th>'; }).join('')+'<th style="'+th+';color:var(--copper)">Total</th></tr>';
+  var body='<tr style="background:#faf5ec"><td style="padding:6px;font-weight:800">All items</td>'+r.locs.map(function(l){ return '<td style="'+td+';font-weight:800">'+r.locTotals[l]+'</td>'; }).join('')+'<td style="'+td+';font-weight:800;color:var(--copper)">'+r.grand+'</td></tr>';
+  r.groups.forEach(function(g){
+    body+='<tr><td colspan="'+(r.locs.length+2)+'" style="padding:14px 6px 4px;font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--copper);border-bottom:2px solid var(--line)">'+esc(g.cat)+'</td></tr>';
+    g.rows.forEach(function(row){
+      var cells=r.locs.map(function(l){ return '<td style="'+td+'">'+(row.at.indexOf(l)>=0?n(row.byLoc[l]):'<span style="color:#d6cbb8">·</span>')+'</td>'; }).join('');
+      body+='<tr style="border-bottom:1px solid var(--line)"><td style="padding:6px;font-weight:600">'+esc(row.it.name||'')+(row.it.desc?('<div style="font-size:11px;color:var(--muted);font-weight:400">'+esc(row.it.desc)+'</div>'):'')+'</td>'+cells+'<td style="'+td+';font-weight:800">'+row.total+'</td></tr>';
+      if(row.sizes) row.sizes.forEach(function(s){
+        body+='<tr><td style="padding:3px 6px 3px 22px;font-size:12px;color:var(--muted)">'+s.size+'</td>'+r.locs.map(function(l){ return '<td style="'+td+';font-size:12px">'+(row.at.indexOf(l)>=0?n(s.byLoc[l]):'<span style="color:#d6cbb8">·</span>')+'</td>'; }).join('')+'<td style="'+td+';font-size:12px;font-weight:700">'+s.total+'</td></tr>';
+      });
+    });
+  });
+  var recips=((state.settings||{}).invRollupTo||'').trim();
+  return '<div class="card">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h3 style="margin:0">All stores — inventory totals</h3><div class="hint" style="margin-top:3px">Each store’s latest count, plus the total across stores. Emailed Mondays 8 AM'+(recips?(' to '+esc(recips)):' (set the recipient under Manage → Weekly all-stores rollup)')+'.</div></div>'+
+    '<div class="row-actions noprint" style="margin:0;gap:8px"><button class="btn ghost sm" onclick="invShowAll(false)">← Store count sheet</button><button class="btn ghost sm" onclick="window.print()">🖨 Print</button>'+(canInvManage()?'<button class="btn sm" id="invRollupBtn" style="background:#7a5a2b" onclick="invSendRollup()">✉ Send rollup now</button>':'')+'</div></div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 6px">'+stat+'</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'+
+    '<div class="hint" style="margin-top:8px">· = not carried at that store &nbsp; – = carried but not counted yet</div></div>';
+}
+function invSendRollup(){
+  if(!canInvManage()) return;
+  var to=((state.settings||{}).invRollupTo||'').trim();
+  if(!to){ flash('Add the rollup recipient first (Manage → Weekly all-stores rollup).'); return; }
+  if(!confirm('Email the all-stores inventory rollup to '+to+' now?')) return;
+  var btn=document.getElementById('invRollupBtn'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
+  try{ flushSave(); }catch(e){}
+  setTimeout(function(){
+    fetch('/api/inventory-rollup-send',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({ws:(typeof ROOT_WS!=='undefined'?ROOT_WS:WS)})})
+      .then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(d){ if(btn){ btn.disabled=false; btn.textContent='✉ Send rollup now'; } if(d&&d.ok&&!d.skipped) flash('Rollup sent to '+(d.to||[to]).join(', ')+'.'); else if(d&&d.skipped) flash('Not sent — no rollup recipient saved yet.'); else flash('Rollup didn’t send'+((d&&d.error)?(': '+d.error):'')+'.'); })
+      .catch(function(){ if(btn){ btn.disabled=false; btn.textContent='✉ Send rollup now'; } flash('Rollup couldn’t send (offline?).'); });
+  },1500); // give the pending save a moment so the email has the latest counts
+}
+
 function renderInventory(){
   var box=document.getElementById('inventoryBody'); if(!box) return;
   _invMigrateLocs();
@@ -7949,15 +8142,17 @@ function renderInventory(){
   if(mine.length===1) _invLoc=mine[0];
   var html='';
   if(canInvManage()) html+=invAdminHTML();
+  if(_invView==='all' && invCanSeeAll()){ html+=invRollupHTML(); box.innerHTML=html; return; }
+  var allBtn=invCanSeeAll()?'<button class="btn ghost sm" onclick="invShowAll(true)">📊 All stores</button>':'';
   if(!_invLoc){
     html+='<div class="card"><h3 style="margin:0 0 4px">Choose a store to count</h3><div class="hint" style="margin:0 0 12px">Pick the location you’re doing inventory for. Nothing loads until you choose.</div>'+
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+mine.map(function(l,i){ return '<button class="btn" style="background:#7a5a2b" onclick="invSetLoc('+i+')">📍 '+esc(l)+'</button>'; }).join('')+'</div></div>';
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+mine.map(function(l,i){ return '<button class="btn" style="background:#7a5a2b" onclick="invSetLoc('+i+')">📍 '+esc(l)+'</button>'; }).join('')+(allBtn?('<button class="btn" style="background:#2b1d12" onclick="invShowAll(true)">📊 All stores — totals</button>'):'')+'</div></div>';
     box.innerHTML=html; return;
   }
   var switcher = mine.length>1 ? '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap">Location <select onchange="invSetLoc(this.value)" style="width:auto">'+mine.map(function(l,i){ return '<option value="'+i+'"'+(l===_invLoc?' selected':'')+'>'+esc(l)+'</option>'; }).join('')+'</select></label>' : '';
   html+='<div class="card">';
   html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h3 style="margin:0">'+esc(_invLoc)+' — weekly count</h3><div class="hint" style="margin-top:3px">'+_invLastSubLine(_invLoc)+'</div></div>'+
-    '<div class="row-actions noprint" style="margin:0;align-items:center;gap:8px">'+switcher+'<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap">Inventory date <input type="date" id="inv_date" value="'+smpTodayStr()+'" style="width:auto"></label><button class="btn ghost sm" onclick="invPrintSheet()">🖨 Print</button>'+(canInvCount()?'<button class="btn" id="invSubmitBtn" style="background:#7a5a2b" onclick="invSubmit()">Submit weekly count</button>':'')+'</div></div>';
+    '<div class="row-actions noprint" style="margin:0;align-items:center;gap:8px">'+switcher+allBtn+'<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap">Inventory date <input type="date" id="inv_date" value="'+smpTodayStr()+'" style="width:auto"></label><button class="btn ghost sm" onclick="invPrintSheet()">🖨 Print</button>'+(canInvCount()?'<button class="btn" id="invSubmitBtn" style="background:#7a5a2b" onclick="invSubmit()">Submit weekly count</button>':'')+'</div></div>';
   var cats=invCatsSorted();
   // Par mode: on when this store has any non-apparel item with a target on-hand set.
   _invParOn=false; cats.forEach(function(c){ invItemsForLoc(c.id,_invLoc).forEach(function(it){ if(!it.apparel && _invTarget(it)!=null) _invParOn=true; }); });
@@ -8011,12 +8206,13 @@ function invAdminHTML(){
   var locs=invLocations();
   var recips=locs.map(function(l){ return '<div><label class="fld">'+esc(l)+'</label><input type="email" id="invmail_'+_invSlug(l)+'" placeholder="name@email.com" value="'+esc((((state.settings||{}).invEmailByLoc)||{})[l]||'')+'"></div>'; }).join('');
   return '<details id="invManagePanel" class="card" style="margin-bottom:16px"'+(_invEditItem?' open':'')+'><summary style="cursor:pointer;font-weight:700;color:var(--copper)">Manage items, categories &amp; reorder recipients</summary>'+
-    '<div style="margin-top:14px"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><h4 style="margin:0">Categories</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" onclick="copyNbcToLr()" title="Copy NBC’s opening duties &amp; inventory to Louisville Rickhouse — only fills what’s empty">⧉ Copy NBC → Louisville</button><button class="btn ghost sm" onclick="invLoadChurchBottles()" title="Add the Church Street bottle & wine par sheet">↻ Load Church St bottles</button><button class="btn ghost sm" onclick="invLoadNbcApparel()" title="Add the NBC apparel & hats list">↻ Load NBC apparel &amp; hats</button><button class="btn ghost sm" onclick="copyNbcApparelToChurch()" title="Give Church Street the same apparel &amp; hats as HQ (NBC) to start from">⧉ Copy NBC apparel → Church St</button><button class="btn ghost sm" onclick="invAddCat()">+ Add category</button></div></div>'+
+    '<div style="margin-top:14px"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><h4 style="margin:0">Categories</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" style="background:#7a5a2b" onclick="invLoadMasterList()" title="Load the master item list (HQ / Church St / Louisville flags) — updates matching items, keeps counts">↻ Load master list ('+INV_MASTER.length+' items)</button><button class="btn ghost sm" onclick="copyNbcToLr()" title="Copy NBC’s opening duties &amp; inventory to Louisville Rickhouse — only fills what’s empty">⧉ Copy NBC → Louisville</button><button class="btn ghost sm" onclick="invLoadChurchBottles()" title="Add the Church Street bottle & wine par sheet">↻ Load Church St bottles</button><button class="btn ghost sm" onclick="invLoadNbcApparel()" title="Add the NBC apparel & hats list">↻ Load NBC apparel &amp; hats</button><button class="btn ghost sm" onclick="copyNbcApparelToChurch()" title="Give Church Street the same apparel &amp; hats as HQ (NBC) to start from">⧉ Copy NBC apparel → Church St</button><button class="btn ghost sm" onclick="invAddCat()">+ Add category</button></div></div>'+
     '<div style="margin-top:8px">'+(invCatsSorted().map(function(c){ return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1;font-weight:600">'+esc(c.name||'')+' <span style="color:var(--muted);font-weight:400;font-size:12px">('+invItemsFor(c.id).length+' items)</span></span><button class="link" onclick="invMoveCat(\''+c.id+'\',-1)">↑</button><button class="link" onclick="invMoveCat(\''+c.id+'\',1)">↓</button><button class="link" onclick="invRenameCat(\''+c.id+'\')">Rename</button><button class="del" onclick="invDelCat(\''+c.id+'\')">Del</button></div>'; }).join('')||'<div class="hint">No categories yet.</div>')+'</div>'+
     '<div style="margin-top:16px"><h4 style="margin:0 0 2px">'+(_invEditItem?'Edit item':'Add an item')+'</h4><div class="hint" style="margin:0">Tick <b>Apparel</b> to count it by size, and choose which stores carry it. Use the description to tell similar shirts/hats apart.</div>'+invItemFormHTML()+'</div>'+
     '<div style="margin-top:18px"><h4 style="margin:0 0 6px">All items <span style="font-weight:400;color:var(--muted);font-size:12px">— which stores carry each</span></h4>'+invAllItemsHTML()+'</div>'+
     '<div style="margin-top:18px"><h4 style="margin:0 0 6px">Store locations</h4><div class="hint" style="margin:0 0 6px">One per line (or comma-separated). Each becomes its own sheet; retail managers see only their assigned store.</div><textarea id="inv_locs" rows="3" style="width:100%">'+esc(invLocations().join('\n'))+'</textarea><div class="row-actions" style="margin-top:8px"><button class="btn ghost sm" onclick="invSaveLocs()">Save locations</button></div></div>'+
-    '<div style="margin-top:18px"><h4 style="margin:0 0 6px">Reorder recipients</h4><div class="hint" style="margin:0 0 8px">Who gets the emailed count for each store when it’s submitted.</div><div class="grid g3">'+recips+'<div><label class="fld">Default (fallback)</label><input type="email" id="invmail_default" placeholder="name@email.com" value="'+esc((state.settings||{}).invEmailTo||'')+'"></div></div><div class="row-actions" style="margin-top:8px"><button class="btn ghost sm" onclick="invSaveRecipients()">Save recipients</button></div></div>'+
+    '<div style="margin-top:18px"><h4 style="margin:0 0 6px">Reorder recipients</h4><div class="hint" style="margin:0 0 8px">Who gets the emailed count for each store when it’s submitted.</div><div class="grid g3">'+recips+'<div><label class="fld">Default (fallback)</label><input type="email" id="invmail_default" placeholder="name@email.com" value="'+esc((state.settings||{}).invEmailTo||'')+'"></div></div><div class="row-actions" style="margin-top:8px"><button class="btn ghost sm" onclick="invSaveRecipients()">Save recipients</button></div>'+
+    '<div style="margin-top:14px"><label class="fld">Weekly all-stores rollup <span style="font-weight:400;color:var(--muted)">— every store’s count + totals across stores, and which stores didn’t submit. Emailed Mondays 8 AM Central. Separate multiple emails with commas.</span></label><input type="text" id="invmail_rollup" placeholder="jen@email.com" value="'+esc((state.settings||{}).invRollupTo||'')+'"></div><div class="row-actions" style="margin-top:8px"><button class="btn ghost sm" onclick="invSaveRecipients()">Save recipients</button><button class="btn ghost sm" onclick="invShowAll(true)">📊 View all-stores totals</button></div></div>'+
     '</details>';
 }
 function invAllItemsHTML(){

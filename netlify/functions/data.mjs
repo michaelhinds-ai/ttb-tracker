@@ -57,7 +57,7 @@ const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "inv
 // count actually gets emailed, and Inventory-admin (invAdmin) retail users manage those recipients.
 const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc"];
 // Settings an Inventory-admin retail login may change (newest _updAt wins).
-const RETAIL_INVADMIN_SETTINGS = ["invEmailTo", "invEmailByLoc"];
+const RETAIL_INVADMIN_SETTINGS = ["invEmailTo", "invEmailByLoc", "invRollupTo"];
 function sanitizeSettings(s) { const o = { ...(s || {}) }; for (const k of SETTINGS_STRIP) delete o[k]; return o; }
 function sanitizeUsers(users) {
   return (Array.isArray(users) ? users : []).map((u) => ({
@@ -99,7 +99,7 @@ function mergeById(cloudArr, incArr) {
   return out;
 }
 
-const STICKY_SETTINGS = ["salesEmailTo", "lateEmailTo", "lateEmailByLoc", "lateThresholdMin", "invEmailTo", "invEmailByLoc"];
+const STICKY_SETTINGS = ["salesEmailTo", "lateEmailTo", "lateEmailByLoc", "lateThresholdMin", "invEmailTo", "invEmailByLoc", "invRollupTo"];
 function isEmptyVal(v) {
   if (v == null || v === "") return true;
   if (typeof v === "object" && !Array.isArray(v)) return Object.keys(v).length === 0;
