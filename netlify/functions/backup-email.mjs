@@ -61,13 +61,17 @@ export function buildEmail(items, date) {
     lines.push(`${name} — ${counts(data)}`);
   }
   const subject = `Mikey Systems backup — ${date}`;
+  // Mobile-friendly: viewport meta, fluid max-width container, readable font, list reflows.
   const html =
-    `<div style="font-family:-apple-system,Segoe UI,sans-serif;color:#241812">` +
-    `<h2 style="margin:0 0 8px">Mikey Systems — daily backup</h2>` +
-    `<p style="margin:0 0 12px;color:#6b543c">${date}</p>` +
-    `<ul>${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` +
-    `<p style="color:#6b543c">The attached <b>.json</b> is a full restore point. To restore it, open the app → <b>Setup &amp; Sync</b> → <b>Restore from Backup</b> and choose the file.</p>` +
-    `</div>`;
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>` +
+    `<body style="margin:0;background:#f3ede2;padding:14px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#241812;-webkit-text-size-adjust:100%">` +
+    `<div style="max-width:600px;width:100%;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">` +
+    `<div style="background:#231a12;color:#f3ede2;padding:15px 18px;font-weight:700;font-size:17px">Mikey Systems &middot; Daily backup</div>` +
+    `<div style="padding:16px 18px">` +
+    `<div style="color:#6b543c;font-size:14px;margin:0 0 12px">${esc(date)}</div>` +
+    `<div style="font-size:15px;line-height:1.6">${lines.map((l) => `<div style="padding:7px 0;border-bottom:1px solid #eee">${esc(l)}</div>`).join("")}</div>` +
+    `<p style="color:#6b543c;font-size:13px;line-height:1.6;margin:14px 0 0">The attached <b>.json</b> is a full restore point. To restore it, open the app &rarr; <b>Setup &amp; Sync</b> &rarr; <b>Restore from Backup</b> and choose the file.</p>` +
+    `</div></div></body></html>`;
   return { subject, html, attachments };
 }
 
