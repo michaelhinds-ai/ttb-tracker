@@ -8067,13 +8067,11 @@ function invRollupData(){
     invItemsFor(c.id).forEach(function(it){
       var at=locs.filter(function(l){ return invItemInLoc(it,l); }); if(!at.length) return;
       var row={it:it,at:at,byLoc:{},total:0,sizes:null};
-      // Last COUNTED value for each store (ignores the post-submit blank-sheet reset, so a store's
-      // submitted numbers stay in the totals until it counts again). Mirrors lib/invrollup.mjs.
-      var last=function(l,sz){ var best=null; (state.invCounts||[]).forEach(function(r){ if(r&&r.qty!=null&&_locSame(r.loc,l)&&r.itemId===it.id&&(r.size||'')===(sz||'')&&(!best||(+r.ts||0)>(+best.ts||0))) best=r; }); return best?(+best.qty||0):null; };
+      var has=function(l,sz){ return (state.invCounts||[]).some(function(r){ return r&&_locSame(r.loc,l)&&r.itemId===it.id&&(r.size||'')===(sz||''); }); };
       if(it.apparel){
-        row.sizes=INV_SIZES.map(function(sz){ var s={size:sz,byLoc:{},total:0}; at.forEach(function(l){ var v=last(l,sz); s.byLoc[l]=v; s.total+=v||0; }); return s; });
+        row.sizes=INV_SIZES.map(function(sz){ var s={size:sz,byLoc:{},total:0}; at.forEach(function(l){ var v=has(l,sz)?(+invGetQty(l,it.id,sz)||0):null; s.byLoc[l]=v; s.total+=v||0; }); return s; });
         at.forEach(function(l){ var any=false,t=0; row.sizes.forEach(function(s){ if(s.byLoc[l]!=null){ any=true; t+=s.byLoc[l]; } }); row.byLoc[l]=any?t:null; });
-      } else at.forEach(function(l){ row.byLoc[l]=last(l,''); });
+      } else at.forEach(function(l){ row.byLoc[l]=has(l,'')?(+invGetQty(l,it.id,'')||0):null; });
       at.forEach(function(l){ var v=row.byLoc[l]||0; row.total+=v; locTotals[l]+=v; }); grand+=row.total;
       rows.push(row);
     });
@@ -8253,7 +8251,7 @@ function invPrintSheet(){
    Admin/managers build a per-store, per-shift (open/close) checklist. An employee opens their
    store's list, taps each duty as it's done and it drops off; the whole list resets the next
    calendar day (completion is stamped by DATE, so a new day has zero checks = every duty back). */
-const DUTY_KINDS=[{k:'open',label:'Opening'},{k:'close',label:'Closing'},{k:'weekly',label:'Weekly'},{k:'clean',label:'Daily Task'}];
+const DUTY_KINDS=[{k:'open',label:'Opening'},{k:'close',label:'Closing'},{k:'weekly',label:'Weekly'},{k:'clean',label:'Cleaning'}];
 var DUTY_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 let _dutyLoc=null, _dutyKind='open', _dutyShowDone=false, _dutyCleanDay=(new Date()).getDay();
 // Weekly-cleaning schedule: each task is tied to a day of the week (0=Sun..6=Sat). Staff see the
@@ -8405,7 +8403,7 @@ function renderCleanToday(){
   if(!loc || !items.length){ if(wrap) wrap.style.display='none'; return; }
   if(wrap) wrap.style.display='';
   var done=cleanDoneSet(loc); var rem=items.filter(function(d){ return !done[d.id]; });
-  var html='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><h3 class="section" style="margin:0;font-size:16px">🧽 Today’s daily tasks · '+DUTY_DAYS[day]+'</h3><span class="hint" style="margin:0">'+(items.length-rem.length)+' of '+items.length+' done'+(locs.length>1?(' · '+esc(loc)):'')+'</span></div>';
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><h3 class="section" style="margin:0;font-size:16px">🧽 Today’s cleaning · '+DUTY_DAYS[day]+'</h3><span class="hint" style="margin:0">'+(items.length-rem.length)+' of '+items.length+' done'+(locs.length>1?(' · '+esc(loc)):'')+'</span></div>';
   if(!rem.length) html+='<div style="text-align:center;padding:14px 0"><span style="font-size:15px;font-weight:700">✅ All done for today — nice work!</span></div>';
   html+='<div style="margin-top:8px">'+items.map(function(d){ return _cleanRow(d, !!done[d.id], loc, true); }).join('')+'</div>';
   el.innerHTML=html;
@@ -8543,14 +8541,14 @@ function renderDuties(){
     var isBath=(_dutyCleanDay===CLEAN_DAY_BATH);
     var isToday=isBath||(_dutyCleanDay===today); // Bathrooms is a checklist you can tick any day
     var clbl=cleanDayLabel(_dutyCleanDay);
-    var dayBtns='<button class="btn '+(isBath?'':'ghost')+' sm" style="padding:5px 9px" onclick="dutySetCleanDay('+CLEAN_DAY_BATH+')">🚽 Bathrooms</button>'+DUTY_DAYS.map(function(nm,di){ var on=di===_dutyCleanDay; return '<button class="btn '+(on?'':'ghost')+' sm" style="padding:5px 9px" onclick="dutySetCleanDay('+di+')">'+nm.slice(0,3)+(di===today?'*':'')+'</button>'; }).join('');
+    var dayBtns=DUTY_DAYS.map(function(nm,di){ var on=di===_dutyCleanDay; return '<button class="btn '+(on?'':'ghost')+' sm" style="padding:5px 9px" onclick="dutySetCleanDay('+di+')">'+nm.slice(0,3)+(di===today?'*':'')+'</button>'; }).join('')+'<button class="btn '+(isBath?'':'ghost')+' sm" style="padding:5px 9px" onclick="dutySetCleanDay('+CLEAN_DAY_BATH+')">🚽 Bathrooms</button>';
     var citems=cleanItemsFor(_dutyLoc,_dutyCleanDay); var cdone=cleanDoneSet(_dutyLoc);
     var crem=citems.filter(function(d){ return !cdone[d.id]; });
     html+='<div class="card">';
-    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h3 style="margin:0">'+esc(_dutyLoc)+' · Daily Task — '+esc(clbl)+'</h3><div class="hint" style="margin-top:3px">'+(isBath?('Bathroom checklist · '+(citems.length-crem.length)+' of '+citems.length+' done · resets fresh each day'):(isToday?('Today · '+(citems.length-crem.length)+' of '+citems.length+' done · resets fresh tomorrow'):('Preview of '+esc(clbl)+' — only today’s tasks can be checked off')))+'</div></div><div class="row-actions noprint" style="margin:0;gap:10px;align-items:center;flex-wrap:wrap">'+switcher+'<div style="display:flex;gap:6px;flex-wrap:wrap">'+toggle+'</div></div></div>';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><h3 style="margin:0">'+esc(_dutyLoc)+' · Cleaning — '+esc(clbl)+'</h3><div class="hint" style="margin-top:3px">'+(isBath?('Bathroom checklist · '+(citems.length-crem.length)+' of '+citems.length+' done · resets fresh each day'):(isToday?('Today · '+(citems.length-crem.length)+' of '+citems.length+' done · resets fresh tomorrow'):('Preview of '+esc(clbl)+' — only today’s tasks can be checked off')))+'</div></div><div class="row-actions noprint" style="margin:0;gap:10px;align-items:center;flex-wrap:wrap">'+switcher+'<div style="display:flex;gap:6px;flex-wrap:wrap">'+toggle+'</div></div></div>';
     html+='<div class="noprint" style="margin-top:10px;display:flex;gap:5px;flex-wrap:wrap">'+dayBtns+'</div>';
-    if(!citems.length){ html+='<div class="empty" style="padding:22px">No '+(isBath?'bathroom':'daily')+' tasks set for '+esc(clbl)+' at '+esc(_dutyLoc)+' yet.'+(canDutyManage()?' Add some in the edit panel below.':'')+'</div>'; }
-    else if(isToday && !crem.length){ html+='<div style="text-align:center;padding:26px"><div style="font-size:40px">🎉</div><div style="font-weight:700;font-size:16px;margin-top:6px">All '+(isBath?'bathroom tasks':'of today’s daily tasks')+' done!</div><div class="hint" style="margin-top:4px">Resets fresh '+(isBath?'each day':'tomorrow')+'.</div></div>'; }
+    if(!citems.length){ html+='<div class="empty" style="padding:22px">No '+(isBath?'bathroom':'cleaning')+' tasks set for '+esc(clbl)+' at '+esc(_dutyLoc)+' yet.'+(canDutyManage()?' Add some in the edit panel below.':'')+'</div>'; }
+    else if(isToday && !crem.length){ html+='<div style="text-align:center;padding:26px"><div style="font-size:40px">🎉</div><div style="font-weight:700;font-size:16px;margin-top:6px">All '+(isBath?'bathroom tasks':'of today’s cleaning')+' done!</div><div class="hint" style="margin-top:4px">Resets fresh '+(isBath?'each day':'tomorrow')+'.</div></div>'; }
     else { html+='<div style="margin-top:10px">'+citems.map(function(d){ return _cleanRow(d, !!cdone[d.id], _dutyLoc, isToday); }).join('')+'</div>'; }
     html+='</div>';
     if(canDutyManage()) html+=_cleanAdminHTML();
