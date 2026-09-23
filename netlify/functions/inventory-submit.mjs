@@ -36,47 +36,37 @@ export default async (req) => {
     seen[c].rows.push(ln);
   }
 
-  const anyApparel = lines.some((l) => l && l.apparel);
-  const colspanHead = anyApparel
-    ? `<th align="left">Item</th>${SIZES.map((s) => `<th align="center">${s}</th>`).join("")}<th align="center">Total</th>`
-    : `<th align="left">Item</th><th align="center">Count</th>`;
-
+  // Mobile-first: no wide multi-column grids. Each item is one row (name on the left, total on the
+  // right); apparel sizes show as small wrapping chips under the name, so nothing overflows a phone.
   let body = "";
   for (const c of cats) {
-    body += `<tr><td colspan="${anyApparel ? SIZES.length + 2 : 2}" style="background:#f0e9db;font-weight:700;padding:7px 10px;border-top:1px solid #ddd">${esc(c.name)}</td></tr>`;
+    body += `<tr><td colspan="2" style="background:#f0e9db;font-weight:700;padding:9px 14px;border-top:1px solid #e5ddcd;font-size:14px">${esc(c.name)}</td></tr>`;
     for (const ln of c.rows) {
-      const name = `<b>${esc(ln.item || "")}</b>${ln.desc ? `<div style="font-size:11px;color:#8a7a63">${esc(ln.desc)}</div>` : ""}`;
-      if (anyApparel) {
-        if (ln.apparel) {
-          const sz = ln.sizes || {};
-          const cells = SIZES.map((s) => `<td align="center" style="padding:5px 8px;border-bottom:1px solid #eee">${sz[s] != null ? esc(sz[s]) : ""}</td>`).join("");
-          body += `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${name}</td>${cells}<td align="center" style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:700">${esc(ln.qty || 0)}</td></tr>`;
-        } else {
-          body += `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${name}</td><td colspan="${SIZES.length}" style="border-bottom:1px solid #eee"></td><td align="center" style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:700">${esc(ln.qty || 0)}</td></tr>`;
-        }
-      } else {
-        body += `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${name}</td><td align="center" style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:700">${esc(ln.qty || 0)}</td></tr>`;
+      const name = `<span style="font-weight:600">${esc(ln.item || "")}</span>${ln.desc ? `<span style="font-size:12px;color:#8a7a63"> — ${esc(ln.desc)}</span>` : ""}`;
+      let sizeChips = "";
+      if (ln.apparel) {
+        const sz = ln.sizes || {};
+        const chips = SIZES.filter((s) => sz[s] != null && sz[s] !== "").map((s) => `<span style="display:inline-block;background:#f0e9db;border-radius:6px;padding:2px 8px;margin:3px 5px 0 0;font-size:13px;white-space:nowrap"><b>${esc(s)}</b>&nbsp;${esc(sz[s])}</span>`).join("");
+        sizeChips = `<div style="margin-top:2px">${chips || '<span style="color:#a99;font-size:12px">none counted</span>'}</div>`;
       }
+      body += `<tr><td style="padding:10px 14px;border-bottom:1px solid #eee;vertical-align:top">${name}${sizeChips}</td><td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:right;font-weight:800;font-size:16px;white-space:nowrap;vertical-align:top">${esc(ln.qty || 0)}</td></tr>`;
     }
   }
 
   const subject = `Inventory — ${loc}${countDate ? " · " + fmtDate(countDate) : ""}`;
-  const html = `<!doctype html><html><body style="margin:0;background:#f3ede2;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
-    <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">
-      <div style="background:#231a12;color:#f3ede2;padding:18px 24px;font-weight:700;font-size:16px">Mikey Systems · Store Inventory</div>
-      <div style="padding:22px 24px">
-        <table style="border-collapse:collapse;width:100%;margin-bottom:14px">
-          <tr><td style="color:#8a7a63;font-size:13px;width:120px;padding:3px 0">Location</td><td style="font-size:15px;font-weight:600;padding:3px 0">${esc(loc)}</td></tr>
-          <tr><td style="color:#8a7a63;font-size:13px;padding:3px 0">Inventory date</td><td style="font-size:15px;padding:3px 0">${countDate ? esc(fmtDate(countDate)) : "—"}</td></tr>
-          <tr><td style="color:#8a7a63;font-size:13px;padding:3px 0">Counted by</td><td style="font-size:15px;padding:3px 0">${esc(by || "—")}</td></tr>
-          <tr><td style="color:#8a7a63;font-size:13px;padding:3px 0">Total units</td><td style="font-size:15px;font-weight:700;padding:3px 0">${esc(totalUnits)}</td></tr>
-        </table>
-        <table style="border-collapse:collapse;width:100%;font-size:14px;border:1px solid #e5ddcd">
-          <thead><tr style="background:#231a12;color:#f3ede2">${colspanHead.replace(/<th /g, '<th style="padding:7px 10px;font-size:12px" ')}</tr></thead>
-          <tbody>${body}</tbody>
-        </table>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f3ede2;padding:14px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#231a12;-webkit-text-size-adjust:100%">
+    <div style="max-width:600px;width:100%;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">
+      <div style="background:#231a12;color:#f3ede2;padding:15px 18px;font-weight:700;font-size:17px">Mikey Systems · Store Inventory</div>
+      <div style="padding:16px 18px">
+        <div style="font-size:15px;line-height:1.5;margin-bottom:12px">
+          <div style="font-size:19px;font-weight:700">${esc(loc)}</div>
+          <div style="color:#8a7a63">${countDate ? esc(fmtDate(countDate)) : ""}${by ? " · counted by " + esc(by) : ""}</div>
+          <div style="margin-top:3px">Total units: <b>${esc(totalUnits)}</b></div>
+        </div>
+        <table role="presentation" style="border-collapse:collapse;width:100%;font-size:15px;border:1px solid #e5ddcd;border-radius:10px;overflow:hidden">${body}</table>
       </div>
-      <div style="padding:14px 24px;background:#faf6ee;color:#8a7a63;font-size:12px">Submitted automatically from Mikey Systems when the ${esc(loc)} count was completed.</div>
+      <div style="padding:12px 18px;background:#faf6ee;color:#8a7a63;font-size:12px">Submitted automatically from Mikey Systems when the ${esc(loc)} count was completed.</div>
     </div>
   </body></html>`;
 

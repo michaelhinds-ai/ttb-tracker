@@ -47,10 +47,11 @@ export default async (req) => {
        </div>`
     : `<div style="margin:16px 0 4px;color:#8a7a63;font-size:14px">No comment was left.</div>`;
 
-  const html = `<!doctype html><html><body style="margin:0;background:#f3ede2;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
-    <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">
-      <div style="background:#231a12;color:#f3ede2;padding:18px 24px;font-weight:700;font-size:16px">Mikey Systems · Task completed</div>
-      <div style="padding:24px">
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f3ede2;padding:14px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#231a12;-webkit-text-size-adjust:100%">
+    <div style="max-width:560px;width:100%;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">
+      <div style="background:#231a12;color:#f3ede2;padding:15px 18px;font-weight:700;font-size:17px">Mikey Systems · Task completed</div>
+      <div style="padding:18px">
         <p style="margin:0 0 6px;font-size:15px;color:#231a12">Hi${toName ? " " + esc(toName) : ""},</p>
         <p style="margin:0 0 16px;font-size:15px;color:#231a12"><b>${esc(who)}</b> marked a task you assigned as complete.</p>
         <table style="border-collapse:collapse;width:100%">
@@ -60,7 +61,7 @@ export default async (req) => {
         </table>
         ${noteBlock}
       </div>
-      <div style="padding:14px 24px;background:#faf6ee;color:#8a7a63;font-size:12px">Sent automatically by Mikey Systems when the task was checked off.</div>
+      <div style="padding:12px 18px;background:#faf6ee;color:#8a7a63;font-size:12px">Sent automatically by Mikey Systems when the task was checked off.</div>
     </div>
   </body></html>`;
 
