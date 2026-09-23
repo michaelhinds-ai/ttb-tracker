@@ -121,49 +121,56 @@ export async function fullDigest(startYmd, endYmd) {
   return { rows, errors };
 }
 
+// Mobile-first email: fluid width, viewport meta, and NO wide multi-column tables.
+// Every row uses a 2-cell table (name on the left, figure on the right) so it never
+// overflows a phone, and the location total sits in its own cell instead of a CSS
+// flexbox (some email clients drop flex, which used to jam the total against the name).
 export function renderDigestHTML(rows, ymd, tz) {
   const totalSales = rows.reduce((s, r) => s + r.sales, 0);
   const totalTxns = rows.reduce((s, r) => s + r.txns, 0);
   const dateLabel = new Date(ymd + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const locBlocks = rows.length ? rows.map((r) => `
-    <div style="margin:0 0 18px;border:1px solid #e7ded0;border-radius:12px;overflow:hidden">
-      <div style="background:#3a2a1c;color:#f4e9d6;padding:12px 16px;display:flex;justify-content:space-between;align-items:baseline">
-        <div style="font-weight:700;font-size:16px">${esc(r.location)}${r.account ? ` <span style="opacity:.7;font-weight:400;font-size:12px">· ${esc(r.account)}</span>` : ""}</div>
-        <div style="text-align:right"><div style="font-weight:700;font-size:16px">${money(r.sales)}</div><div style="opacity:.7;font-size:11px">${r.txns} transaction${r.txns === 1 ? "" : "s"}</div></div>
+    <div style="margin:0 0 16px;border:1px solid #e7ded0;border-radius:12px;overflow:hidden">
+      <div style="background:#3a2a1c;color:#f4e9d6;padding:12px 16px">
+        <table role="presentation" width="100%" style="border-collapse:collapse"><tr>
+          <td style="vertical-align:top"><div style="font-weight:700;font-size:16px">${esc(r.location)}</div>${r.account ? `<div style="opacity:.7;font-size:12px;margin-top:1px">${esc(r.account)}</div>` : ""}</td>
+          <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px"><div style="font-weight:700;font-size:18px">${money(r.sales)}</div><div style="opacity:.7;font-size:11px">${r.txns} transaction${r.txns === 1 ? "" : "s"}</div></td>
+        </tr></table>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="background:#faf5ec;color:#7a6a55;text-align:left">
-          <th style="padding:8px 16px">Employee</th>
-          <th style="padding:8px 16px;text-align:right">Transactions</th>
-          <th style="padding:8px 16px;text-align:right">Sales</th>
-          <th style="padding:8px 16px;text-align:right">Avg ticket</th>
-        </tr></thead>
-        <tbody>${r.employees.map((e) => `
-          <tr style="border-top:1px solid #efe7d9">
-            <td style="padding:8px 16px">${esc(e.name)}</td>
-            <td style="padding:8px 16px;text-align:right">${e.txns}</td>
-            <td style="padding:8px 16px;text-align:right">${money(e.salesCents)}</td>
-            <td style="padding:8px 16px;text-align:right;font-weight:600">${money(e.avgCents)}</td>
-          </tr>`).join("")}</tbody>
-      </table>
+      <div style="background:#fff">${
+        r.employees.length ? r.employees.map((e) => `
+        <div style="padding:11px 16px;border-top:1px solid #efe7d9">
+          <table role="presentation" width="100%" style="border-collapse:collapse"><tr>
+            <td style="font-weight:600;font-size:15px;vertical-align:top">${esc(e.name)}</td>
+            <td style="text-align:right;font-weight:700;font-size:15px;white-space:nowrap;vertical-align:top;padding-left:10px">${money(e.salesCents)}</td>
+          </tr></table>
+          <div style="color:#7a6a55;font-size:13px;margin-top:2px">${e.txns} transaction${e.txns === 1 ? "" : "s"} &middot; ${money(e.avgCents)} avg ticket</div>
+        </div>`).join("") : `<div style="padding:12px 16px;color:#7a6a55;font-size:13px">No employee-attributed sales.</div>`
+      }</div>
     </div>`).join("") : `<p style="color:#7a6a55">No sales recorded for ${esc(dateLabel)} yet.</p>`;
-  return `<!doctype html><html><body style="margin:0;background:#f3ede1;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#2a2118">
-    <div style="max-width:640px;margin:0 auto;padding:20px">
-      <h1 style="font-size:20px;margin:0 0 2px">Daily Sales — Mikey Systems</h1>
-      <div style="color:#7a6a55;font-size:13px;margin:0 0 16px">${esc(dateLabel)}</div>
-      <div style="display:flex;gap:12px;margin:0 0 20px">
-        <div style="flex:1;background:#fff;border:1px solid #e7ded0;border-radius:12px;padding:14px 16px">
-          <div style="color:#7a6a55;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Total sales</div>
-          <div style="font-size:22px;font-weight:700">${money(totalSales)}</div>
-        </div>
-        <div style="flex:1;background:#fff;border:1px solid #e7ded0;border-radius:12px;padding:14px 16px">
-          <div style="color:#7a6a55;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Transactions</div>
-          <div style="font-size:22px;font-weight:700">${totalTxns}</div>
-        </div>
-      </div>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f3ede1;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#2a2118;-webkit-text-size-adjust:100%">
+    <div style="max-width:600px;width:100%;margin:0 auto;padding:16px 14px">
+      <h1 style="font-size:21px;margin:0 0 3px">Daily Sales &mdash; Mikey Systems</h1>
+      <div style="color:#7a6a55;font-size:14px;margin:0 0 16px">${esc(dateLabel)}</div>
+      <table role="presentation" width="100%" style="border-collapse:collapse;margin:0 0 18px"><tr>
+        <td style="width:50%;vertical-align:top;padding-right:6px">
+          <div style="background:#fff;border:1px solid #e7ded0;border-radius:12px;padding:14px 16px">
+            <div style="color:#7a6a55;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Total sales</div>
+            <div style="font-size:24px;font-weight:700;margin-top:2px">${money(totalSales)}</div>
+          </div>
+        </td>
+        <td style="width:50%;vertical-align:top;padding-left:6px">
+          <div style="background:#fff;border:1px solid #e7ded0;border-radius:12px;padding:14px 16px">
+            <div style="color:#7a6a55;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Transactions</div>
+            <div style="font-size:24px;font-weight:700;margin-top:2px">${totalTxns}</div>
+          </div>
+        </td>
+      </tr></table>
       ${locBlocks}
-      <p style="color:#9a8b73;font-size:11px;margin-top:18px;line-height:1.5">Sales are amounts collected via Square (excluding tips), before refunds. Average ticket = an employee's sales ÷ their transaction count. "Unattributed" covers payments Square didn't tie to a team member (e.g. a shared device login). Times are ${esc(tz)}.</p>
-    </div></body></html>`;
+      <p style="color:#9a8b73;font-size:11px;margin-top:14px;line-height:1.5">Sales are amounts collected via Square (excluding tips), before refunds. Average ticket = an employee's sales &divide; their transaction count. "Unattributed" covers payments Square didn't tie to a team member (e.g. a shared device login). Times are ${esc(tz)}.</p>
+    </div>
+  </body></html>`;
 }
 
 export async function sendDigestEmail({ to, from, apiKey, subject, html }) {
