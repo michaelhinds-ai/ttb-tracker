@@ -1694,6 +1694,9 @@ function isManager(){ return currentRole()==='manager'; }
 var MUTATING_CAPS={write:1,delete:1,setup:1,users:1};
 function sessionViewOnly(){ return !!(SESSION && SESSION.viewOnly); }
 function can(cap){ if(sessionViewOnly() && MUTATING_CAPS[cap]) return false; return (ROLE_CAPS[currentRole()]||[]).includes(cap); }
+// A report page an admin has made visible to a role (Setup → Roles) can also be RUN by that role —
+// otherwise e.g. a Barrel Manager given Sales Report sees the page but every button says "can't do that".
+function canRunReport(v){ if(can('reports')) return true; try{ if(authOn() && SESSION && !viewBlocked(v)) return true; }catch(e){} return requireCap('reports'); }
 function requireCap(cap){ if(can(cap)) return true; flash('Your role ('+ROLE_LABEL[currentRole()]+') can’t do that.'); return false; }
 // View-only users (and any signed-in user without full write permission) can still
 // work the Inbox and Tasks — those aren't write-gated — and SAVE just those changes.
@@ -4264,7 +4267,7 @@ function srPreset(kind){
   $('#sr_from').value=from; $('#sr_to').value=to;
 }
 async function srRun(){
-  if(!requireCap('reports'))return;
+  if(!canRunReport('salesrpt'))return;
   if($('#sr_type').value==='monthly'){ return srRunMonthly(); }
   let from=$('#sr_from').value, to=$('#sr_to').value;
   if(!from&&!to){ alert('Pick a date range.'); return; }
@@ -4323,7 +4326,7 @@ function renderSalesReportOut(d){
     `<div class="disclaimer">Completed Square orders for the selected period, across all connected accounts and locations. Net sales exclude tax and tips; empty back-office locations are hidden. <b>Bottles</b> counts line items tagged with <b>TTB Bottle Size (mL)</b> in Square — accounts without those tags show a dash. This is an operating snapshot — reconcile against Square before relying on it for filings.</div>`;
 }
 async function srRunMonthly(){
-  if(!requireCap('reports'))return;
+  if(!canRunReport('salesrpt'))return;
   const year=+$('#sr_year').value||new Date().getFullYear();
   const now=new Date(); const lastMonth=(year===now.getFullYear())?now.getMonth()+1:12;
   $('#sr_out').innerHTML='<div class="empty">Pulling Square sales by month for '+year+'… (this can take a few seconds)</div>'; $('#sr_print').style.display='none';
@@ -4403,7 +4406,7 @@ function rtlCmp(cur,prev,lyLabel){
     `</tbody></table></div>`;
 }
 async function rtlRun(){
-  if(!requireCap('reports'))return;
+  if(!canRunReport('retail'))return;
   let {from,to}=rtlRange();
   if(!from){ alert('Pick a date range.'); return; }
   $('#rtlFrom').value=from; $('#rtlTo').value=to;
