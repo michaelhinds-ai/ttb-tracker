@@ -15,7 +15,7 @@ const ARR_KEYS = [
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
   "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates",
   "invCats", "invItems", "invCounts", "invSubs",
-  "duties", "dutyChecks", "trustedDevices", "insurance",
+  "duties", "dutyChecks", "trustedDevices", "insurance", "sellSheets",
 ];
 
 /* ---- inlined auth helpers (self-contained so there's no cross-file import to break) ---- */
