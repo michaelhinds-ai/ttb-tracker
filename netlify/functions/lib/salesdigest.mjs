@@ -54,6 +54,30 @@ async function dayPayments(acct, startISO, endISO, locationId) {
 }
 
 // Build the digest for one account: [{ location, sales(cents), txns, employees:[{name,txns,salesCents,avgCents}] }]
+// Square items tagged "TTB Bottle Size (mL)" > 0 → variation ids that count as a BOTTLE.
+// Best effort: returns null when the tag isn't set up on this account.
+async function bottleVarSet(acct) {
+  let defId = null, cursor;
+  do {
+    const r = await sqFor(acct, "/v2/catalog/list?types=CUSTOM_ATTRIBUTE_DEFINITION" + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""));
+    for (const o of (r.objects || [])) { const d = o.custom_attribute_definition_data; if (d && d.name === "TTB Bottle Size (mL)") { defId = o.id; break; } }
+    cursor = r.cursor;
+  } while (cursor && !defId);
+  if (!defId) return null;
+  const vars = new Set(); let cur;
+  do {
+    const body = { object_types: ["ITEM"], limit: 200 }; if (cur) body.cursor = cur;
+    const r = await sqFor(acct, "/v2/catalog/search", { method: "POST", body });
+    for (const o of (r.objects || [])) {
+      const cav = o.custom_attribute_values || {}; let ml = 0;
+      for (const k of Object.keys(cav)) { const v = cav[k]; if (v && v.custom_attribute_definition_id === defId && v.number_value != null) { ml = parseInt(v.number_value, 10) || 0; break; } }
+      if (ml > 0) for (const vv of ((o.item_data && o.item_data.variations) || [])) vars.add(vv.id);
+    }
+    cur = r.cursor;
+  } while (cur);
+  return vars;
+}
+
 export async function accountDigest(acct, startYmd, endYmd) {
   const tz = acct.tz || sqEnv().tz;
   const startISO = dayRange(startYmd, tz).startISO;
@@ -88,16 +112,24 @@ export async function accountDigest(acct, startYmd, endYmd) {
   // Units (bottles/items) sold per employee: pull the orders behind those payments
   // and sum their line-item quantities, attributed to whoever took the payment.
   const orderIds = Object.keys(orderAttr);
+  let bottleVars = null; try { bottleVars = await bottleVarSet(acct); } catch (e) { bottleVars = null; }
   for (let i = 0; i < orderIds.length; i += 100) {
     const chunk = orderIds.slice(i, i + 100);
     let r = null;
     try { r = await sqFor(acct, "/v2/orders/batch-retrieve", { method: "POST", body: { order_ids: chunk } }); } catch (e) { r = null; }
     for (const o of (r && r.orders) || []) {
       const attr = orderAttr[o.id]; if (!attr) continue;
-      let units = 0;
-      for (const li of (o.line_items || [])) { const q = Math.round(parseFloat(li.quantity || "0")); if (q > 0) units += q; }
       const l = byLoc[attr.locId]; if (!l) continue;
-      const e = l.emp[attr.tmId]; if (e) e.units = (e.units || 0) + units;
+      const e = l.emp[attr.tmId]; if (!e) continue;
+      for (const li of (o.line_items || [])) {
+        const q = Math.round(parseFloat(li.quantity || "0")); if (!(q > 0)) continue;
+        const isBottle = !!(bottleVars && li.catalog_object_id && bottleVars.has(li.catalog_object_id));
+        e.units = (e.units || 0) + q;
+        if (isBottle) e.bottles = (e.bottles || 0) + q;
+        const nm = (li.name || "Item") + (li.variation_name && li.variation_name !== li.name && li.variation_name !== "Regular" ? ` — ${li.variation_name}` : "");
+        const it = (e.items || (e.items = {}))[nm] || (e.items[nm] = { name: nm, qty: 0, bottle: isBottle });
+        it.qty += q;
+      }
     }
   }
   const seller = acct.label || "";
@@ -107,7 +139,7 @@ export async function accountDigest(acct, startYmd, endYmd) {
     sales: l.sales,
     txns: l.txns,
     employees: Object.values(l.emp)
-      .map((e) => ({ name: e.name, txns: e.txns, salesCents: e.sales, units: e.units || 0, avgCents: e.txns ? Math.round(e.sales / e.txns) : 0 }))
+      .map((e) => ({ name: e.name, txns: e.txns, salesCents: e.sales, units: e.units || 0, bottles: bottleVars ? (e.bottles || 0) : null, items: Object.values(e.items || {}).sort((a, b) => (b.bottle - a.bottle) || (b.qty - a.qty)).slice(0, 60), avgCents: e.txns ? Math.round(e.sales / e.txns) : 0 }))
       .sort((a, b) => b.salesCents - a.salesCents),
   })).sort((a, b) => b.sales - a.sales);
 }
