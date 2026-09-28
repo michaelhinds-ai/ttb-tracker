@@ -115,10 +115,22 @@ export default async (req) => {
       const emails = (v) => (Array.isArray(v) ? v : String(v || "").split(/[,;\s]+/)).map((x) => String(x || "").trim()).filter((x) => x.indexOf("@") > 0);
       const recips = (arr) => arr.map((a) => ({ emailAddress: { address: a } }));
       const cc = emails(b.cc), toExtra = emails(b.to);
+      // Optional file attachments: [{ name, contentType, dataB64 }] — Graph's simple attach
+      // takes up to 3 MB per file; the whole request must stay under Netlify's ~6 MB body cap.
+      const atts = (Array.isArray(b.attachments) ? b.attachments : []).filter((a) => a && a.dataB64).slice(0, 10)
+        .map((a) => ({ "@odata.type": "#microsoft.graph.fileAttachment", name: String(a.name || "attachment").slice(0, 200), contentType: a.contentType || "application/octet-stream", contentBytes: String(a.dataB64) }));
+      if (atts.some((a) => a.contentBytes.length * 0.75 > 3 * 1048576)) return jsonResp({ ok: false, error: "attachment_too_large", detail: "Each attachment must be under 3 MB." }, 200);
+      // With attachments, reply/forward go through a draft: create → attach → send.
+      const draftSend = async (draft) => {
+        if (!draft || !draft.id) throw new Error("Could not create the draft for attachments.");
+        for (const a of atts) await graph(`/users/${enc(mb)}/messages/${enc(draft.id)}/attachments`, { method: "POST", body: JSON.stringify(a) });
+        await graph(`/users/${enc(mb)}/messages/${enc(draft.id)}/send`, { method: "POST" });
+      };
 
       if (b.mode === "forward" && b.messageId) {
         if (!toExtra.length) return jsonResp({ ok: false, error: "no_recipient", detail: "Add at least one address to forward to." }, 200);
-        await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/forward`, { method: "POST", body: JSON.stringify({ comment, toRecipients: recips(toExtra) }) });
+        if (atts.length) await draftSend(await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/createForward`, { method: "POST", body: JSON.stringify({ comment, toRecipients: recips(toExtra) }) }));
+        else await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/forward`, { method: "POST", body: JSON.stringify({ comment, toRecipients: recips(toExtra) }) });
       } else if (b.messageId) {
         // Reply on the thread (to the original sender). Cc anyone extra — coworkers or outside.
         const payload = { comment };
@@ -126,11 +138,13 @@ export default async (req) => {
         if (cc.length) message.ccRecipients = recips(cc);
         if (toExtra.length) message.toRecipients = recips(toExtra);
         if (Object.keys(message).length) payload.message = message;
-        await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/reply`, { method: "POST", body: JSON.stringify(payload) });
+        if (atts.length) await draftSend(await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/createReply`, { method: "POST", body: JSON.stringify(payload) }));
+        else await graph(`/users/${enc(mb)}/messages/${enc(b.messageId)}/reply`, { method: "POST", body: JSON.stringify(payload) });
       } else {
         if (!toExtra.length) return jsonResp({ ok: false, error: "no_recipient" }, 400);
         const message = { subject: b.subject || "", body: { contentType: "Text", content: comment }, toRecipients: recips(toExtra) };
         if (cc.length) message.ccRecipients = recips(cc);
+        if (atts.length) message.attachments = atts;
         await graph(`/users/${enc(mb)}/sendMail`, { method: "POST", body: JSON.stringify({ message, saveToSentItems: true }) });
       }
       return jsonResp({ ok: true });
@@ -138,7 +152,8 @@ export default async (req) => {
 
     return jsonResp({ ok: false, error: "unknown_action" }, 400);
   } catch (e) {
-    return jsonResp({ ok: false, error: String((e && e.message) || e) }, 200);
+    const msg = String((e && e.message) || e);
+    return jsonResp({ ok: false, error: /ErrorAccessDenied|Access is denied|Forbidden/i.test(msg) && /createReply|createForward|attachments/.test(msg) ? "Sending attachments needs the Microsoft 365 app to have Mail.ReadWrite (it creates a draft, attaches, then sends). " + msg : msg }, 200);
   }
 };
 
