@@ -133,6 +133,16 @@ export default async (req) => {
   const key = `ws_${ws}`;
 
   try {
+    if (req.method === "GET" && url.searchParams.get("acts")) {
+      // Team activity log (who did what, from every device). Back-office logins only.
+      const data = await store.get(key, { type: "json" });
+      if (authOn() && data && data.auth && data.auth.enabled) {
+        const tok = verifyToken(tokenFromReq(req));
+        if (!tok || isRetailRole(tok.role)) return json({ ok: false, error: "not_allowed" }, 403);
+      }
+      const log = (await store.get(`acts_${ws}`, { type: "json" })) || [];
+      return json({ ok: true, rows: log.slice(-3000).reverse() });
+    }
     if (req.method === "GET") {
       const data = await store.get(key, { type: "json" });
       if (!data) return json(null);
@@ -149,6 +159,17 @@ export default async (req) => {
       if (!body || typeof body !== "object") return json({ error: "bad_body" }, 400);
       const base = body._baseSavedAt;
       if ("_baseSavedAt" in body) delete body._baseSavedAt;
+      const acts = Array.isArray(body._acts) ? body._acts.slice(0, 60) : [];
+      if ("_acts" in body) delete body._acts;
+      let actTok = null; try { actTok = verifyToken(tokenFromReq(req)); } catch (e) { actTok = null; }
+      const logActs = async () => { // append this save's actions to the shared activity log (never blocks the save)
+        if (!acts.length) return;
+        try {
+          const lk = `acts_${ws}`; const log = (await store.get(lk, { type: "json" })) || [];
+          for (const a of acts) log.push({ ts: +a.ts || Date.now(), by: String(a.by || "").slice(0, 80), role: (actTok && actTok.role) || String(a.role || "").slice(0, 20), label: String(a.label || "").slice(0, 300), dev: String(a.dev || "").slice(0, 60), v: String(a.v || "").slice(0, 30) });
+          await store.setJSON(lk, log.slice(-5000));
+        } catch (e) { /* logging must never break saving */ }
+      };
 
       const current = await store.get(key, { type: "json" });
       const enforce = authOn() && current && current.auth && current.auth.enabled;
@@ -172,6 +193,7 @@ export default async (req) => {
           }
           const savedAt = new Date().toISOString();
           await store.setJSON(key, purgeTombstones({ ...out, _savedAt: savedAt }));
+          await logActs();
           return json({ ok: true, savedAt });
         }
       }
@@ -192,6 +214,7 @@ export default async (req) => {
       const savedAt = new Date().toISOString();
       const saved = purgeTombstones({ ...toSave, _savedAt: savedAt });
       await store.setJSON(key, saved);
+      await logActs();
       return json(merged ? { ok: true, savedAt, merged: true, state: saved } : { ok: true, savedAt });
     }
 
