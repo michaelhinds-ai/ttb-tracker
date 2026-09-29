@@ -1,5 +1,12 @@
 // Shared QuickBooks Online OAuth2 + API helpers (server-side only).
 import { getStore } from "@netlify/blobs";
+import { isLinkedWs } from "./companies.mjs";
+
+// Each company has its own QuickBooks connection. Louisville Rickhouse (root) keeps the original
+// "tokens" key; a linked company (Nashville Barrel Co) uses "tokens_<ws>". Call useWs(ws) first.
+let _ws = "";
+export function useWs(ws) { _ws = isLinkedWs(ws) ? String(ws) : ""; }
+function tokKey() { return _ws ? `tokens_${_ws}` : "tokens"; }
 
 const DISCOVERY = {
   production: "https://developer.api.intuit.com/.well-known/openid_configuration",
@@ -35,9 +42,9 @@ export async function discovery(environment) {
 }
 export function apiBase(environment) { return API_BASE[environment] || API_BASE.production; }
 
-export async function saveTokens(tok) { await store().setJSON("tokens", { ...tok, savedAt: Date.now() }); }
-export async function loadTokens() { return await store().get("tokens", { type: "json" }); }
-export async function clearTokens() { try { await store().delete("tokens"); } catch (e) {} }
+export async function saveTokens(tok) { await store().setJSON(tokKey(), { ...tok, savedAt: Date.now() }); }
+export async function loadTokens() { return await store().get(tokKey(), { type: "json" }); }
+export async function clearTokens() { try { await store().delete(tokKey()); } catch (e) {} }
 
 export class QBError extends Error {
   constructor(code, status, detail, tid) { super(code); this.code = code; this.status = status; this.detail = detail; this.tid = tid; }

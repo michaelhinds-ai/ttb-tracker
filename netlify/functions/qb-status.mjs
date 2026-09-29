@@ -1,6 +1,7 @@
-import { env, loadTokens, qbQuery } from "./lib/qb.mjs";
+import { env, loadTokens, qbQuery, useWs } from "./lib/qb.mjs";
 
 export default async (req) => {
+  useWs(new URL(req.url).searchParams.get("ws") || "");
   const { clientId, environment } = env();
   const configured = !!clientId;
   if (!configured) return json({ configured: false, connected: false });

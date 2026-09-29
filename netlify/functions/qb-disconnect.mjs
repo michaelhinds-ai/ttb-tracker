@@ -1,7 +1,8 @@
-import { env, discovery, basicAuth, loadTokens, clearTokens } from "./lib/qb.mjs";
+import { env, discovery, basicAuth, loadTokens, clearTokens, useWs } from "./lib/qb.mjs";
 
 // Handles both the app's disconnect button (?app=1 → JSON) and Intuit's disconnect ping (→ HTML).
 export default async (req) => {
+  useWs(new URL(req.url).searchParams.get("ws") || "");
   const { environment } = env();
   const tok = await loadTokens();
   if (tok && tok.refresh_token) {

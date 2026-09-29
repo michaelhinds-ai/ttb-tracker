@@ -3,6 +3,7 @@
 // otherwise it tells the client to use its legacy client-side login (nothing changes).
 import { getStore } from "@netlify/blobs";
 import { authOn, hashPin, sign, sanitizeUsers, isRetailRole } from "./lib/authtoken.mjs";
+import { ROOT_WS, isLinkedWs } from "./lib/companies.mjs";
 
 function json(o, s = 200) { return new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } }); }
 function norm(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
@@ -28,7 +29,7 @@ export default async (req) => {
   if (!authOn()) return json({ ok: true, legacy: true });
 
   const store = getStore({ name: "ttb-data", consistency: "strong" });
-  const key = `ws_${ws}`;
+  const key = `ws_${isLinkedWs(ws) ? ROOT_WS : ws}`; // linked companies share the root workspace's logins
   const blob = (await store.get(key, { type: "json" })) || {};
   if (!(blob.auth && blob.auth.enabled)) return json({ ok: true, legacy: true }); // login turned off
 

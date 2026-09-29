@@ -1,4 +1,4 @@
-import { qbFetch, qbQuery, QBError, escapeQ, round2, MINOR_VERSION } from "./lib/qb.mjs";
+import { qbFetch, qbQuery, QBError, escapeQ, round2, MINOR_VERSION, useWs } from "./lib/qb.mjs";
 
 // POST body:
 // { customer:{name,email,phone}, lines:[{sku,description,qty,unitPrice}], docNumber, txnDate, privateNote, poNumber }
@@ -8,6 +8,7 @@ export default async (req) => {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   let p;
   try { p = await req.json(); } catch { return json({ error: "bad_json" }, 400); }
+  useWs(p.ws || new URL(req.url).searchParams.get("ws") || "");
   const custName = (p.customer && p.customer.name || "").trim();
   if (!custName) return json({ error: "no_customer" }, 400);
   if (!Array.isArray(p.lines) || !p.lines.length) return json({ error: "no_lines" }, 400);

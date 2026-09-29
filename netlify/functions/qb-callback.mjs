@@ -1,4 +1,4 @@
-import { env, discovery, redirectUri, basicAuth, saveTokens, store } from "./lib/qb.mjs";
+import { env, discovery, redirectUri, basicAuth, saveTokens, store, useWs } from "./lib/qb.mjs";
 
 function page(title, msg, backHref) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
@@ -14,6 +14,7 @@ export default async (req) => {
   const realmId = url.searchParams.get("realmId");
   const state = url.searchParams.get("state") || "";
   const ws = state.split("~")[0] || "";
+  useWs(ws);
   const back = "/" + (ws ? "#ws=" + encodeURIComponent(ws) : "");
   const { clientId, clientSecret, environment } = env();
 
@@ -32,7 +33,7 @@ export default async (req) => {
     const tok = await r.json();
     await saveTokens({ ...tok, realmId });
     try { await store().delete("oauth_state"); } catch (e) {}
-    return new Response(page("QuickBooks connected", "Your Louisville QuickBooks company is now linked. You can close this and return to the app.", back), { status: 200, headers: { "content-type": "text/html" } });
+    return new Response(page("QuickBooks connected", "Your QuickBooks company is now linked to this company in Mikey Systems. You can close this and return to the app.", back), { status: 200, headers: { "content-type": "text/html" } });
   } catch (e) {
     console.error("QB callback error", e && e.message);
     return new Response(page("Connection error", "Something went wrong finishing the QuickBooks connection: " + (e && e.message), back), { status: 200, headers: { "content-type": "text/html" } });

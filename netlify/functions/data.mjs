@@ -1,5 +1,9 @@
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
+// Companies (keep in sync with lib/companies.mjs — inlined so this function has no cross-file import)
+const ROOT_WS = "7d72874cf4714c4e9242a22c39c42a65";
+const COMPANY_WS = { nbc: "d7ee258b1c714b6fab306c4a9396825d" };
+function isLinkedWs(ws) { return Object.values(COMPANY_WS).includes(String(ws || "")); }
 
 // Synced key-value store for the TTB tracker — one JSON blob per workspace code.
 // Conflict-safe: each save carries the _savedAt it was based on. If the cloud has
@@ -131,12 +135,26 @@ export default async (req) => {
 
   const store = getStore({ name: "ttb-data", consistency: "strong" });
   const key = `ws_${ws}`;
+  // A linked company (e.g. Nashville Barrel Co) keeps its own data but uses the ROOT workspace's
+  // logins: auth is read from the root blob, injected into what the client receives, and never
+  // stored in the company blob. Retail logins can't open a linked company at all.
+  const linked = isLinkedWs(ws);
+  const rootBlob = linked ? ((await store.get(`ws_${ROOT_WS}`, { type: "json" })) || {}) : null;
+  const authOf = (d) => (linked ? rootBlob.auth : (d && d.auth));
+  const withAuth = (d) => {
+    if (!linked) return d;
+    const rs = rootBlob.settings || {};
+    const o = { ...(d || {}), auth: rootBlob.auth, trustedDevices: rootBlob.trustedDevices || [] };
+    o.settings = { ...((d && d.settings) || {}), roleViews: rs.roleViews || {}, loginShowList: !!rs.loginShowList };
+    return o;
+  };
 
   try {
     if (req.method === "GET" && url.searchParams.get("acts")) {
       // Team activity log (who did what, from every device). Back-office logins only.
       const data = await store.get(key, { type: "json" });
-      if (authOn() && data && data.auth && data.auth.enabled) {
+      const au = authOf(data);
+      if (authOn() && au && au.enabled) {
         const tok = verifyToken(tokenFromReq(req));
         if (!tok || isRetailRole(tok.role)) return json({ ok: false, error: "not_allowed" }, 403);
       }
@@ -144,13 +162,15 @@ export default async (req) => {
       return json({ ok: true, rows: log.slice(-3000).reverse() });
     }
     if (req.method === "GET") {
-      const data = await store.get(key, { type: "json" });
-      if (!data) return json(null);
-      const enforce = authOn() && data.auth && data.auth.enabled;
+      const data0 = await store.get(key, { type: "json" });
+      if (!data0 && !linked) return json(null);
+      const data = withAuth(data0);
+      const au = authOf(data0);
+      const enforce = authOn() && au && au.enabled;
       if (!enforce) return json(data);
       const tok = verifyToken(tokenFromReq(req));
       if (!tok) return json(bootstrap(data));               // not signed in → login-screen data only
-      if (isRetailRole(tok.role)) return json(filterForRetail(data)); // employee → no financials
+      if (isRetailRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForRetail(data), linked ? 403 : 200); // employee → no financials
       return json(data);                                     // back office → full
     }
 
@@ -179,11 +199,14 @@ export default async (req) => {
       };
 
       const current = await store.get(key, { type: "json" });
-      const enforce = authOn() && current && current.auth && current.auth.enabled;
+      if (linked) { delete body.auth; delete body.trustedDevices; if (body.settings && typeof body.settings === "object") { delete body.settings.roleViews; delete body.settings.loginShowList; } }
+      const au = authOf(current);
+      const enforce = authOn() && au && au.enabled;
 
       if (enforce) {
         const tok = verifyToken(tokenFromReq(req));
         if (!tok) return json({ error: "auth_required" }, 401);
+        if (linked && isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403);
         if (isRetailRole(tok.role)) {
           const out = { ...current };
           for (const k of RETAIL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);
@@ -219,10 +242,11 @@ export default async (req) => {
       // submissions or check-offs. (Runs after the merge above so it wins regardless of base state.)
       if (current) { for (const k of ALWAYS_MERGE_KEYS) toSave[k] = mergeById(current[k], body[k]); }
       const savedAt = new Date().toISOString();
+      if (linked) { delete toSave.auth; delete toSave.trustedDevices; }
       const saved = purgeTombstones({ ...toSave, _savedAt: savedAt });
       await store.setJSON(key, saved);
       await logActs();
-      return json(merged ? { ok: true, savedAt, merged: true, state: saved } : { ok: true, savedAt });
+      return json(merged ? { ok: true, savedAt, merged: true, state: withAuth(saved) } : { ok: true, savedAt });
     }
 
     return json({ error: "method_not_allowed" }, 405);
