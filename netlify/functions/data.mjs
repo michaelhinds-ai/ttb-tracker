@@ -159,6 +159,13 @@ export default async (req) => {
       if (!body || typeof body !== "object") return json({ error: "bad_body" }, 400);
       const base = body._baseSavedAt;
       if ("_baseSavedAt" in body) delete body._baseSavedAt;
+      // Refuse saves from outdated app builds (a tab left open for days) so old code can't write
+      // stale data over everyone else's. Newer builds reload themselves when they see this.
+      // Raise MIN_CLIENT_BUILD (or set the env var) when a change must reach every device.
+      const MIN_CLIENT_BUILD = (process.env.MIN_CLIENT_BUILD || "v20260929b").trim();
+      const cv = String(body._v || "");
+      if ("_v" in body) delete body._v;
+      if (!cv || cv < MIN_CLIENT_BUILD) return json({ ok: false, error: "stale_client", latest: MIN_CLIENT_BUILD, detail: "This screen is running an old version of Mikey Systems. Refresh the page to update." }, 409);
       const acts = Array.isArray(body._acts) ? body._acts.slice(0, 60) : [];
       if ("_acts" in body) delete body._acts;
       let actTok = null; try { actTok = verifyToken(tokenFromReq(req)); } catch (e) { actTok = null; }
