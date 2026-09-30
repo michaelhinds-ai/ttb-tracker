@@ -64,7 +64,13 @@ export function filterForRetail(blob, tok) {
   };
   for (const k of RETAIL_READ_KEYS) out[k] = Array.isArray(blob && blob[k]) ? blob[k] : [];
   const uid = tok && tok.uid;
-  out.tasks = (Array.isArray(blob && blob.tasks) ? blob.tasks : []).filter((t) => t && !t.tip && uid && (t.forId === uid || t.byId === uid));
+  // Retail Managers also get store notes (from opening/closing) for the stores they cover.
+  const me = uid ? ((blob && blob.auth && Array.isArray(blob.auth.users)) ? blob.auth.users : []).find((u) => u && u.id === uid) : null;
+  const myLocs = me ? (Array.isArray(me.locations) && me.locations.length ? me.locations : (me.location ? [me.location] : [])) : [];
+  const ln = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const locOk = (l) => !myLocs.length || myLocs.some((m) => { const a = ln(m), b = ln(l); return a && b && (a === b || a.startsWith(b) || b.startsWith(a)); });
+  const isMgr = tok && tok.role === "retail";
+  out.tasks = (Array.isArray(blob && blob.tasks) ? blob.tasks : []).filter((t) => t && !t.tip && uid && (t.forId === uid || t.byId === uid || (t.dutyNote && isMgr && locOk(t.byLoc))));
   return out;
 }
 // The pre-login view (no token): only what the sign-in screen needs. No pinHash, no data.
