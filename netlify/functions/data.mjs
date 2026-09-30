@@ -70,13 +70,16 @@ function sanitizeUsers(users) {
     locations: u.locations || [], location: u.location || "", stok: u.stok || null,
   }));
 }
-function filterForRetail(blob) {
+function filterForRetail(blob, tok) {
   const out = {
     _savedAt: blob && blob._savedAt,
     auth: { enabled: !!(blob.auth && blob.auth.enabled), users: sanitizeUsers(blob.auth && blob.auth.users) },
     settings: sanitizeSettings(blob.settings), brandLogos: blob.brandLogos || {},
   };
   for (const k of RETAIL_READ_KEYS) out[k] = Array.isArray(blob[k]) ? blob[k] : [];
+  // Their own tasks only (assigned to them, or ones they sent) — never the whole team's list or cash tips.
+  const uid = tok && tok.uid;
+  out.tasks = (Array.isArray(blob.tasks) ? blob.tasks : []).filter((t) => t && !t.tip && uid && (t.forId === uid || t.byId === uid));
   return out;
 }
 function bootstrap(blob) {
@@ -170,7 +173,7 @@ export default async (req) => {
       if (!enforce) return json(data);
       const tok = verifyToken(tokenFromReq(req));
       if (!tok) return json(bootstrap(data));               // not signed in → login-screen data only
-      if (isRetailRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForRetail(data), linked ? 403 : 200); // employee → no financials
+      if (isRetailRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForRetail(data, tok), linked ? 403 : 200); // employee → no financials
       return json(data);                                     // back office → full
     }
 

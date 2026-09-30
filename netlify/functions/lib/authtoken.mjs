@@ -55,7 +55,7 @@ export function sanitizeUsers(users) {
   })); // note: NO pinHash, NO email
 }
 // The role-appropriate view of the blob a client receives after logging in.
-export function filterForRetail(blob) {
+export function filterForRetail(blob, tok) {
   const out = {
     _savedAt: blob && blob._savedAt,
     auth: { enabled: !!(blob && blob.auth && blob.auth.enabled), users: sanitizeUsers(blob && blob.auth && blob.auth.users) },
@@ -63,6 +63,8 @@ export function filterForRetail(blob) {
     brandLogos: (blob && blob.brandLogos) || {},
   };
   for (const k of RETAIL_READ_KEYS) out[k] = Array.isArray(blob && blob[k]) ? blob[k] : [];
+  const uid = tok && tok.uid;
+  out.tasks = (Array.isArray(blob && blob.tasks) ? blob.tasks : []).filter((t) => t && !t.tip && uid && (t.forId === uid || t.byId === uid));
   return out;
 }
 // The pre-login view (no token): only what the sign-in screen needs. No pinHash, no data.
