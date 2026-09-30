@@ -10,7 +10,7 @@ import { env as sqEnv, dayRange, todayInTz } from "./lib/square.mjs";
 import { sendDigestEmail } from "./lib/salesdigest.mjs";
 
 async function settingsFor(wsCodes) {
-  let to = new Set(), byLoc = {}, threshold = 15, on = true;
+  let to = new Set(), byLoc = {}, threshold = 15, on = true; const exempt = [];
   (process.env.LATE_EMAIL_TO || "").split(",").map((s) => s.trim()).filter(Boolean).forEach((e) => to.add(e));
   if (wsCodes.length) {
     const store = getStore({ name: "ttb-data", consistency: "strong" });
@@ -18,6 +18,8 @@ async function settingsFor(wsCodes) {
       try {
         const d = await store.get(`ws_${code}`, { type: "json" });
         const s = (d && d.settings) || {};
+        // Managers & admins don't clock in — only Retail (floor staff) logins get clock-in alerts.
+        for (const u of ((d && d.auth && d.auth.users) || [])) { if (u && u.name && u.role && u.role !== "retailemp") exempt.push(u.name); }
         String(s.lateEmailTo || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((e) => to.add(e));
         if (s.lateEmailByLoc && typeof s.lateEmailByLoc === "object") {
           for (const k of Object.keys(s.lateEmailByLoc)) {
@@ -30,7 +32,18 @@ async function settingsFor(wsCodes) {
       } catch {}
     }
   }
-  return { to: [...to], byLoc, threshold, on };
+  return { to: [...to], byLoc, threshold, on, exempt };
+}
+// Name match tolerant of nicknames / short forms (Matt = Matthew, Mike = Michael) when the last name matches.
+const NICK = { mike: "michael", bill: "william", will: "william", bob: "robert", rob: "robert", jim: "james", joe: "joseph", tom: "thomas", tony: "anthony", dan: "daniel", dave: "david", steve: "steven", kate: "katherine", katie: "katherine", liz: "elizabeth", beth: "elizabeth", jen: "jennifer", jenny: "jennifer", ben: "benjamin", nick: "nicholas", andy: "andrew", drew: "andrew", chuck: "charles", charlie: "charles" };
+function sameName(a, b) {
+  const n = (x) => String(x || "").toLowerCase().replace(/['’.]/g, "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const A = n(a), B = n(b); if (!A.length || !B.length) return false;
+  if (A.join(" ") === B.join(" ")) return true;
+  if (A.length < 2 || B.length < 2) return A[0] === B[0] && (A.length === 1 || B.length === 1);
+  if (A[A.length - 1] !== B[B.length - 1]) return false;
+  const x = A[0], y = B[0]; if (x === y || (NICK[x] || x) === (NICK[y] || y)) return true;
+  const sh = x.length <= y.length ? x : y, lo = x.length <= y.length ? y : x; return sh.length >= 3 && lo.startsWith(sh);
 }
 // Recipients for a missed shift at `locName`: the catch-all list PLUS anyone
 // mapped to that location (name-tolerant so "Church S" matches "Church Street").
@@ -53,7 +66,8 @@ export default async (req) => {
   const wsCodes = (process.env.BACKUP_WS || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!apiKey) return new Response("no api key", { status: 200 });
 
-  const { to, byLoc, threshold, on } = await settingsFor(wsCodes);
+  const { to, byLoc, threshold, on, exempt } = await settingsFor(wsCodes);
+  const staffOnly = (rows) => rows.filter((r) => !exempt.some((nm) => sameName(nm, r.name)));
   if (!on) return new Response("disabled", { status: 200 });
   if (!to.length && !Object.keys(byLoc).length) return new Response("no recipients", { status: 200 });
 
@@ -97,11 +111,12 @@ export default async (req) => {
   let lateRows = [];
   try { const r = await allLate(startISO, endISO, threshold); lateRows = r.rows || []; if (r.errors && r.errors.length) console.warn("clockin-alert late errors:", r.errors.join(" | ")); }
   catch (e) { console.error("allLate failed", e && e.message); }
+  lateRows = staffOnly(lateRows);
   const g1 = await emailGroups(lateRows, (rowsL) => lateEmailHTML(rowsL, threshold, tz), "⏰ Missed clock-in");
 
   // Pull enriched clock status once — drives both overstay and late-arrival alerts.
   let statusRows = [];
-  try { const r = await allClockStatus(startISO, endISO); statusRows = r.rows || []; if (r.errors && r.errors.length) console.warn("clockin-alert status errors:", r.errors.join(" | ")); }
+  try { const r = await allClockStatus(startISO, endISO); statusRows = staffOnly(r.rows || []); if (r.errors && r.errors.length) console.warn("clockin-alert status errors:", r.errors.join(" | ")); }
   catch (e) { console.error("allClockStatus failed", e && e.message); }
 
   // 2) Overstays — still clocked in `threshold`+ minutes past their scheduled end.
