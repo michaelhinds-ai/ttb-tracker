@@ -29,7 +29,7 @@ export function buildRollup(data, opts = {}) {
   const since = now - windowDays * 86400000;
   const locs = (Array.isArray(data.invLocs) && data.invLocs.filter(Boolean).length) ? data.invLocs.filter(Boolean) : DEFAULT_LOCS.slice();
   const canon = (l) => locs.find((x) => locMatch(x, l)) || l;
-  const cats = (data.invCats || []).filter((c) => c && !c._del).sort((a, b) => ((a.ord || 0) - (b.ord || 0)) || String(a.name || "").localeCompare(String(b.name || "")));
+  const cats = (data.invCats || []).filter((c) => c && !c._del).sort((a, b) => String(a.name || "").trim().localeCompare(String(b.name || "").trim(), "en", { sensitivity: "base", numeric: true }));
   const items = (data.invItems || []).filter((it) => it && !it._del && it.active !== false);
   // count lookup: loc|itemId|size → qty
   // Last COUNTED value per store/item/size (newest ts wins). Deliberately ignores the app's
@@ -48,7 +48,7 @@ export function buildRollup(data, opts = {}) {
   let grand = 0;
   const groups = [];
   for (const c of cats) {
-    const its = items.filter((it) => it.catId === c.id).sort((a, b) => ((a.ord || 0) - (b.ord || 0)) || String(a.name || "").localeCompare(String(b.name || "")));
+    const its = items.filter((it) => it.catId === c.id).sort((a, b) => String(a.name || "").trim().localeCompare(String(b.name || "").trim(), "en", { sensitivity: "base", numeric: true }));
     if (!its.length) continue;
     const rows = [];
     for (const it of its) {
