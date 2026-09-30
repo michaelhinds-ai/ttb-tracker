@@ -18,6 +18,8 @@ export default async (req) => {
   const countDate = String(b.countDate || "").trim();
   const totalUnits = Number(b.totalUnits || 0);
   const lines = Array.isArray(b.lines) ? b.lines : [];
+  const pickUrl = /^https:\/\/[^\s"<>]+$/.test(String(b.pickUrl || "")) ? String(b.pickUrl) : "";
+  const pickCount = Math.max(0, +b.pickCount || 0);
 
   if (!lines.length) return json({ ok: true, skipped: "no_lines" });
   // No recipient set for this store — the client already saved it; just report back.
@@ -64,6 +66,7 @@ export default async (req) => {
           <div style="color:#8a7a63">${countDate ? esc(fmtDate(countDate)) : ""}${by ? " · counted by " + esc(by) : ""}</div>
           <div style="margin-top:3px">Total units: <b>${esc(totalUnits)}</b></div>
         </div>
+        ${pickUrl ? `<div style="margin:0 0 14px"><a href="${esc(pickUrl)}" style="display:inline-block;background:#7a5a2b;color:#fff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:9px">🛒 Pick-up list — ${esc(countDate ? fmtDate(countDate) : "")} (${pickCount} item${pickCount === 1 ? "" : "s"})</a></div>` : ""}
         <table role="presentation" style="border-collapse:collapse;width:100%;font-size:15px;border:1px solid #e5ddcd;border-radius:10px;overflow:hidden">${body}</table>
       </div>
       <div style="padding:12px 18px;background:#faf6ee;color:#8a7a63;font-size:12px">Submitted automatically from Mikey Systems when the ${esc(loc)} count was completed.</div>
@@ -72,6 +75,7 @@ export default async (req) => {
 
   // Plain-text fallback
   let text = `Store Inventory — ${loc}\nInventory date: ${countDate ? fmtDate(countDate) : "—"}\nCounted by: ${by || "—"}\nTotal units: ${totalUnits}\n\n`;
+  if (pickUrl) text += `Pick-up list (${pickCount} items): ${pickUrl}\n\n`;
   for (const c of cats) {
     text += `== ${c.name} ==\n`;
     for (const ln of c.rows) {
