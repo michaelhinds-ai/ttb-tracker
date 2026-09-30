@@ -1,7 +1,7 @@
-// Monday-morning all-stores inventory rollup → settings.invRollupTo (set in the app:
+// Wednesday-afternoon all-stores inventory rollup → settings.invRollupTo (set in the app:
 // Store Inventory → Manage → "Weekly all-stores rollup"). One email per workspace in BACKUP_WS.
-// Runs at 13:00 and 14:00 UTC on Mondays and only sends on the run that is 8 AM in Nashville,
-// so it stays 8 AM Central through daylight-saving changes.
+// Runs at 20:00 and 21:00 UTC on Wednesdays and only sends on the run that is 3 PM in Nashville,
+// so it stays 3 PM Central through daylight-saving changes.
 // Env: RESEND_API_KEY, BACKUP_WS, optional INV_FROM / SALES_FROM.
 import { getStore } from "@netlify/blobs";
 import { sendRollup } from "./lib/invrollup.mjs";
@@ -10,7 +10,7 @@ function chicagoHour(d = new Date()) { return +new Intl.DateTimeFormat("en-US", 
 
 export default async (req) => {
   let force = false; try { const b = await req.json(); force = !!(b && b.force); } catch {}
-  if (!force && chicagoHour() !== 8) return new Response("not 8am Central — skipped", { status: 200 });
+  if (!force && chicagoHour() !== 15) return new Response("not 3pm Central — skipped", { status: 200 });
   const apiKey = (process.env.RESEND_API_KEY || "").trim();
   if (!apiKey) { console.error("inventory-rollup: RESEND_API_KEY missing"); return new Response("no api key", { status: 200 }); }
   const from = (process.env.INV_FROM || process.env.SALES_FROM || "Mikey Systems <sales@nashvillebarrelco.com>").trim();
@@ -29,4 +29,4 @@ export default async (req) => {
   return new Response("sent " + sent, { status: 200 });
 };
 
-export const config = { schedule: "0 13,14 * * 1" };
+export const config = { schedule: "0 20,21 * * 3" }; // Wednesdays; the 3 PM Central run sends
