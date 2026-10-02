@@ -7439,7 +7439,7 @@ async function sendOrderToQB(id,silent){
   const lines=(o.lines||[]).map(l=>({sku:l.sku,description:l.sku+(l.pack?` (${_packLabel(l.pack)})`:''),qty:l.cases,unitPrice:l.price}));
   if(!silent) flash('Sending order #'+o.num+' to QuickBooks…');
   try{
-    const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:WS,customer:{name:cust.name,email:billEmail,phone:billPhone},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});
+    const r=await fetch('/api/qb/invoice',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:WS,customer:{name:cust.name,email:billEmail,phone:billPhone,qbId:cust.qbId||null},lines,docNumber:o.num,txnDate:o.date,poNumber:o.ref||'',privateNote:'Mikey Systems order/invoice #'+o.num+(o.ref?(' · PO '+o.ref):'')})});
     const d=await r.json();
     if(d.ok){ o.qbSynced=true; o.qbInvoiceId=d.invoiceId; o.qbDoc=d.docNumber; save(false); renderOrders();
       const used=d.docNumber||d.invoiceId;

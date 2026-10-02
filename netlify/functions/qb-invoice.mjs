@@ -14,7 +14,7 @@ export default async (req) => {
   if (!Array.isArray(p.lines) || !p.lines.length) return json({ error: "no_lines" }, 400);
 
   try {
-    const custId = await findCustomer(custName) || await createCustomer(p.customer);
+    const custId = (p.customer && p.customer.qbId ? String(p.customer.qbId) : null) || await findCustomer(custName) || await createCustomer(p.customer);
     // If QuickBooks already has an invoice with this DocNumber:
     //  • SAME customer  → it's this order already synced → link to it (idempotent, no duplicate).
     //  • DIFFERENT customer → the number is taken by an unrelated invoice (e.g. an old gift-shop
