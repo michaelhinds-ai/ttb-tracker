@@ -40,6 +40,22 @@ export default async (req) => {
 
   if (hashPin(b.pin) !== found.pinHash) return json({ ok: false, error: "pin" });
 
+  // Approve-this-device from the login screen: an Admin signs in with approveDevice:true and the
+  // device id of the tablet they're standing at. No session is created — it only adds the device.
+  if (b.approveDevice) {
+    if (!(found.role === "admin" || found.role === "admin2")) return json({ ok: false, error: "not_admin" });
+    const dev = String(b.deviceId || "").trim();
+    if (!dev || dev.length < 8) return json({ ok: false, error: "no_device" });
+    const list = Array.isArray(blob.trustedDevices) ? blob.trustedDevices : [];
+    if (!list.some((x) => x && x.token === dev && !x._del)) {
+      const now = Date.now();
+      list.push({ id: "td" + now.toString(36) + Math.random().toString(36).slice(2, 6), token: dev, name: String(b.deviceName || "Approved at login").slice(0, 60), by: found.name || "", ts: now, _upd: now });
+      blob.trustedDevices = list;
+      try { await store.setJSON(key, { ...blob, _savedAt: new Date().toISOString() }); } catch { return json({ ok: false, error: "save" }); }
+    }
+    return json({ ok: true, approved: true });
+  }
+
   // Device restriction (trusted-device lock) — enforced server-side too.
   if (found.deviceLock) {
     const dev = String(b.deviceId || "").trim();
