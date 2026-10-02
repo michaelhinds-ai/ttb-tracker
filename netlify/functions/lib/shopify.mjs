@@ -44,6 +44,22 @@ async function accessToken() {
 }
 
 export async function shopifyGraphQL(query, variables = {}) {
+  try { return await _gql(query, variables); }
+  catch (e) {
+    // A token minted before the app's scopes changed keeps the OLD scopes until it
+    // expires (up to ~24h in a warm function). On ACCESS_DENIED, mint a fresh one and retry once.
+    if (!/ACCESS_DENIED/.test(String(e && e.message))) throw e;
+    cached = { token: null, expiresAt: 0 };
+    try { return await _gql(query, variables); }
+    catch (e2) {
+      const id = String(process.env.SHOPIFY_CLIENT_ID || '');
+      e2.message += ` [app client id ${id.slice(0, 6)}…${id.slice(-4)}]`;
+      throw e2;
+    }
+  }
+}
+
+async function _gql(query, variables) {
   const token = await accessToken();
   const res = await fetch(`https://${STORE}/admin/api/${API_VERSION}/graphql.json`, {
     method: 'POST',
