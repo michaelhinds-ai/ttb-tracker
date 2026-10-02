@@ -2,7 +2,7 @@
 // GET  /api/shopify/inventory            -> { ok, locations:[{id,name}], items:[{variantId,product,variant,sku,itemId,tracked,levels:{locId:{available,on_hand}}}] }
 // POST /api/shopify/inventory  { itemId, locationId, quantity, from }  -> sets AVAILABLE qty (compare-and-swap on `from`)
 // Needs the Shopify app scopes read_products, read_inventory, read_locations, write_inventory.
-import { shopifyGraphQL } from "./lib/shopify.mjs";
+import { shopifyGraphQL, shopifyDiag } from "./lib/shopify.mjs";
 import { authOn, verify, tokenFromReq, isRetailRole } from "./lib/authtoken.mjs";
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -18,6 +18,7 @@ const M = `mutation Set($input: InventorySetQuantitiesInput!) { inventorySetQuan
 export default async (req) => {
   if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok) return json({ ok: false, error: "auth_required" }, 401); if (isRetailRole(tok.role) || (req.method === "POST" && tok.va)) return json({ ok: false, error: "not_allowed" }, 403); }
   try {
+    if (req.method === "GET" && new URL(req.url).searchParams.get("debug") === "1") return json({ ok: true, diag: await shopifyDiag() });
     if (req.method === "POST") {
       const b = await req.json().catch(() => ({}));
       const qty = Math.round(+b.quantity);

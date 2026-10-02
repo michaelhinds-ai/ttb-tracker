@@ -13,34 +13,47 @@
  * overrides client credentials and breaks auth. It should not exist.
  */
 
-const STORE = process.env.SHOPIFY_STORE || 'buyspiritsdirect.myshopify.com';
-const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-07';
+const env = (k) => String(process.env[k] || '').trim();
+const STORE = (env('SHOPIFY_STORE') || 'buyspiritsdirect.myshopify.com').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+const API_VERSION = env('SHOPIFY_API_VERSION') || '2026-07';
 
-let cached = { token: null, expiresAt: 0 };
+let cached = { token: null, expiresAt: 0, scope: '' };
+export let lastExchange = null; // diagnostics for /api/shopify/inventory?debug=1
 
 async function accessToken() {
   if (cached.token && Date.now() < cached.expiresAt - 60_000) return cached.token;
 
-  const id = process.env.SHOPIFY_CLIENT_ID;
-  const secret = process.env.SHOPIFY_CLIENT_SECRET;
+  const id = env('SHOPIFY_CLIENT_ID');
+  const secret = env('SHOPIFY_CLIENT_SECRET');
   if (!id || !secret) throw new Error('SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET are not set');
 
   const res = await fetch(`https://${STORE}/admin/oauth/access_token`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify({ client_id: id, client_secret: secret, grant_type: 'client_credentials' })
   });
-
-  if (!res.ok) {
-    throw new Error(`Shopify token exchange failed: ${res.status} ${await res.text()}`);
+  const text = await res.text();
+  let body = null; try { body = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  lastExchange = { store: STORE, status: res.status, redirected: res.redirected, finalUrl: res.url, gotToken: !!(body && body.access_token), scope: (body && body.scope) || '', snippet: body ? '' : text.slice(0, 160) };
+  if (!res.ok || !(body && body.access_token)) {
+    throw new Error(`Shopify token exchange failed: ${res.status} ${res.redirected ? '(redirected to ' + res.url + ') ' : ''}${(body && (body.error_description || body.error)) || text.slice(0, 200)}`);
   }
-
-  const body = await res.json();
   cached = {
     token: body.access_token,
-    expiresAt: Date.now() + (body.expires_in ? body.expires_in * 1000 : 300_000)
+    expiresAt: Date.now() + (body.expires_in ? body.expires_in * 1000 : 300_000),
+    scope: body.scope || ''
   };
   return cached.token;
+}
+
+export async function shopifyDiag() {
+  cached = { token: null, expiresAt: 0, scope: '' };
+  const id = env('SHOPIFY_CLIENT_ID');
+  const out = { store: STORE, apiVersion: API_VERSION, clientId: id ? id.slice(0, 6) + '…' + id.slice(-4) : '(missing)', secretSet: !!env('SHOPIFY_CLIENT_SECRET'), adminTokenSet: !!env('SHOPIFY_ADMIN_TOKEN') };
+  try { await accessToken(); } catch (e) { out.exchangeError = String(e.message); }
+  out.exchange = lastExchange;
+  if (cached.token) { try { out.shop = (await _gql('{ shop { name myshopifyDomain } }', {})).shop; } catch (e) { out.shopError = String(e.message).slice(0, 300); } }
+  return out;
 }
 
 export async function shopifyGraphQL(query, variables = {}) {
