@@ -43,7 +43,7 @@ export default async (req) => {
   // Approve-this-device from the login screen: an Admin signs in with approveDevice:true and the
   // device id of the tablet they're standing at. No session is created — it only adds the device.
   if (b.approveDevice) {
-    if (!(found.role === "admin" || found.role === "admin2")) return json({ ok: false, error: "not_admin" });
+    if (!(found.role === "admin" || found.role === "admin2" || found.devApprove)) return json({ ok: false, error: "not_admin" });
     const dev = String(b.deviceId || "").trim();
     if (!dev || dev.length < 8) return json({ ok: false, error: "no_device" });
     const list = Array.isArray(blob.trustedDevices) ? blob.trustedDevices : [];
