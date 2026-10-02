@@ -42,7 +42,10 @@ export default async (req) => {
         SalesItemLineDetail: { ItemRef: { value: itemId }, Qty: qty, UnitPrice: rate },
       });
     }
-    const invoice = { CustomerRef: { value: custId }, Line };
+    // No online card payments on wholesale invoices; payment terms default to Net 30.
+    const invoice = { CustomerRef: { value: custId }, Line, AllowOnlineCreditCardPayment: false };
+    const termId = await termIdFor(p.terms || "Net 30");
+    if (termId) invoice.SalesTermRef = { value: termId };
     if (p.docNumber) invoice.DocNumber = String(p.docNumber).slice(0, 21);
     if (p.txnDate) invoice.TxnDate = p.txnDate;
     if (p.privateNote) invoice.PrivateNote = String(p.privateNote).slice(0, 4000);
@@ -68,6 +71,16 @@ export default async (req) => {
   }
 };
 
+// QuickBooks payment-term id for a name like "Net 30" (case/space-insensitive). Falls back to Net 30.
+async function termIdFor(name) {
+  try {
+    const q = await qbQuery("select Id, Name from Term");
+    const all = q?.QueryResponse?.Term || [];
+    const n = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const hit = all.find((t) => n(t.Name) === n(name)) || all.find((t) => n(t.Name) === "net30");
+    return hit ? hit.Id : null;
+  } catch { return null; }
+}
 async function findCustomer(name) {
   const q = await qbQuery(`select Id from Customer where DisplayName = '${escapeQ(name)}'`);
   const c = q?.QueryResponse?.Customer?.[0];
