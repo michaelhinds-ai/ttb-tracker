@@ -1,3 +1,6 @@
+import { getStore } from "@netlify/blobs";
+import { verify, tokenFromReq } from "./lib/authtoken.mjs";
+import { ROOT_WS } from "./lib/companies.mjs";
 // Task notices: (1) kind:'assigned' → emails the employee a new task was assigned to;
 // (2) default → emails whoever ASSIGNED a task when it's marked done.
 // POST /api/task-notify  { to, toName, task, completedBy, note, due, ws } -> { ok }
@@ -21,6 +24,20 @@ export default async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
   let b = {};
   try { b = await req.json(); } catch { b = {}; }
+
+  // Retail logins never receive other people's emails, so a retail manager's new task arrives with
+  // only toId. Look the address up server-side (signed-in callers only; the email is never returned).
+  if (!String(b.to || "").trim() && b.toId && b.kind === "assigned") {
+    try {
+      const tok = verify(tokenFromReq(req));
+      if (tok) {
+        const store = getStore({ name: "ttb-data", consistency: "strong" });
+        const blob = (await store.get(`ws_${ROOT_WS}`, { type: "json" })) || {};
+        const u = ((blob.auth && blob.auth.users) || []).find((x) => x && x.id === b.toId);
+        if (u && u.email) b.to = u.email;
+      }
+    } catch {}
+  }
 
   const to = String(b.to || "").trim();
   const toName = String(b.toName || "").trim();
