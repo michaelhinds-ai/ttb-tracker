@@ -50,7 +50,7 @@ export function sanitizeSettings(s, full) {
 export function sanitizeUsers(users) {
   return (Array.isArray(users) ? users : []).map((u) => ({
     id: u.id, name: u.name, username: u.username || "", role: u.role,
-    viewOnly: !!u.viewOnly, invAdmin: !!u.invAdmin, seesSales: !!u.seesSales, deviceLock: !!u.deviceLock,
+    viewOnly: !!u.viewOnly, invAdmin: !!u.invAdmin, seesSales: !!u.seesSales, deviceLock: !!u.deviceLock, devApprove: !!u.devApprove,
     locations: u.locations || [], location: u.location || "", stok: u.stok || null,
   })); // note: NO pinHash, NO email
 }
