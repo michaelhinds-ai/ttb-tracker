@@ -17,7 +17,7 @@ function isLinkedWs(ws) { return Object.values(COMPANY_WS).includes(String(ws ||
 const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
-  "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates",
+  "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates", "labelRuns",
   "invCats", "invItems", "invCounts", "invSubs",
   "duties", "dutyChecks", "trustedDevices", "insurance", "sellSheets",
 ];
