@@ -183,6 +183,30 @@ export default async (req) => {
       return json(data);                                     // back office → full
     }
 
+    // Append records to ANOTHER company's workspace without touching anything else in it — used by the
+    // internal (company-to-company) transfer in bond: the shipping side drops the received barrels + the
+    // TIB-in receipt straight into the receiving company. Records merge by id; nothing is ever removed.
+    if (req.method === "POST" && url.searchParams.get("op") === "append") {
+      const body = await req.json().catch(() => null);
+      const add = body && body.append;
+      if (!add || typeof add !== "object") return json({ error: "bad_body" }, 400);
+      const current = (await store.get(key, { type: "json" })) || {};
+      const au = authOf(current);
+      if (authOn() && au && au.enabled) {
+        const tok = verifyToken(tokenFromReq(req));
+        if (!tok) return json({ error: "auth_required" }, 401);
+        if (isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403);
+      }
+      const ALLOWED = ["barrels", "tibins", "tibouts"];
+      const out = { ...current }; let n = 0;
+      for (const k of ALLOWED) { if (Array.isArray(add[k]) && add[k].length) { out[k] = mergeById(current[k], add[k]); n += add[k].length; } }
+      if (!n) return json({ ok: true, savedAt: current._savedAt || null, added: 0 });
+      const savedAt = new Date().toISOString();
+      if (linked) { delete out.auth; delete out.trustedDevices; }
+      await store.setJSON(key, purgeTombstones({ ...out, _savedAt: savedAt }));
+      return json({ ok: true, savedAt, added: n });
+    }
+
     if (req.method === "POST" || req.method === "PUT") {
       const body = await req.json();
       if (!body || typeof body !== "object") return json({ error: "bad_body" }, 400);
