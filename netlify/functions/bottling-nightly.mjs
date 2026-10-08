@@ -45,7 +45,7 @@ export default async (req) => {
         <td style="padding:10px;border-bottom:1px solid #eee;vertical-align:top;font-size:14px"><b>${n(x.bottles)} bottles</b> · ${n(x.proof, 1)} proof · ${n(x.qty)} barrel${+x.qty === 1 ? "" : "s"} · ${n(x.pg, 1)} PG<br>
         ${esc(x.spirit || "")}${x.barrelNo ? " · #" + esc(x.barrelNo) : ""}${x.distillDate ? " · distilled " + esc(x.distillDate) : ""}<br>
         <span style="color:#777;font-size:12px">Bottled ${esc(x.date || "")} · logged by ${esc(x.by || "—")}</span> ${pill(x)}
-        ${x.notes ? `<div style="font-size:13px;color:#5a4a36;margin-top:4px">“${esc(x.notes)}”</div>` : ""}</td></tr>`;
+        ${x.customer ? `<div style="font-size:13px;margin-top:4px">Customer: <b>${esc(x.customer)}</b></div>` : ""}${x.notes ? `<div style="font-size:13px;color:#5a4a36;margin-top:4px">“${esc(x.notes)}”</div>` : ""}</td></tr>`;
     }).join("");
     const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:680px;margin:auto;color:#231a12">
       <h2 style="margin:0 0 4px">Bottling Log — ${esc(coName)}</h2>
