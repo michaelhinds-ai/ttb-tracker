@@ -70,7 +70,7 @@ export default async (req) => {
   try { await store.setJSON(key, { ...blob, _savedAt: savedAt }); } catch {}
 
   const token = sign({
-    uid: found.id, role: found.role, va: !!found.viewOnly, ia: !!found.invAdmin, se: !!found.seesSales,
+    uid: found.id, role: found.role, va: !!found.viewOnly, ia: !!found.invAdmin, se: !!found.seesSales, sh: !!found.shopAccess,
     stok, iat: Date.now(), exp: Date.now() + TOKEN_TTL,
   });
   const pub = sanitizeUsers([found])[0];

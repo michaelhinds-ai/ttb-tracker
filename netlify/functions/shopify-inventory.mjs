@@ -16,7 +16,7 @@ const M = `mutation Set($input: InventorySetQuantitiesInput!) { inventorySetQuan
   inventoryAdjustmentGroup { changes { name delta quantityAfterChange } } userErrors { field message code } } }`;
 
 export default async (req) => {
-  if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok) return json({ ok: false, error: "auth_required" }, 401); if (isRetailRole(tok.role) || (req.method === "POST" && tok.va)) return json({ ok: false, error: "not_allowed" }, 403); }
+  if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok) return json({ ok: false, error: "auth_required" }, 401); if ((isRetailRole(tok.role) && !tok.sh) || (req.method === "POST" && tok.va)) return json({ ok: false, error: "not_allowed" }, 403); }
   try {
     if (req.method === "GET" && new URL(req.url).searchParams.get("debug") === "1") return json({ ok: true, diag: await shopifyDiag() });
     if (req.method === "POST") {
