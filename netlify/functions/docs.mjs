@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { authOn, verify, tokenFromReq, isRetailRole } from "./lib/authtoken.mjs";
 
 // Compliance document store. Files (license, DSP permit, EIN letter, tax certs…) live
 // in a Netlify blob store, scoped by workspace code. Only lightweight metadata (name,
@@ -19,6 +20,14 @@ export default async (req) => {
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       await store.set(key(body.id), bytes, { metadata: { name: body.name || "file", type: body.type || "application/octet-stream" } });
       return json({ ok: true, id: body.id, size: bytes.length });
+    }
+    // List every file id in this workspace (full backup). Back-office logins only.
+    if (req.method === "GET" && url.searchParams.get("list") != null) {
+      if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok || isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403); }
+      const pre = `ws_${ws}_`; const ids = [];
+      const res = await store.list({ prefix: pre });
+      for (const b of (res && res.blobs) || []) ids.push(String(b.key).slice(pre.length));
+      return json({ ok: true, ids });
     }
     if (req.method === "GET") {
       if (!id) return json({ error: "missing_id" }, 400);
