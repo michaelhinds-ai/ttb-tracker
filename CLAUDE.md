@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261013l`
+**Last updated:** 2026-10-13 · **Current build:** `v20261013m`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -74,6 +74,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
   Circle, Stella's Secret Stash (rot 270, needs 6.50" length), NBC Small Batch (`nbcsmallbatch1`).
 
 ## Other features worth knowing
+Bottling Log approvals: anyone with `write` (Super Admin, managers, Barrel Manager) can Approve/Edit pending entries on the Bottling Log page itself as well as the Bottling page; each pending row has a **Gift shop** tick → `pbApprove(id,gift)` records a gift-shop removal (excise + $0 GiftShop invoice) instead of in-bond finished goods.
 Orders stay open until "Mark shipped" (TTB removal + QuickBooks sync at ship). Transfers in Bond
 page (`view-tib`). Production Bottling Log with approvals + nightly email. Store Inventory with HQ
 Warehouse tab for NBC HQ staff. Tips (staff can fix their own). Xola "today" card. Shopify Store
