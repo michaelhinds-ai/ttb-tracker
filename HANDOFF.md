@@ -1,3 +1,5 @@
+> **Oct 2026: the current project memory is `CLAUDE.md` — start there.** This file is kept for the Xola/Square env-var notes and the backlog.
+
 # TTB Tracker — Project State
 
 Living handoff doc. Attach this at the start of a new Claude chat and it picks up
