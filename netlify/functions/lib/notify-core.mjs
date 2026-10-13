@@ -11,6 +11,7 @@
 
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
+import { undeliverableReason } from './relay-addresses.mjs';
 
 /* ------------------------------------------------------------------ *
  * Mailchimp
@@ -689,7 +690,10 @@ export function validEmail(value) {
   const v = value.trim();
   if (v.length < 6 || v.length > 254) return false;
   const at = v.indexOf('@');
-  return at > 0 && v.indexOf('.', at) > at + 1 && !/\s/.test(v);
+  if (!(at > 0 && v.indexOf('.', at) > at + 1 && !/\s/.test(v))) return false;
+  // Shape is fine but the address still may not belong in the audience: an OTA
+  // relay, a no-reply mailbox, a reserved TLD. Same gate the weekly sync uses.
+  return undeliverableReason(v) === null;
 }
 
 /**

@@ -80,6 +80,27 @@ page (`view-tib`). Production Bottling Log with approvals + nightly email. Store
 Warehouse tab for NBC HQ staff. Tips (staff can fix their own). Xola "today" card. Shopify Store
 card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .zip in Setup & Data.
 
+## Email audience hygiene (Mailchimp)
+- `lib/relay-addresses.mjs` is the ONE gate for what may enter the marketing audience. Used by
+  `lib/mailchimp.mjs` (`runSync` + `mcUpsert` + `mcWelcome`) and `lib/notify-core.mjs` (`validEmail`),
+  so the weekly sync, the notify-me modal and the welcome tagger all share it. Route new sources
+  through it rather than adding a second check.
+- **Why it exists:** OTA channels hand Xola an anonymised relay instead of the guest's own address.
+  GetYourGuide's `customer-xxxx@reply.getyourguide.com` **stops accepting mail 7 days after the
+  tour**. The sync was copying those in as `subscribed` and `mcWelcome()` was tagging them into the
+  journey, so campaigns hard-bounced off addresses that were never customers. Hard bounces cost
+  sender reputation across all six lifecycle flows, and an OTA booking carries no marketing consent.
+- **Two tiers, deliberately.** BLOCKED domains are dropped and purged — only `reply.getyourguide.com`
+  is confirmed. FLAGGED booking-channel brands (viator, klook, airbnb…) are reported and NEVER
+  auto-removed, because `sales@getyourguide.com` could be a real contact. Promote a domain by adding
+  it to `MAILCHIMP_BLOCKED_DOMAINS` (comma-separated) — no deploy needed. Bias is deliberate:
+  dropping a real customer is worse than leaving one relay in for another week.
+- `mailchimp-purge.mjs` clears the ones already in. Reports by default; ARCHIVES (reversible, never a
+  hard delete) only with `?confirm=1&token=` matching `NOTIFY_ADMIN_TOKEN`. Once that var is set the
+  endpoint is locked for reads too, since the report alone reveals audience size and composition.
+- `runSync` now returns `rejected` / `rejectedExamples` counts so a shrinking audience is never silent.
+- Server-only change — no `APP_BUILD` bump.
+
 ## Open items (Oct 13 2026)
 - Google Business Profile API: still 0 quota (not approved). Case 1-3523000042024 (Aug 25) went
   nowhere; Mike is resubmitting the access form. Reviews card switches on by itself when approved.
@@ -87,3 +108,7 @@ card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .
 - Stella: driver Label length 6.50" + final test print.
 - Square connector needs reconnecting (tips / merch-by-location questions).
 - October 5110.11 (both companies) uses the corrected storage math — review before Casey files.
+- Email: deploy, set `NOTIFY_ADMIN_TOKEN`, then run `/.netlify/functions/mailchimp-purge?token=…`
+  to see the domain census; review `flaggedForReview` before archiving with `&confirm=1`.
+- Mailchimp's Shopify app is still not installed, so none of the six email flows has revenue
+  attribution. Finding 01 of the Aug audit; still open.

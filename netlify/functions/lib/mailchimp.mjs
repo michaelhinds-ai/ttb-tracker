@@ -19,6 +19,7 @@
 import { accounts as squareAccounts, sqFor } from "./square.mjs";
 import { accounts as xolaAccounts, xFor, extractCursor } from "./xola.mjs";
 import { createHash } from "node:crypto";
+import { filterMailable } from "./relay-addresses.mjs";
 
 const g = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : process.env[k]) || "";
 
@@ -82,10 +83,14 @@ function srcLabel(s) { s = String(s || ""); if (s.startsWith("square")) return "
 // Chunked so a very large seed doesn't build one enormous request.
 export async function mcUpsert(members) {
   const { list, status } = mcConfig();
-  if (!members.length) return { submitted: 0, batches: [] };
+  // Last line of defence. runSync already filters, but this is the only door
+  // into the audience, so it is also gated: no future caller can add an
+  // undeliverable address by forgetting to filter first.
+  const { kept, dropped } = filterMailable(members);
+  if (!kept.length) return { submitted: 0, batches: [], dropped };
   const batches = [];
-  for (let i = 0; i < members.length; i += 500) {
-    const chunk = members.slice(i, i + 500);
+  for (let i = 0; i < kept.length; i += 500) {
+    const chunk = kept.slice(i, i + 500);
     const operations = chunk.map((m) => ({
       method: "PUT",
       path: `/lists/${list}/members/${md5(m.email)}`,
@@ -94,7 +99,7 @@ export async function mcUpsert(members) {
     const r = await mcFetch("/batches", { method: "POST", body: { operations } });
     batches.push(r && r.id);
   }
-  return { submitted: members.length, batches };
+  return { submitted: kept.length, batches, dropped };
 }
 
 // Apply the thank-you TRIGGER tag to a small set of just-active contacts (new walk-ins
@@ -104,8 +109,11 @@ export async function mcUpsert(members) {
 // nobody gets a second discount. Never runs on the full seed, so history isn't blasted.
 export async function mcWelcome(members, tag = "welcome-offer") {
   const { list, status } = mcConfig();
+  // An OTA relay must never be tagged into the welcome journey: the tag is what
+  // actually triggers a send, so tagging one buys a guaranteed hard bounce.
+  const { kept } = filterMailable(members);
   let tagged = 0;
-  for (const m of members.slice(0, 800)) {
+  for (const m of kept.slice(0, 800)) {
     const hash = md5(m.email);
     try {
       await mcFetch(`/lists/${list}/members/${hash}`, { method: "PUT", body: { email_address: m.email, status_if_new: status, merge_fields: { FNAME: m.fname || "", LNAME: m.lname || "", SOURCE: srcLabel(m.source) } } });
@@ -298,8 +306,14 @@ export async function runSync({ full = false, dry = false, sinceDays = 8 } = {})
   try { shop = await shopifyCustomers({ sinceISO }); } catch (e) { shopErr = safe(e && (e.detail || e.message)); }
   // Order sets source priority when the same email appears in more than one system:
   // in-store (Square) > tour (Xola) > online (Shopify).
-  const merged = dedupe([...square, ...xola, ...shop]);
+  // Drop undeliverable addresses BEFORE dedupe so the reported counts describe
+  // real people. OTA channels (GetYourGuide et al) put an anonymised relay on
+  // the booking instead of the guest's own address; Xola stores it verbatim and
+  // we used to copy it straight into the audience. See lib/relay-addresses.mjs.
+  const gate = filterMailable([...square, ...xola, ...shop]);
+  const merged = dedupe(gate.kept);
   const base = { full, dry, sinceISO, squareCount: square.length, xolaCount: xola.length, shopifyCount: shop.length, unique: merged.length,
+    rejected: gate.dropped, rejectedExamples: gate.examples,
     squareError: sqErr || undefined, xolaError: xErr || undefined, shopifyError: shopErr || undefined };
   if (dry) return base;
   const up = await mcUpsert(merged);
@@ -308,7 +322,7 @@ export async function runSync({ full = false, dry = false, sinceDays = 8 } = {})
   // buyers are excluded. Skipped on the full seed so the historical base is never blasted.
   let welcomeTagged = 0;
   if (!full) {
-    const toWelcome = dedupe([...square, ...xola]).filter((m) => /^(square|xola)/.test(m.source || ""));
+    const toWelcome = dedupe(filterMailable([...square, ...xola]).kept).filter((m) => /^(square|xola)/.test(m.source || ""));
     welcomeTagged = await mcWelcome(toWelcome);
   }
   return { ...base, submitted: up.submitted, batches: up.batches, welcomeTagged };
