@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261013o`
+**Last updated:** 2026-10-13 · **Current build:** `v20261015a`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -102,8 +102,7 @@ card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .
 - Server-only change — no `APP_BUILD` bump.
 
 ## Open items (Oct 13 2026)
-- Google Business Profile API: still 0 quota (not approved). Case 1-3523000042024 (Aug 25) went
-  nowhere; Mike is resubmitting the access form. Reviews card switches on by itself when approved.
+- Google Business Profile API: **approved Oct 14 2026** (300 QPM), 7 listings connected. Reviews run is time-budgeted: `runWeeklyReviews({budgetMs})` does parallel batches of 4, saves the log per batch, returns `remaining`/`partial`; the Run button and the Monday scheduled job loop until done (a Netlify function dies at ~10s → HTML error page, which was the "Unexpected token <" bug). North Knox listings are skipped (`SKIP_LISTINGS` in lib/gbp.mjs). Reply prompt describes each listing (Louisville KY vs Nashville TN); model = `ANTHROPIC_MODEL` env or `claude-haiku-4-5`, 3.5s timeout → template fallback.
 - NBC Small Batch template: needs a test print (fonts/positions adjustable in the print screen).
 - Stella: driver Label length 6.50" + final test print.
 - Square connector needs reconnecting (tips / merch-by-location questions).

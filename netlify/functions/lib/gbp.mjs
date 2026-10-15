@@ -22,6 +22,7 @@ export function env() {
     accountId: Netlify.env.get("GBP_ACCOUNT_ID") || "",
     locationId: Netlify.env.get("GBP_LOCATION_ID") || "",
     anthropicKey: Netlify.env.get("ANTHROPIC_API_KEY") || "",
+    anthropicModel: Netlify.env.get("ANTHROPIC_MODEL") || "claude-haiku-4-5",
   };
 }
 export function store() { return getStore({ name: "gbp-tokens", consistency: "strong" }); }
@@ -169,15 +170,21 @@ export function starNum(r) { return STAR[r && r.starRating] || 0; }
 // Reviews across ALL managed locations, each tagged with its location.
 // If EVERY location errors (e.g. token expired or API not approved), re-throw the
 // first error so the caller can report it — instead of silently returning 0 reviews.
+// Listings we never reply to (Mike: no replies for North Knox Siding & Windows).
+const SKIP_LISTINGS = /north\s*knox|siding|windows/i;
 export async function listAllReviews(perLocation = 50) {
-  const targets = await resolveTargets();
+  const targets = (await resolveTargets()).filter((t) => !SKIP_LISTINGS.test(t.title || ""));
   const all = [];
   let firstErr = null, attempted = 0;
-  for (const t of targets) {
+  // All locations at once (sequential calls across 7 listings ate most of the function's time budget).
+  const results = await Promise.all(targets.map(async (t) => {
     const url = `https://mybusiness.googleapis.com/v4/accounts/${t.accountId}/locations/${t.locationId}/reviews?pageSize=${Math.min(50, perLocation)}&orderBy=updateTime desc`;
+    try { return { t, j: await gapi(url) }; } catch (e) { return { t, err: e }; } // skip a location that errors, keep the rest
+  }));
+  for (const { t, j, err } of results) {
     attempted++;
-    let j; try { j = await gapi(url); } catch (e) { if (!firstErr) firstErr = e; continue; } // skip a location that errors, keep the rest
-    (j.reviews || []).forEach((rv) => { rv.__accountId = t.accountId; rv.__locationId = t.locationId; rv.__locationName = t.title; all.push(rv); });
+    if (err) { if (!firstErr) firstErr = err; continue; }
+    ((j && j.reviews) || []).forEach((rv) => { rv.__accountId = t.accountId; rv.__locationId = t.locationId; rv.__locationName = t.title; all.push(rv); });
   }
   if (!all.length && firstErr && attempted > 0) throw firstErr; // all locations failed — surface why
   return { targets, reviews: all };
@@ -217,20 +224,28 @@ export function templateReply(review, businessName) {
   ], review.reviewId || review.name);
   return hi + body + sign;
 }
+// What kind of business a listing is — so a Nashville or Knoxville listing isn't called a Kentucky distillery.
+function describeListing(name) {
+  const n = String(name || "");
+  if (/siding|window|roof|contract|exterior/i.test(n)) return "a home exterior (siding & windows) contractor in Knoxville, Tennessee";
+  if (/nashville/i.test(n)) return "a whiskey distillery, tasting room & bar in Nashville, Tennessee";
+  return "a bourbon rickhouse & tasting room in Louisville, Kentucky";
+}
 export async function draftReply(review) {
-  const { anthropicKey } = env();
+  const { anthropicKey, anthropicModel } = env();
   const businessName = review.__locationName || env().businessName; // sign with THIS listing's name
   if (!anthropicKey) return templateReply(review, businessName);
   try {
     const stars = starNum(review);
-    const prompt = `You write short, warm, professional replies to Google reviews on behalf of "${businessName}", a Kentucky distillery & tasting room.\n` +
+    const prompt = `You write short, warm, professional replies to Google reviews on behalf of "${businessName}", ${describeListing(businessName)}.\n` +
       `Reply to this ${stars}-star review. 2-3 sentences, no hashtags, no emojis, address the reviewer by first name if given, sign as "The team at ${businessName}". ` +
       `For 4-5 stars: warm thanks + invite back. For 1-3 stars: sincere, non-defensive, apologize and invite them to reach out directly.\n\n` +
       `Reviewer: ${(review.reviewer && review.reviewer.displayName) || "Guest"}\nStars: ${stars}\nReview: ${review.comment || "(no text)"}\n\nReply:`;
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-3-5-haiku-latest", max_tokens: 300, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: anthropicModel, max_tokens: 300, messages: [{ role: "user", content: prompt }] }),
+      signal: AbortSignal.timeout(3500), // never let one slow draft blow the function's time limit
     });
     const j = await r.json().catch(() => null);
     const txt = j && j.content && j.content[0] && j.content[0].text;
@@ -242,11 +257,17 @@ export async function draftReply(review) {
 // ---- The weekly job -------------------------------------------------------
 // Reads recent reviews, drafts replies, auto-posts high-star ones, and holds
 // low-star ones for approval. Idempotent: a review already handled is skipped.
-export async function runWeeklyReviews() {
+// Time-budgeted: a Netlify function is cut off after ~10s (the browser then gets an
+// HTML error page, not JSON). So this works in small parallel batches, saves the log
+// after each batch, stops starting new work once `budgetMs` is used, and reports
+// `remaining` — the caller just calls again until remaining is 0.
+export async function runWeeklyReviews(opts = {}) {
+  const t0 = Date.now(), budgetMs = opts.budgetMs || 4500, CONC = 4;
   const settings = await getSettings();
   const { reviews, targets } = await listAllReviews(50);
   const log = await getLog();
   let posted = 0, held = 0, skipped = 0;
+  const todo = [];
   for (const rv of reviews) {
     const id = rv.reviewId || (rv.name || "").split("/").pop();
     if (!id) continue;
@@ -254,18 +275,29 @@ export async function runWeeklyReviews() {
     // Skip if the merchant already replied (in Google) or we've already handled it.
     if (rv.reviewReply || (already && (already.status === "posted"))) { skipped++; continue; }
     if (already && already.status === "held") { skipped++; continue; } // waiting on human
-    const stars = starNum(rv);
-    const draft = await draftReply(rv);
-    const base = { rating: stars, reviewer: (rv.reviewer && rv.reviewer.displayName) || "Guest", comment: rv.comment || "", draft, location: rv.__locationName || "", accountId: rv.__accountId, locationId: rv.__locationId, updatedAt: Date.now() };
-    if (stars >= (settings.autopostMinStars || 4)) {
-      try { await replyToReview(rv.__accountId, rv.__locationId, id, draft); log[id] = { ...base, status: "posted", reply: draft, postedAt: Date.now() }; posted++; }
-      catch (e) { log[id] = { ...base, status: "held", error: readableErr((e && e.detail) || (e && e.message) || e).slice(0, 300) }; held++; }
-    } else {
-      log[id] = { ...base, status: "held" }; held++; // low star — needs approval
-    }
+    todo.push({ rv, id });
+  }
+  let done = 0;
+  for (let i = 0; i < todo.length; i += CONC) {
+    if (Date.now() - t0 > budgetMs) break;
+    const batch = todo.slice(i, i + CONC);
+    await Promise.all(batch.map(async ({ rv, id }) => {
+      const stars = starNum(rv);
+      const draft = await draftReply(rv);
+      const base = { rating: stars, reviewer: (rv.reviewer && rv.reviewer.displayName) || "Guest", comment: rv.comment || "", draft, location: rv.__locationName || "", accountId: rv.__accountId, locationId: rv.__locationId, updatedAt: Date.now() };
+      if (stars >= (settings.autopostMinStars || 4)) {
+        try { await replyToReview(rv.__accountId, rv.__locationId, id, draft); log[id] = { ...base, status: "posted", reply: draft, postedAt: Date.now() }; posted++; }
+        catch (e) { log[id] = { ...base, status: "held", error: readableErr((e && e.detail) || (e && e.message) || e).slice(0, 300) }; held++; }
+      } else {
+        log[id] = { ...base, status: "held" }; held++; // low star — needs approval
+      }
+    }));
+    done += batch.length;
+    await saveLog(log); // keep progress even if the function is cut off
   }
   await saveLog(log);
-  return { ok: true, posted, held, skipped, total: reviews.length, locations: targets.length };
+  const remaining = todo.length - done;
+  return { ok: true, posted, held, skipped, total: reviews.length, locations: targets.length, remaining, partial: remaining > 0 };
 }
 
 export function json(o, status = 200) { return new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } }); }
