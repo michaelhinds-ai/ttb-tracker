@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261016d`
+**Last updated:** 2026-10-13 · **Current build:** `v20261016e`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -75,6 +75,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
   Circle, Stella's Secret Stash (rot 270, needs 6.50" length), NBC Small Batch (`nbcsmallbatch1`). Oak King Straight Rye (`oakkingrye1`, single panel 3×6″, art `oakking_front/back.jpg`; Selected by / Proof→ALC/VOL / Age / bottom-right text OR image). To add a template from a scan: crop art at 300 dpi into public/labels, measure box px → %, then write the template server-side (fetch /api/data, push into labelTemplates with newer `_upd`, POST cloudPayload with `_baseSavedAt=_savedAt`) — pushing into local state + save() gets wiped by the constant merge loop.
 
 ## Other features worth knowing
+Home navigation: the dog, the "Mikey Systems" title, the crumb's Home and every "← Home" button call `goHome()` → the LRWC card page (switches back from NBC unless the login is NBC-only); retail → retailhub, labeler → labelprint.
 Bottling Log approvals: anyone with `write` (Super Admin, managers, Barrel Manager) can Approve/Edit pending entries on the Bottling Log page itself as well as the Bottling page; each pending row has a **Gift shop** tick → `pbApprove(id,gift)` records a gift-shop removal (excise + $0 GiftShop invoice) instead of in-bond finished goods. The Bottling page's own "Bottle a Barrel / Lot" form also takes an optional bottle photo (`boPhoto` → uploaded after `doBottle` via `_boAttachPhoto`, sets `bt.photoId`; 📷 link in Bottling History). The gift-shop option is labelled **"GiftShop / DTC"** in the UI (internals still `giftShop`, customer "GiftShop"). Bottling form has a Customer field (`bo_customer` → `bt.customer`, prefilled from approved entries); Bottling History has a search box (`renderBottlingHist`, matches barrel #, customer, spirit, dates, proof, "dtc").
 Orders stay open until "Mark shipped" (TTB removal + QuickBooks sync at ship). Transfers in Bond
 page (`view-tib`). Production Bottling Log with approvals + nightly email. Store Inventory with HQ
