@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261015a`
+**Last updated:** 2026-10-13 · **Current build:** `v20261016a`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -44,6 +44,7 @@ env vars, backlog) — still valid for those topics.
    Mikey Systems tab: fetch server → set `_upd` newer → POST `cloudPayload()` → verify. One session per login.
 
 ## Roles
+labeler ("Label Printer" — only Label Printing, Case labels, UPC lookup: `LABELER_VIEWS`; switchView redirects everything else to labelprint; userCos=['lrwc']; server `filterForLabels` reads only skus/upcs/labelTemplates/labelRuns, writes only labelRuns/labelTemplates; no `write` cap so no template Edit/Delete),
 admin, admin2, editor, manager, barrelmgr (James Davenport), production (Taylor), retail (Retail
 Manager), retailemp. Per-user flags: viewOnly, invAdmin, seesSales, devApprove, docUpload,
 custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + some flags.

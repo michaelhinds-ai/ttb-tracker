@@ -39,6 +39,16 @@ function tokenFromReq(req) {
   return "";
 }
 function isRetailRole(r) { return r === "retail" || r === "retailemp"; }
+// "Label Printer" login: bottle/case labels + UPC lookup only. Reads and writes nothing else.
+function isLabelRole(r) { return r === "labeler"; }
+const LABEL_READ_KEYS = ["skus", "upcs", "labelTemplates", "labelRuns", "trustedDevices"];
+const LABEL_WRITE_KEYS = ["labelRuns", "labelTemplates"];
+function filterForLabels(blob) {
+  const out = { _savedAt: blob && blob._savedAt, auth: { enabled: !!(blob.auth && blob.auth.enabled), users: sanitizeUsers(blob.auth && blob.auth.users) },
+    settings: sanitizeSettings(blob.settings), brandLogos: blob.brandLogos || {} };
+  for (const k of LABEL_READ_KEYS) out[k] = Array.isArray(blob[k]) ? blob[k] : [];
+  return out;
+}
 // Additive / value collections that no one "deletes" in bulk — daily inventory counts, the
 // submission log, and duty/supply check-offs. These are ALWAYS merged record-by-record (newest
 // _upd wins, nothing dropped) even on a full-writer save, so a back-office device holding a stale
@@ -165,7 +175,7 @@ export default async (req) => {
       const au = authOf(data);
       if (authOn() && au && au.enabled) {
         const tok = verifyToken(tokenFromReq(req));
-        if (!tok || isRetailRole(tok.role)) return json({ ok: false, error: "not_allowed" }, 403);
+        if (!tok || isRetailRole(tok.role) || isLabelRole(tok.role)) return json({ ok: false, error: "not_allowed" }, 403);
       }
       const log = (await store.get(`acts_${ws}`, { type: "json" })) || [];
       return json({ ok: true, rows: log.slice(-3000).reverse() });
@@ -180,6 +190,7 @@ export default async (req) => {
       const tok = verifyToken(tokenFromReq(req));
       if (!tok) return json(bootstrap(data));               // not signed in → login-screen data only
       if (isRetailRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForRetail(data, tok), linked ? 403 : 200); // employee → no financials
+      if (isLabelRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForLabels(data), linked ? 403 : 200); // label printer → label data only
       return json(data);                                     // back office → full
     }
 
@@ -195,7 +206,7 @@ export default async (req) => {
       if (authOn() && au && au.enabled) {
         const tok = verifyToken(tokenFromReq(req));
         if (!tok) return json({ error: "auth_required" }, 401);
-        if (isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403);
+        if (isRetailRole(tok.role) || isLabelRole(tok.role)) return json({ error: "not_allowed" }, 403);
       }
       const ALLOWED = ["barrels", "tibins", "tibouts"];
       const out = { ...current }; let n = 0;
@@ -239,7 +250,15 @@ export default async (req) => {
       if (enforce) {
         const tok = verifyToken(tokenFromReq(req));
         if (!tok) return json({ error: "auth_required" }, 401);
-        if (linked && isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403);
+        if (linked && (isRetailRole(tok.role) || isLabelRole(tok.role))) return json({ error: "not_allowed" }, 403);
+        if (isLabelRole(tok.role)) { // label printer → only label templates / Label Library are written
+          const out = { ...current };
+          for (const k of LABEL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);
+          const savedAt = new Date().toISOString();
+          await store.setJSON(key, purgeTombstones({ ...out, _savedAt: savedAt }));
+          await logActs();
+          return json({ ok: true, savedAt });
+        }
         if (isRetailRole(tok.role)) {
           const out = { ...current };
           for (const k of RETAIL_WRITE_KEYS) out[k] = mergeById(current[k], body[k]);

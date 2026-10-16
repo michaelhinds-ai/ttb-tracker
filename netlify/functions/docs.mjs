@@ -23,7 +23,7 @@ export default async (req) => {
     }
     // List every file id in this workspace (full backup). Back-office logins only.
     if (req.method === "GET" && url.searchParams.get("list") != null) {
-      if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok || isRetailRole(tok.role)) return json({ error: "not_allowed" }, 403); }
+      if (authOn()) { const tok = verify(tokenFromReq(req)); if (!tok || isRetailRole(tok.role) || tok.role === "labeler") return json({ error: "not_allowed" }, 403); }
       const pre = `ws_${ws}_`; const ids = [];
       const res = await store.list({ prefix: pre });
       for (const b of (res && res.blobs) || []) ids.push(String(b.key).slice(pre.length));
