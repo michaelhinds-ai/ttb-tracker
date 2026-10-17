@@ -19,7 +19,7 @@ const ARR_KEYS = [
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
   "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates", "labelRuns",
   "invCats", "invItems", "invCounts", "invSubs",
-  "duties", "dutyChecks", "trustedDevices", "insurance", "sellSheets", "bottleSubs", "filings",
+  "duties", "dutyChecks", "trustedDevices", "insurance", "sellSheets", "bottleSubs", "filings", "joyRides",
 ];
 
 /* ---- inlined auth helpers (self-contained so there's no cross-file import to break) ---- */
@@ -53,11 +53,11 @@ function filterForLabels(blob) {
 // submission log, and duty/supply check-offs. These are ALWAYS merged record-by-record (newest
 // _upd wins, nothing dropped) even on a full-writer save, so a back-office device holding a stale
 // copy can never wipe the store staff's daily work. (Deletes here are rare toggles and low-stakes.)
-const ALWAYS_MERGE_KEYS = ["invCounts", "invSubs", "dutyChecks", "duties", "invItems", "invCats"];
+const ALWAYS_MERGE_KEYS = ["invCounts", "invSubs", "dutyChecks", "duties", "invItems", "invCats", "joyRides"];
 // The store LIST collections carry soft-delete tombstones ({id,_del:1,_upd}) so that, under the
 // always-merge rule above, a real deletion still propagates (a merge can't drop a record, so a
 // delete has to travel as a tombstone). Purge tombstones older than 60 days when saving.
-const TOMBSTONE_KEYS = ["duties", "invItems", "invCats"];
+const TOMBSTONE_KEYS = ["duties", "invItems", "invCats", "joyRides"];
 function purgeTombstones(obj) {
   const now = Date.now(), TTL = 60 * 86400000;
   for (const k of TOMBSTONE_KEYS) {
@@ -66,7 +66,7 @@ function purgeTombstones(obj) {
   return obj;
 }
 const RETAIL_READ_KEYS = ["invCats", "invItems", "invCounts", "invSubs", "invLocs", "duties", "dutyChecks", "skus", "trustedDevices"];
-const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "invItems", "invLocs", "duties", "tasks", "attention"];
+const RETAIL_WRITE_KEYS = ["invCounts", "invSubs", "dutyChecks", "invCats", "invItems", "invLocs", "duties", "tasks", "attention", "joyRides"];
 // invEmailTo / invEmailByLoc are NOT stripped: store staff need the reorder address so their weekly
 // count actually gets emailed, and Inventory-admin (invAdmin) retail users manage those recipients.
 const SETTINGS_STRIP = ["kyExcise", "kyWholesale", "kyCase", "bottlingLossPct", "wages", "salesEmailTo", "lateEmailTo", "lateEmailByLoc"];
@@ -95,6 +95,8 @@ function filterForRetail(blob, tok) {
   const ln = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const locOk = (l) => !myLocs.length || myLocs.some((m) => { const a = ln(m), b = ln(l); return a && b && (a === b || a.startsWith(b) || b.startsWith(a)); });
   const isMgr = tok && tok.role === "retail";
+  // Joy Ride log ($5 driver envelopes) — staff see their own store's entries.
+  out.joyRides = (Array.isArray(blob && blob.joyRides) ? blob.joyRides : []).filter((j) => j && (j._del || j.byId === uid || locOk(j.byLoc)));
   out.tasks = (Array.isArray(blob && blob.tasks) ? blob.tasks : []).filter((t) => t && uid && (t.tip ? (t.byId === uid || (isMgr && locOk(t.byLoc))) : (t.forId === uid || t.byId === uid || (t.dutyNote && isMgr && locOk(t.byLoc)))));
   return out;
 }
