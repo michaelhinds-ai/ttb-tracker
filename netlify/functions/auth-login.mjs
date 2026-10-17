@@ -59,7 +59,8 @@ export default async (req) => {
   // Device restriction (trusted-device lock) — enforced server-side too.
   if (found.deviceLock) {
     const dev = String(b.deviceId || "").trim();
-    const trusted = (Array.isArray(blob.trustedDevices) ? blob.trustedDevices : []).some((d) => d && d.token === dev);
+    // A device can be limited to specific people (d.users); an empty/missing list = any restricted staff.
+    const trusted = (Array.isArray(blob.trustedDevices) ? blob.trustedDevices : []).some((d) => d && !d._del && d.token === dev && (!Array.isArray(d.users) || !d.users.length || d.users.includes(found.id)));
     if (!trusted) return json({ ok: false, error: "device" });
   }
 
