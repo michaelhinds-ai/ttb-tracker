@@ -63,7 +63,7 @@ export default async (req) => {
   try {
     // Dedupe: the same listing can appear under more than one Google account (personal + location group).
     const seen = new Set();
-    const targets = (await resolveTargets()).filter((t) => spec.match.test(t.title || "") && !SKIP.test(t.title || "")).filter((t) => { if (seen.has(t.locationId)) return false; seen.add(t.locationId); return true; });
+    const targets = (await resolveTargets()).filter((t) => spec.match.test(t.title || "") && !SKIP.test(t.title || "")).filter((t) => { const k = String(t.title || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + t.locationId; const k2 = String(t.title || "").toLowerCase().replace(/\s+/g, " ").trim(); if (seen.has(k) || seen.has(k2)) return false; seen.add(k); seen.add(k2); return true; });
     const perLoc = await Promise.all(targets.map(async (t) => {
       const u = `https://mybusiness.googleapis.com/v4/accounts/${t.accountId}/locations/${t.locationId}/reviews?pageSize=50&orderBy=updateTime desc`;
       try { const j = await gapi(u); return { t, j }; } catch (e) { return { t, j: null }; }
