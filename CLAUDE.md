@@ -107,6 +107,7 @@ card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .
 
 ## Open items (Oct 13 2026)
 - Google Business Profile API: **approved Oct 14 2026** (300 QPM), 7 listings connected. Reviews run is time-budgeted: `runWeeklyReviews({budgetMs})` does parallel batches of 4, saves the log per batch, returns `remaining`/`partial`; the Run button and the Monday scheduled job loop until done (a Netlify function dies at ~10s → HTML error page, which was the "Unexpected token <" bug). North Knox listings are skipped (`SKIP_LISTINGS` in lib/gbp.mjs). Reply prompt describes each listing (Louisville KY vs Nashville TN); model = `ANTHROPIC_MODEL` env or `claude-haiku-4-5`, 3.5s timeout → template fallback.
+- Public reviews feed for the marketing sites: `GET /api/reviews/public?brand=lr|nbc` (netlify/functions/reviews-public.mjs). Returns rating, total count, up to 8 curated 5★ reviews (name + last initial, clipped text), per-location counts. Cached 6h in the gbp-data blob store (`public-<brand>`), CORS open, `?refresh=1` forces a refetch. Brand → listing match is a title regex in BRANDS. Consumed by louisvillerickhouse.com and nashvillebarrelco.com homepages/tours pages (Oct 18 2026).
 - NBC Small Batch template: needs a test print (fonts/positions adjustable in the print screen).
 - Stella: driver Label length 6.50" + final test print.
 - Square connector needs reconnecting (tips / merch-by-location questions).

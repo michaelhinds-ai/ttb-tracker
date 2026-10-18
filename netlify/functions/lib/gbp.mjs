@@ -121,7 +121,7 @@ export async function getAccess() {
   return tok.access_token;
 }
 
-async function gapi(url, opts = {}) {
+export async function gapi(url, opts = {}) {
   const token = await getAccess();
   if (!token) throw new GBPError("not_connected", 401, "Google Business Profile is not connected.");
   const r = await fetch(url, { ...opts, headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", ...(opts.headers || {}) } });
