@@ -35,6 +35,8 @@ function score(rv) {
   const words = text.split(/\s+/).filter(Boolean).length;
   if (words < 12) return -1;
   if (/translated by google/i.test(text)) return -1;
+  // Reviews that are really about somewhere else (mis-filed on our listing) or that name competitors.
+  if (/jack daniel|ole smoky|nelson'?s green brier|corsair|pennington|green brier|whiskey row|angel'?s envy|rabbit hole|evan williams|heaven hill|buffalo trace/i.test(text)) return -1;
   let s = Math.min(words, 80);
   if (/tasting|flight|barrel|blend|tour|guide|bourbon|whiskey|rickhouse|pick/i.test(text)) s += 25;
   if (/\b[A-Z][a-z]+\b (was|is) (amazing|fantastic|great|awesome|incredible|knowledgeable)/.test(text)) s += 15; // names a person
@@ -59,7 +61,9 @@ export default async (req) => {
   } catch (e) {}
 
   try {
-    const targets = (await resolveTargets()).filter((t) => spec.match.test(t.title || "") && !SKIP.test(t.title || ""));
+    // Dedupe: the same listing can appear under more than one Google account (personal + location group).
+    const seen = new Set();
+    const targets = (await resolveTargets()).filter((t) => spec.match.test(t.title || "") && !SKIP.test(t.title || "")).filter((t) => { if (seen.has(t.locationId)) return false; seen.add(t.locationId); return true; });
     const perLoc = await Promise.all(targets.map(async (t) => {
       const u = `https://mybusiness.googleapis.com/v4/accounts/${t.accountId}/locations/${t.locationId}/reviews?pageSize=50&orderBy=updateTime desc`;
       try { const j = await gapi(u); return { t, j }; } catch (e) { return { t, j: null }; }
