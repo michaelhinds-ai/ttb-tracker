@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261020a`
+**Last updated:** 2026-10-13 · **Current build:** `v20261020b`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
