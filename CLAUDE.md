@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261019b`
+**Last updated:** 2026-10-13 · **Current build:** `v20261020a`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -62,7 +62,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
 - **Totes**: `container:'tote'` barrel record, `pgTotal` = what's left. Filling barrels by weight
   (`gaugeByWeight`, Table-4 factors computed from OIML density; 190 pf = 0.14720 vs TTB 0.14718)
   creates barrels with the tote's `tibInDate`. Bottling from a tote creates a `toteDraw` dumped
-  record. Emptying a tote = Dumped; leftover = storage loss.
+  record. Bottling page shows "— up to N from this tote" next to # of bottles once proof is entered (remaining PG × (1 − bottling loss) ÷ PG per 750 ml). Emptying a tote = Dumped; leftover = storage loss.
 - A failed data source must never read as zero (see HANDOFF.md conventions).
 
 ## Label system (LRWC workspace)
