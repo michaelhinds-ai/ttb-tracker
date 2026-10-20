@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261020b`
+**Last updated:** 2026-10-13 · **Current build:** `v20261020c`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -82,7 +82,7 @@ Joy Ride log (`view-joyride`, `state.joyRides`): Retail tile shown only for reta
 Home navigation: the dog, the "Mikey Systems" title, the crumb's Home and every "← Home" button call `goHome()` → the LRWC card page (switches back from NBC unless the login is NBC-only); retail → retailhub, labeler → labelprint.
 Bottling Log approvals: anyone with `write` (Super Admin, managers, Barrel Manager) can Approve/Edit pending entries on the Bottling Log page itself as well as the Bottling page; each pending row has a **Gift shop** tick → `pbApprove(id,gift)` records a gift-shop removal (excise + $0 GiftShop invoice) instead of in-bond finished goods. The Bottling page's own "Bottle a Barrel / Lot" form also takes an optional bottle photo (`boPhoto` → uploaded after `doBottle` via `_boAttachPhoto`, sets `bt.photoId`; 📷 link in Bottling History). The gift-shop option is labelled **"GiftShop / DTC"** in the UI (internals still `giftShop`, customer "GiftShop"). Bottling form has a Customer field (`bo_customer` → `bt.customer`, prefilled from approved entries); Bottling History has a search box (`renderBottlingHist`, matches barrel #, customer, spirit, dates, proof, "dtc").
 Orders stay open until "Mark shipped" (TTB removal + QuickBooks sync at ship). Transfers in Bond
-page (`view-tib`). Production Bottling Log with approvals + nightly email. Store Inventory with HQ
+page (`view-tib`). Production Bottling Log with approvals + nightly email. Direct bottlings on the Bottling page also create an approved Bottling Log entry (`_logDirectBottling`, `direct:true`, linked by `bottlingId`). Store Inventory with HQ
 Warehouse tab for NBC HQ staff. Tips (staff can fix their own). Xola "today" card. Shopify Store
 card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .zip in Setup & Data.
 
