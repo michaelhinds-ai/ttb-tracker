@@ -27,7 +27,7 @@ export default async (req) => {
 
   // Retail logins never receive other people's emails, so a retail manager's new task arrives with
   // only toId. Look the address up server-side (signed-in callers only; the email is never returned).
-  if (!String(b.to || "").trim() && b.toId && b.kind === "assigned") {
+  if (!String(b.to || "").trim() && b.toId) {
     try {
       const tok = verify(tokenFromReq(req));
       if (tok) {
@@ -53,6 +53,35 @@ export default async (req) => {
   const key = (process.env.RESEND_API_KEY || "").trim();
   if (!key) return json({ ok: false, error: "RESEND_API_KEY not set" }, 200);
   const from = (process.env.TASK_FROM || process.env.SALES_FROM || "Mikey Systems <sales@nashvillebarrelco.com>").trim();
+
+  // A question / comment on an open task — goes to the other person on it (assigner ↔ assignee).
+  if (b.kind === "comment") {
+    const from2 = String(b.fromName || "").trim() || "Someone";
+    const comment = String(b.comment || "").trim(); if (!comment) return json({ ok: true, skipped: "no_comment" });
+    const appUrl = /^https:\/\/[^\s"<>]+$/.test(String(b.appUrl || "")) ? String(b.appUrl) : "";
+    const subj = "💬 " + from2 + " on: " + (task.length > 50 ? task.slice(0, 47) + "…" : task);
+    const html3 = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f3ede2;padding:14px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#231a12;-webkit-text-size-adjust:100%">
+    <div style="max-width:560px;width:100%;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(60,40,15,.08)">
+      <div style="background:#231a12;color:#f3ede2;padding:15px 18px;font-weight:700;font-size:17px">Mikey Systems · Question on a task</div>
+      <div style="padding:18px">
+        <p style="margin:0 0 6px;font-size:15px">Hi${toName ? " " + esc(toName) : ""},</p>
+        <p style="margin:0 0 12px;font-size:15px"><b>${esc(from2)}</b> left a comment on this task (it’s still open):</p>
+        <div style="padding:10px 14px;background:#faf6ee;border-radius:8px;font-size:14px;color:#5a4a36;margin-bottom:12px">${esc(task)}${due ? ` <span style="color:#8a7a63">· due ${esc(fmtDue(due))}</span>` : ""}</div>
+        <div style="padding:14px 16px;background:#f6efe2;border-left:3px solid #7a5a2b;border-radius:0 8px 8px 0;font-size:16px;white-space:pre-wrap">${esc(comment)}</div>
+        ${appUrl ? `<p style="margin:18px 0 0"><a href="${esc(appUrl)}" style="display:inline-block;background:#7a5a2b;color:#fff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:9px">Reply in Mikey Systems</a></p>` : ""}
+      </div>
+      <div style="padding:12px 18px;background:#faf6ee;color:#8a7a63;font-size:12px">Reply with 💬 on the task in Mikey Systems so the conversation stays with the task.</div>
+    </div>
+  </body></html>`;
+    const text3 = `${from2} left a comment on a task (still open):\n\nTask: ${task}\n\n${comment}\n${appUrl ? "\nReply in Mikey Systems: " + appUrl + "\n" : ""}`;
+    try {
+      const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" }, body: JSON.stringify({ from, to: [to], subject: subj, html: html3, text: text3 }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return json({ ok: false, error: (j && (j.message || j.name)) || ("HTTP " + r.status) }, 200);
+      return json({ ok: true, id: j.id || null });
+    } catch (e) { return json({ ok: false, error: String((e && e.message) || e) }, 200); }
+  }
 
   // New-task notice to the employee it was assigned to.
   if (b.kind === "assigned") {

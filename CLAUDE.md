@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261019a`
+**Last updated:** 2026-10-13 · **Current build:** `v20261019b`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -77,6 +77,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
 
 ## Other features worth knowing
 Store Inventory par by store: `it.targetByLoc[store]` overrides the default `it.target` (blank = default, 0 = no par there); `_invTarget(it,loc)`; inventory admins edit it inline in the Par column (`invSetPar`) or in the item editor ("Par by store").
+Task comments: 💬 on an open task (assigner ↔ assignee only) adds to `t.comments`, sets `t.unread=[otherId]` (red "new" badge + Mark read), and emails the other person via task-notify `kind:'comment'`. task-notify looks up the recipient's email by `toId` server-side for any kind (retail logins can't see emails) — that also fixed "task done" emails when a retail user completes.
 Joy Ride log (`view-joyride`, `state.joyRides`): Retail tile shown only for retail logins at Church St (`_joyLocOk`, /church/i on clocked-in or assigned store) + admins; entry = date, driver, guests, byName/byLoc, one $5 envelope; Today/Week/Month/All totals, admin CSV. Server: joyRides in ARR_KEYS, ALWAYS_MERGE, TOMBSTONE (soft-delete via `_softDelId`), RETAIL_WRITE_KEYS; retail reads their store's entries.
 Home navigation: the dog, the "Mikey Systems" title, the crumb's Home and every "← Home" button call `goHome()` → the LRWC card page (switches back from NBC unless the login is NBC-only); retail → retailhub, labeler → labelprint.
 Bottling Log approvals: anyone with `write` (Super Admin, managers, Barrel Manager) can Approve/Edit pending entries on the Bottling Log page itself as well as the Bottling page; each pending row has a **Gift shop** tick → `pbApprove(id,gift)` records a gift-shop removal (excise + $0 GiftShop invoice) instead of in-bond finished goods. The Bottling page's own "Bottle a Barrel / Lot" form also takes an optional bottle photo (`boPhoto` → uploaded after `doBottle` via `_boAttachPhoto`, sets `bt.photoId`; 📷 link in Bottling History). The gift-shop option is labelled **"GiftShop / DTC"** in the UI (internals still `giftShop`, customer "GiftShop"). Bottling form has a Customer field (`bo_customer` → `bt.customer`, prefilled from approved entries); Bottling History has a search box (`renderBottlingHist`, matches barrel #, customer, spirit, dates, proof, "dtc").
