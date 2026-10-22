@@ -4,7 +4,7 @@ Read this first in any new chat. **Update it whenever work lands** (new feature,
 or open item) and commit it with that change. Older notes: `HANDOFF.md` (Aug 2026, Xola/Square
 env vars, backlog) — still valid for those topics.
 
-**Last updated:** 2026-10-13 · **Current build:** `v20261020d`
+**Last updated:** 2026-10-21 · **Current build:** `v20261021a`
 
 ## What it is
 - Single-page app `public/index.html` (~12k lines, all JS inline) + Netlify functions in
@@ -74,6 +74,19 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
   metrics (`_lblBaseOff`) so print = preview. PDFs open in a tab pre-opened at click (`_pdfPreopen/_pdfShow`). Text colour: `_lblColorCtl` (swatches `LBL_SWATCHES` + colour picker) in the editor (`f.color`) and per print next to the font picker (`lblRunColor` → `_lblRunPos[..].color`, kept by "Save positions to template"). Per-print flag on a text field: `flagLabel`/`flagPrefix`/`flagFontPt` → checkbox at print (`lblRunFlag`) swaps the prefix (+size) for that print (Oak King: "Single barrel" → "Single Barrel Selected by: ").
 - Templates: LRWC Single Barrel, Nashtucky, NBC Single Barrel, NBC Collaborative (spirittype1),
   Circle, Stella's Secret Stash (rot 270, needs 6.50" length), NBC Small Batch (`nbcsmallbatch1`). Oak King Straight Rye (`oakkingrye1`, single panel 3×6″, art `oakking_front/back.jpg`; Selected by / Proof→ALC/VOL / Age / bottom-right text OR image). Tennquila Barrel Aged Agave (`tennquila1`, front only 3.8×4.44″, art `tennquila_front/back.jpg`; 2 age-statement lines + ALC/VOL (number only, label prints the %) + Proof, all Pen font, in the white strip at the bottom). To add a template from a scan: crop art at 300 dpi into public/labels, measure box px → %, then write the template server-side (fetch /api/data, push into labelTemplates with newer `_upd`, POST cloudPayload with `_baseSavedAt=_savedAt`) — pushing into local state + save() gets wiped by the constant merge loop.
+
+## Custom Label Bottle orders (Shopify → Label Printing) — v20261021a
+- buyspiritsdirect.com sells a "Custom Label Bottle" (product `custom-label-bottle`, theme template
+  `product.custom-label.liquid`). The customer uploads a logo, types a line, drags/scales the logo on a
+  live canvas; the order carries line-item properties `Label Text`, `Logo` (file URL), `Label Proof`
+  (PNG of the preview), `Comment`, `_Label Template`, `_Logo Placement` (JSON cx,cy,wFrac,hFrac,scale,bgRemoved).
+- `netlify/functions/custom-label-orders.mjs` → `/api/custom-label/orders` (GET list, POST done-state in
+  Blobs store `custom-label`). Needs the Shopify app scope **read_orders** (same client-credentials auth as
+  shopify-summary). Requires a session token when AUTH_SECRET is set.
+- Client: `clOrdersHTML()` card at the top of Label Printing (only when the NBC Collaborative template
+  `emuy8nkqmjbbp` exists). "Open in template" → `clOpenOrder()` = lblStartPrint + logo fetched from the
+  Shopify CDN into `_lblRunImgs['front_<imgField>']`, placement mapped into `_lblRunPos`, text/aged/
+  distilled/proof prefilled, qty = ordered qty. Mark done keeps the queue tidy (no Shopify write needed).
 
 ## Other features worth knowing
 Store Inventory par by store: `it.targetByLoc[store]` overrides the default `it.target` (blank = default, 0 = no par there); `_invTarget(it,loc)`; inventory admins edit it inline in the Par column (`invSetPar`) or in the item editor ("Par by store").
