@@ -86,7 +86,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
 - Client: `clOrdersHTML()` card at the top of Label Printing (only when the NBC Collaborative template
   `emuy8nkqmjbbp` exists). "Open in template" → `clOpenOrder()` = lblStartPrint + logo fetched from the
   Shopify CDN into `_lblRunImgs['front_<imgField>']`, placement mapped into `_lblRunPos`, text/aged/
-  distilled/proof prefilled, qty = ordered qty. Mark done keeps the queue tidy (no Shopify write needed). Prefills: aged 7, distilled Kentucky, proof 121.00, Bottled-by → Nashville Barrel Co choice (the Collaborative template's 'Bottled by' choice field is on the BACK panel; clOpenOrder searches front then back) — v20261029b. Knockout/printArea tightened in v20261029c.
+  distilled/proof prefilled, qty = ordered qty. Mark done keeps the queue tidy (no Shopify write needed). Prefills: aged 7, distilled Kentucky, proof 121.00, Bottled-by → Nashville Barrel Co choice (the Collaborative template's 'Bottled by' choice field is on the BACK panel; clOpenOrder searches front then back) — v20261029b. Knockout/printArea tightened in v20261029c. Preview cover (.lblpv-ko, z 2) sits over images only (z 1); text/lines/UPC stay on top (z 3) — v20261029d.
 
 ## Other features worth knowing
 Store Inventory par by store: `it.targetByLoc[store]` overrides the default `it.target` (blank = default, 0 = no par there); `_invTarget(it,loc)`; inventory admins edit it inline in the Par column (`invSetPar`) or in the item editor ("Par by store").
