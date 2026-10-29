@@ -68,7 +68,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
 ## Label system (LRWC workspace)
 - Templates: `sheet{on,wIn,hIn,rot,front{xIn,yIn},back{...}}`; fields `xPct,yPct,wPct,hPct,fontPt,
   font,bold,upper,prefix,suffix,link(proof/abv),fixed,choices,growUp,lineH`. Background art is a
-  guide only (not printed); art files in `public/labels/`.
+  guide only (not printed); art files in `public/labels/`. Knockout zones `panel.knockout` ([{t:'ellipse',cx,cy,rx,ry}|{t:'poly',pts}] in % of panel) = pre-printed art an image may never print over: preview redraws the bg on top inside each zone (`_lblKnockPv`), the PDF rasterizes image fields with the zones erased (`_lblKnockImg`). NBC Collaborative front has the badge (circle + shield) as knockout.
 - Fonts: helv/times/courier (PDF standard), hand/hand2/mont (embedded base64), plus 22 Google
   fonts in `public/fonts/lbl/<key>-r|b.ttf` (`LBL_WEBFONTS`). PDF baseline uses the preview font's
   metrics (`_lblBaseOff`) so print = preview. PDFs open in a tab pre-opened at click (`_pdfPreopen/_pdfShow`). Text colour: `_lblColorCtl` (swatches `LBL_SWATCHES` + colour picker) in the editor (`f.color`) and per print next to the font picker (`lblRunColor` → `_lblRunPos[..].color`, kept by "Save positions to template"). Per-print flag on a text field: `flagLabel`/`flagPrefix`/`flagFontPt` → checkbox at print (`lblRunFlag`) swaps the prefix (+size) for that print (Oak King: "Single barrel" → "Single Barrel Selected by: ").
@@ -86,7 +86,7 @@ custAdmin (Kelly), shopAccess (Shopify Store card). Server tokens carry role + s
 - Client: `clOrdersHTML()` card at the top of Label Printing (only when the NBC Collaborative template
   `emuy8nkqmjbbp` exists). "Open in template" → `clOpenOrder()` = lblStartPrint + logo fetched from the
   Shopify CDN into `_lblRunImgs['front_<imgField>']`, placement mapped into `_lblRunPos`, text/aged/
-  distilled/proof prefilled, qty = ordered qty. Mark done keeps the queue tidy (no Shopify write needed). Prefills: aged 7, distilled Kentucky, proof 121.00, Bottled-at → Nashville Barrel Co (a 'bottl' text field, or the Nashville choice of a choice field mentioning bottling) — v20261029a.
+  distilled/proof prefilled, qty = ordered qty. Mark done keeps the queue tidy (no Shopify write needed). Prefills: aged 7, distilled Kentucky, proof 121.00, Bottled-by → Nashville Barrel Co choice (the Collaborative template's 'Bottled by' choice field is on the BACK panel; clOpenOrder searches front then back) — v20261029b.
 
 ## Other features worth knowing
 Store Inventory par by store: `it.targetByLoc[store]` overrides the default `it.target` (blank = default, 0 = no par there); `_invTarget(it,loc)`; inventory admins edit it inline in the Par column (`invSetPar`) or in the item editor ("Par by store").
