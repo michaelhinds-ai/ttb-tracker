@@ -188,12 +188,27 @@ export default async (req) => {
       const data = withAuth(data0);
       const au = authOf(data0);
       const enforce = authOn() && au && au.enabled;
-      if (!enforce) return json(data);
+      // Cheap live-sync polls: the client sends ?since=<_syncTag of the last copy it got>. If nothing
+      // changed we answer with a few bytes instead of the whole workspace (devices poll every ~8s, and
+      // re-downloading everything each time was most of the site's bandwidth). The tag covers this
+      // blob, the root blob for a linked company (logins live there) and who is asking, so a different
+      // login or a dropped token never gets "unchanged".
+      const since = url.searchParams.get("since") || "";
+      const baseTag = String((data0 && data0._savedAt) || "") + (linked ? "|" + String(rootBlob._savedAt || "") : "");
+      const send = (obj, tag, status = 200) => {
+        if (status === 200 && obj && typeof obj === "object" && !Array.isArray(obj)) {
+          if (since && since === tag) return json({ _unchanged: true, _syncTag: tag, _savedAt: obj._savedAt || null });
+          return json({ ...obj, _syncTag: tag }, status);
+        }
+        return json(obj, status);
+      };
+      if (!enforce) return send(data, "o:" + baseTag);
       const tok = verifyToken(tokenFromReq(req));
-      if (!tok) return json(bootstrap(data));               // not signed in → login-screen data only
-      if (isRetailRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForRetail(data, tok), linked ? 403 : 200); // employee → no financials
-      if (isLabelRole(tok.role)) return json(linked ? { error: "not_allowed" } : filterForLabels(data), linked ? 403 : 200); // label printer → label data only
-      return json(data);                                     // back office → full
+      if (!tok) return send(bootstrap(data), "b:" + baseTag);              // not signed in → login-screen data only
+      const who = String(tok.userId || tok.uid || tok.sub || "") + ":" + String(tok.role || "");
+      if (isRetailRole(tok.role)) return linked ? json({ error: "not_allowed" }, 403) : send(filterForRetail(data, tok), "r:" + who + ":" + baseTag); // employee → no financials
+      if (isLabelRole(tok.role)) return linked ? json({ error: "not_allowed" }, 403) : send(filterForLabels(data), "l:" + who + ":" + baseTag); // label printer → label data only
+      return send(data, "f:" + who + ":" + baseTag);                       // back office → full
     }
 
     // Append records to ANOTHER company's workspace without touching anything else in it — used by the
@@ -225,6 +240,7 @@ export default async (req) => {
       if (!body || typeof body !== "object") return json({ error: "bad_body" }, 400);
       const base = body._baseSavedAt;
       if ("_baseSavedAt" in body) delete body._baseSavedAt;
+      if ("_syncTag" in body) delete body._syncTag; // sync-poll bookkeeping, never stored
       // Refuse saves from outdated app builds (a tab left open for days) so old code can't write
       // stale data over everyone else's. Newer builds reload themselves when they see this.
       // Raise MIN_CLIENT_BUILD (or set the env var) when a change must reach every device.

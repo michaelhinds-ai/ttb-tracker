@@ -131,3 +131,8 @@ card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .
   to see the domain census; review `flaggedForReview` before archiving with `&confirm=1`.
 - Mailchimp's Shopify app is still not installed, so none of the six email flows has revenue
   attribution. Finding 01 of the Aug audit; still open.
+
+## Bandwidth (v20261031a)
+- Live-sync poll (`resync`, every 8s per visible screen) sends `?since=<_syncTag>`; `/api/data` GET answers `{_unchanged:true}` when the blob (and root blob for a linked company) hasn't changed for that login kind/user. Tags: `o:` no-auth, `b:` bootstrap/login screen, `r:`/`l:`/`f:` + uid:role. `_syncTag` is stripped on POST and never stored. Previously every poll re-downloaded the whole workspace.
+- Update check (`checkForUpdate`, every 60s + on focus/touch) is a HEAD request comparing the deploy ETag; the ~580 KB page is only fetched when the ETag changes (or every 30 min as a safety net). Previously it downloaded the full page every minute on every open screen.
+- Netlify already Brotli-compresses function and page responses (content-encoding: br).
