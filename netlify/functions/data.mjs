@@ -17,7 +17,7 @@ function isLinkedWs(ws) { return Object.values(COMPANY_WS).includes(String(ws ||
 const ARR_KEYS = [
   "entries", "orders", "customers", "finishedGoods", "barrels", "bottlings",
   "skus", "tibouts", "tibins", "tasks", "docs", "assets", "barrelsProc", "dailyBackups",
-  "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates", "labelRuns",
+  "expenses", "salaried", "attention", "samples", "upcs", "labelTemplates", "labelRuns", "clEdits",
   "invCats", "invItems", "invCounts", "invSubs",
   "duties", "dutyChecks", "trustedDevices", "insurance", "sellSheets", "bottleSubs", "filings", "joyRides",
 ];
@@ -41,8 +41,8 @@ function tokenFromReq(req) {
 function isRetailRole(r) { return r === "retail" || r === "retailemp"; }
 // "Label Printer" login: bottle/case labels + UPC lookup only. Reads and writes nothing else.
 function isLabelRole(r) { return r === "labeler"; }
-const LABEL_READ_KEYS = ["skus", "upcs", "labelTemplates", "labelRuns", "trustedDevices"];
-const LABEL_WRITE_KEYS = ["labelRuns", "labelTemplates"];
+const LABEL_READ_KEYS = ["skus", "upcs", "labelTemplates", "labelRuns", "clEdits", "trustedDevices"];
+const LABEL_WRITE_KEYS = ["labelRuns", "labelTemplates", "clEdits"];
 function filterForLabels(blob) {
   const out = { _savedAt: blob && blob._savedAt, auth: { enabled: !!(blob.auth && blob.auth.enabled), users: sanitizeUsers(blob.auth && blob.auth.users) },
     settings: sanitizeSettings(blob.settings), brandLogos: blob.brandLogos || {} };
