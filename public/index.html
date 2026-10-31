@@ -12213,6 +12213,7 @@ async function clOpenOrder(idx){ const o=_clOrders&&_clOrders[idx]; const raw=_c
   const fImg=byLabel(/logo|image|collab/i,'image')||F.find(f=>f.type==='image');
   const fTxt=byLabel(/collaborator|selected|name/i,'text')||F.find(f=>f.type==='text'&&!f.link&&!f.fixed&&!f.choices);
   const fAged=byLabel(/aged|age/i,'text'), fDist=byLabel(/distill/i,'text'), fProof=F.find(f=>f.link==='proof')||byLabel(/proof/i,'text');
+  const fBarrel=byLabel(/barrel/i,'text');
   lblStartPrint(raw.id); _clCur=o;
   if(fImg&&o.logoUrl){ try{ const du=await _clFetchDataURL(o.logoUrl); _lblRunImgs['front_'+fImg.id]=await _shrinkImgP(du,1400);
       if(o.placement&&o.placement.wFrac){ const p=o.placement; _lblRunPos['front_'+fImg.id]={xPct:+((p.cx-p.wFrac/2)*100).toFixed(2),yPct:+((p.cy-p.hFrac/2)*100).toFixed(2),wPct:+(p.wFrac*100).toFixed(2),hPct:+(p.hFrac*100).toFixed(2)}; }
@@ -12232,7 +12233,7 @@ async function clOpenOrder(idx){ const o=_clOrders&&_clOrders[idx]; const raw=_c
       const hIn=+t.front.hIn||6, pt=+(px/1200*hIn*72).toFixed(1);
       _lblRunPos['front_'+fTxt.id]=Object.assign({},_lblRunPos['front_'+fTxt.id]||{},{xPct:13,wPct:74,yPct:+(74.5-0.575*px/12).toFixed(2),hPct:fTxt.hPct||6,fontPt:pt,font:'hand',align:'center'});
     }catch(e){} }
-  renderLabelPrint(); set(fTxt,o.text||''); set(fAged,tier.aged); set(fDist,tier.dist); set(fProof,'121.00');
+  renderLabelPrint(); set(fTxt,o.text||''); set(fAged,tier.aged); set(fDist,tier.dist); set(fProof,'121.00'); set(fBarrel,'2026');
   /* Bottled-at defaults to Nashville Barrel Co: a "Bottled…" text field, or a choice field whose options mention bottling */
   { let pB='front'; const _isB=f=>f.type==='text'&&(/bottl/i.test(f.label||'')||(Array.isArray(f.choices)&&f.choices.some(c=>/bottl/i.test((c.label||'')+' '+(c.text||'')))));
     let fB=F.find(_isB); if(!fB&&t.twoPanel&&t.back){ fB=(t.back.fields||[]).find(_isB); pB='back'; } /* NBC Collaborative: "Bottled by" lives on the back */
