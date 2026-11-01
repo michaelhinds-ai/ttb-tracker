@@ -43,7 +43,7 @@ const QUERY = `query($cursor: String, $q: String!) {
       shippingAddress { name city provinceCode }
       lineItems(first: 50) { nodes {
         id title quantity sku
-        product { handle }
+        product { handle vendor }
         variant { title }
         customAttributes { key value }
       } }
@@ -63,9 +63,18 @@ async function gql(tok, query, variables) {
   return b.data;
 }
 
+// 1of1 Bourbon orders (1of1bourbon.com, vendor "1of1"): the customer designs the whole label on the
+// site, so the order carries a finished 3x6 print file ("Approved proof", 900x1800 @ 300 dpi) — nothing
+// to lay out here. Barrel sample kits share the vendor but have no label, so they are skipped.
+function isOneOfOne(li) {
+  const v = li.product && li.product.vendor;
+  const a = li.customAttributes || [];
+  return (v === "1of1" || a.some((x) => x.key === "Label style")) && a.some((x) => x.key === "Approved proof");
+}
 function isCustomLabel(li) {
   const h = li.product && li.product.handle;
   if (h === PRODUCT_HANDLE) return true;
+  if (isOneOfOne(li)) return true;
   return (li.customAttributes || []).some((a) => a.key === "_Label Template");
 }
 function attrs(li) { const o = {}; (li.customAttributes || []).forEach((a) => { o[a.key] = a.value; }); return o; }
@@ -102,16 +111,24 @@ export default async (req) => {
         for (const li of ((o.lineItems && o.lineItems.nodes) || [])) {
           if (!isCustomLabel(li)) continue;
           const a = attrs(li);
-          let placement = null; try { placement = a["_Logo Placement"] ? JSON.parse(a["_Logo Placement"]) : null; } catch { placement = null; }
+          const one = isOneOfOne(li);
+          let placement = null; try { placement = (!one && a["_Logo Placement"]) ? JSON.parse(a["_Logo Placement"]) : null; } catch { placement = null; }
           items.push({
             lineId: li.id, orderId: o.id, orderName: o.name, createdAt: o.createdAt,
             orderUrl: `https://admin.shopify.com/store/${cfg().store.replace(".myshopify.com", "")}/orders/${String(o.id).split("/").pop()}`,
             fulfillment: o.displayFulfillmentStatus, financial: o.displayFinancialStatus,
             customer: (o.customer && o.customer.displayName) || (o.shippingAddress && o.shippingAddress.name) || "",
             email: (o.customer && o.customer.email) || "", shipTo: o.shippingAddress ? [o.shippingAddress.city, o.shippingAddress.provinceCode].filter(Boolean).join(", ") : "",
-            qty: li.quantity, title: li.title, variant: (li.variant && li.variant.title) || "",
-            text: a["Label Text"] || "", logoUrl: a["Logo"] || "", proofUrl: a["Label Proof"] || "", comment: a["Comment"] || a["Notes"] || "",
-            template: a["_Label Template"] || "", placement, orderNote: o.note || "",
+            qty: li.quantity, title: li.title,
+            variant: one ? [a["Age"], a["Class"]].filter(Boolean).join(" ") : ((li.variant && li.variant.title) || ""),
+            text: one ? (a["Label name"] || "") : (a["Label Text"] || ""),
+            logoUrl: one ? (a["Photo"] || "") : (a["Logo"] || ""),
+            proofUrl: one ? (a["Approved proof"] || "") : (a["Label Proof"] || ""),
+            comment: one ? (a["Gift note"] || "") : (a["Comment"] || a["Notes"] || ""),
+            template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement, orderNote: o.note || "",
+            brand: one ? "1of1" : "nbc",
+            oneOfOne: one ? { style: a["Label style"] || "", proof: a["Proof"] || "", abv: a["ABV"] || "", age: a["Age"] || "", cls: a["Class"] || "",
+              seal: a["Seal"] || "", occ1: a["Occasion headline"] || "", occ2: a["Occasion line"] || "", line2: a["Label line 2"] || "" } : null,
           });
         }
       }
