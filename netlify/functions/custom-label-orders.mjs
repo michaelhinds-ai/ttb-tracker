@@ -124,6 +124,7 @@ export default async (req) => {
             text: one ? (a["Label name"] || "") : (a["Label Text"] || ""),
             logoUrl: one ? (a["Photo"] || "") : (a["Logo"] || ""),
             proofUrl: one ? (a["Approved proof"] || "") : (a["Label Proof"] || ""),
+            backUrl: one ? (a["Back label"] || "") : "",
             comment: one ? (a["Gift note"] || "") : (a["Comment"] || a["Notes"] || ""),
             template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement, orderNote: o.note || "",
             brand: one ? "1of1" : "nbc",

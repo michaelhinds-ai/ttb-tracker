@@ -12202,7 +12202,7 @@ function clOrdersHTML(){
           <div class="hint" style="margin:3px 0 0">${esc(o.fulfillment||'')}${o.financial&&o.financial!=='PAID'?' · '+esc(o.financial):''}${o.done?' · done '+(o.doneAt?new Date(o.doneAt).toLocaleDateString():''):''}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;flex:none;align-items:flex-end">
-          ${o.brand==='1of1'?`<a class="btn sm primary" href="${esc(o.proofUrl)}" target="_blank" rel="noopener" download>Print file (3×6)</a>`:`<button class="btn sm primary" onclick="clOpenOrder(${idx})">Open in template</button>`}
+          ${o.brand==='1of1'?`<button class="btn sm primary" onclick="clPrint1of1(${idx})">Print front + back</button><span style="font-size:12px"><a href="${esc(o.proofUrl)}" target="_blank" rel="noopener">front</a>${o.backUrl?` · <a href="${esc(o.backUrl)}" target="_blank" rel="noopener">back</a>`:' · <i>no back file</i>'}</span>`:`<button class="btn sm primary" onclick="clOpenOrder(${idx})">Open in template</button>`}
           <button class="link" onclick="clMarkDone(${idx},${o.done?'false':'true'})">${o.done?'Mark not done':'Mark done'}</button>
         </div></div>`; }).join('');
   return `<div class="card" id="clOrdersCard" style="margin-bottom:14px;border-left:4px solid var(--copper)">
@@ -12222,6 +12222,13 @@ async function clLoadOrders(){ if(_clBusy) return; _clBusy=true; _clErr=''; _clR
     else _clOrders=d.items||[];
   }catch(e){ _clErr='Network error loading orders.'; if(!_clOrders) _clOrders=[]; }
   _clBusy=false; _clRender(); }
+/* 1of1 orders arrive with finished 3x6 print files (front + back, 300 dpi). Print one front/back pair per bottle. */
+function clPrint1of1(idx){ const o=_clOrders&&_clOrders[idx]; if(!o||!o.proofUrl) return;
+  if(!o.backUrl&&!confirm('This order has no back-label file (placed before back labels were attached). Print the front only?')) return;
+  const n=Math.max(1,+o.qty||1), pair=`<img src="${esc(o.proofUrl)}">`+(o.backUrl?`<img src="${esc(o.backUrl)}">`:'');
+  const w=window.open('','_blank'); if(!w){ flash('Allow pop-ups to print labels.'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.orderName)} — 1of1 labels</title><style>@page{size:3in 6in;margin:0}html,body{margin:0;background:#fff}img{display:block;width:3in;height:6in;object-fit:fill;break-after:page;page-break-after:always}img:last-child{break-after:auto;page-break-after:auto}</style></head><body>${Array(n).fill(pair).join('')}<script>Promise.all([...document.images].map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))).then(()=>setTimeout(()=>print(),200))<\/script></body></html>`);
+  w.document.close(); }
 async function clMarkDone(idx,done){ const o=_clOrders&&_clOrders[idx]; if(!o) return; o.done=!!done; o.doneAt=done?new Date().toISOString():''; _clRender();
   try{ await fetch('/api/custom-label/orders',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({lineId:o.lineId,done:!!done})}); }catch(e){ flash('Could not save — check connection.'); } }
 async function _clFetchDataURL(url){ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error('image '+r.status); const b=await r.blob(); return await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(b); }); }
