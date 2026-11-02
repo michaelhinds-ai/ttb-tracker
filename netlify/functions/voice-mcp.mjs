@@ -16,6 +16,8 @@ const BOOK_URL = "https://nashvillebarrelco.com/";
 // Override with VOICE_MCP_EXPERIENCES="id1,id2,..." in Netlify when the website's list changes.
 const ONLINE = ["64dfbdfe4ad85ef07000fd16","64dfbed8eb64b809be0d8300","651484324b6a1d061304fc56","67603f286af79520f40103df",
   "614b6e5d6ec6087fd62849aa","614b70e222f69320a06d115f","649b28940506bd3a6a058f3a","6729102768eb7ff3da01071d","67339708957581affa07ebcd"];
+// Walk-in experiences: no need to quote times; guests just come in during open hours.
+const isWalkIn = (e) => /flight from the barrel/i.test(e.name || "");
 const allowed = () => { const v = g("VOICE_MCP_EXPERIENCES").split(",").map((x) => x.trim()).filter(Boolean); return new Set(v.length ? v : ONLINE); };
 
 function nashvilleSellers() {
@@ -125,7 +127,7 @@ async function callTool(name, a = {}) {
   if (!list.length) return "Live booking data is unavailable right now. Please send the caller to nashvillebarrelco.com to see times and book.";
   if (name === "list_experiences") {
     const l = pickLocation(list, a.location);
-    return l.map((e) => `• ${e.name} — ${e.location}${e.price != null ? ` — $${e.price}${/person|guest|outing/i.test(e.priceType) || !e.priceType ? " per person" : ""}` : ""}${e.durationMin ? ` — about ${e.durationMin} min` : ""}${e.about ? `. ${e.about}` : ""} [id ${e.id}]`).join("\n")
+    return l.map((e) => `• ${e.name} — ${e.location}${e.price != null ? ` — $${e.price}${/person|guest|outing/i.test(e.priceType) || !e.priceType ? " per person" : ""}` : ""}${e.durationMin ? ` — about ${e.durationMin} min` : ""}${isWalkIn(e) ? ". Walk-in, no reservation needed" : ""}${e.about ? `. ${e.about}` : ""} [id ${e.id}]`).join("\n")
       + `\nBooking: ${BOOK_URL} (or the experience booking link).`;
   }
   if (name === "find_open_times") {
@@ -136,6 +138,7 @@ async function callTool(name, a = {}) {
     let l = pickLocation(list, a.location);
     if (a.experience) { const m = matchExperience(l, a.experience) || matchExperience(list, a.experience); if (m) l = [m]; }
     const lines = await Promise.all(l.slice(0, 30).map(async (e) => {
+      if (isWalkIn(e)) return `• ${e.name.trim()} (${e.location}): walk-in, no reservation needed — just come in during open hours (it can also be booked online).`;
       try { const s = slotsFor(await availability(e, date, date), date, party); return s.length ? `• ${e.name.trim()} (${e.location}): ${say(s)}` : null; }
       catch { return `• ${e.name}: couldn't check right now`; }
     }));
@@ -145,6 +148,7 @@ async function callTool(name, a = {}) {
   }
   if (name === "check_dates") {
     const e = matchExperience(list, a.experience);
+    if (e && isWalkIn(e)) return `${e.name.trim()} is a walk-in experience — no reservation needed, guests can come in any time during open hours at ${e.location}.`;
     if (!e) return `I couldn't find that experience. Options: ${list.map((x) => x.name).join("; ")}.`;
     const start = okDate(a.start_date) && a.start_date >= today() ? a.start_date : today();
     const days = Math.max(1, Math.min(14, +a.days || 7)), end = addDays(start, days - 1);
