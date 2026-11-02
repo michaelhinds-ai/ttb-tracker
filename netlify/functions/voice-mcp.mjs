@@ -12,6 +12,11 @@ import { accounts, xFor } from "./lib/xola.mjs";
 const g = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : process.env[k]) || "";
 const TZ = "America/Chicago";
 const BOOK_URL = "https://nashvillebarrelco.com/";
+// Only the experiences sold online on nashvillebarrelco.com (Mike: "just the ones people can book online").
+// Override with VOICE_MCP_EXPERIENCES="id1,id2,..." in Netlify when the website's list changes.
+const ONLINE = ["64dfbdfe4ad85ef07000fd16","64dfbed8eb64b809be0d8300","651484324b6a1d061304fc56","67603f286af79520f40103df",
+  "614b6e5d6ec6087fd62849aa","614b70e222f69320a06d115f","649b28940506bd3a6a058f3a","6729102768eb7ff3da01071d","67339708957581affa07ebcd"];
+const allowed = () => { const v = g("VOICE_MCP_EXPERIENCES").split(",").map((x) => x.trim()).filter(Boolean); return new Set(v.length ? v : ONLINE); };
 
 function nashvilleSellers() {
   const all = accounts();
@@ -29,7 +34,7 @@ async function experiences() {
       const r = await xFor(a, "/api/experiences", { query: { seller: a.seller, limit: 100 }, timeoutMs: 6000 });
       const list = Array.isArray(r) ? r : (r && (r.data || r.experiences)) || [];
       for (const e of list) {
-        if (!e || e.disabled === true || e.archived === true || e.visible === false) continue;
+        if (!e || !allowed().has(e.id || e._id)) continue;
         if (e.status && e.status !== "published") continue;
         if (Array.isArray(e.allowedPrivacies) && e.allowedPrivacies.length && !e.allowedPrivacies.includes("public")) continue;
         if (/louisville|,\s*ky\b/i.test(`${e.pickupAddress || ""} ${e.name || ""}`)) continue; // Louisville listings live in the Nashville seller too
