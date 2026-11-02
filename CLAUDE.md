@@ -149,3 +149,4 @@ Retail hub age alert (v20261101a): red banner `#ageAlert` at the top of `view-re
 - Recipients = app users named Jen/Jennifer and Adam (their e-mail on file); env overrides CHECKLIST_EMAIL_JH / CHECKLIST_EMAIL_LOU. Shared code: `lib/checklists.mjs`.
 - `/api/checklist-run` (back-office token): `?mode=weekly&dry=1&html=1` preview, `?mode=weekly` send now, `?mode=notify&dry=1` pending list.
 Labels (v20261102b): text fields can take 2+ lines — `f.multiline` (editor checkbox "Allow 2 lines"; default ON for fields labelled Selected by / Collaborator, `_lblMulti`) renders a textarea, Enter = new line (PDF/preview already split on \n). New font `condserif` ("Condensed Serif — LRWC Selected by"): Roboto Serif static instance wdth 62 / opsz 28, wght 560 (r) & 720 (b), Latin-subset, in public/fonts/lbl/.
+Label PDF draws image fields first, then text/arcs/lines/UPC, so text always prints over a customer image (preview already layers text z 3 over images z 1) — v20261102c.
