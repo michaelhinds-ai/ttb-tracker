@@ -29,14 +29,20 @@ async function experiences() {
       const r = await xFor(a, "/api/experiences", { query: { seller: a.seller, limit: 100 }, timeoutMs: 6000 });
       const list = Array.isArray(r) ? r : (r && (r.data || r.experiences)) || [];
       for (const e of list) {
-        if (!e || e.disabled === true || e.status === "disabled" || e.archived === true) continue;
+        if (!e || e.disabled === true || e.archived === true || e.visible === false) continue;
+        if (e.status && e.status !== "published") continue;
+        if (Array.isArray(e.allowedPrivacies) && e.allowedPrivacies.length && !e.allowedPrivacies.includes("public")) continue;
+        if (/louisville|,\s*ky\b/i.test(`${e.pickupAddress || ""} ${e.name || ""}`)) continue; // Louisville listings live in the Nashville seller too
+        const demo = ((e.catalog && e.catalog.items) || []).find((it) => it && it.unitType === "demographic" && it.prices && it.prices.price);
+        const price = typeof e.price === "number" ? e.price : (demo ? demo.prices.price.min : null);
+        const mins = e.eventDuration || (e.duration > 15 ? e.duration : (e.duration ? e.duration * 60 : null));
         out.push({
           id: e.id || e._id,
           name: e.name || "",
           location: a.label || "Nashville",
-          price: typeof e.price === "number" ? e.price : null,
-          priceType: e.priceType || "",
-          durationMin: e.duration || null,
+          price,
+          priceType: e.priceType || (e.catalog && e.catalog.priceTiers && e.catalog.priceTiers.public && e.catalog.priceTiers.public.priceType) || "",
+          durationMin: mins || null,
           about: String(e.excerpt || e.desc || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240),
           bookingUrl: `https://checkout.xola.com/index.html#seller/${a.seller}/experiences/${e.id || e._id}?openExternal=true`,
           _acct: a,
