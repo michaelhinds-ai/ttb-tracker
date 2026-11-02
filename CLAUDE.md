@@ -137,3 +137,7 @@ card (Shopify GraphQL needs `@idempotent` on inventory mutations). Full backup .
 - Update check (`checkForUpdate`, every 60s + on focus/touch) is a HEAD request comparing the deploy ETag; the ~580 KB page is only fetched when the ETag changes (or every 30 min as a safety net). Previously it downloaded the full page every minute on every open screen.
 - Netlify already Brotli-compresses function and page responses (content-encoding: br).
 Retail hub age alert (v20261101a): red banner `#ageAlert` at the top of `view-retailhub` — "Alert: To serve, DOB has to be on or before <today − 21 years>" (`_ageCutoff21`, Feb 29 → Feb 28), refreshed on every renderRetailHub and every minute so it rolls over at midnight.
+
+## Voice agent MCP (Nov 2026)
+- `netlify/functions/voice-mcp.mjs` at `/mcp/nbc`: read-only MCP server (streamable HTTP, JSON-RPC POST) for the NBC phone receptionist (xAI Grok Voice Agent "Nashville Barrel Co Reception"). Tools: list_experiences, find_open_times, check_dates over the Nashville Xola sellers (XOLA_STATE_n=TN, else label match). No booking/cancel/refund/guest lookup by design.
+- Auth: env `VOICE_MCP_TOKEN`; agent sends `Authorization: Bearer <token>`.
