@@ -141,3 +141,10 @@ Retail hub age alert (v20261101a): red banner `#ageAlert` at the top of `view-re
 ## Voice agent MCP (Nov 2026)
 - `netlify/functions/voice-mcp.mjs` at `/mcp/nbc`: read-only MCP server (streamable HTTP, JSON-RPC POST) for the NBC phone receptionist (xAI Grok Voice Agent "Nashville Barrel Co Reception"). Tools: list_experiences, find_open_times, check_dates over the Nashville Xola sellers (XOLA_STATE_n=TN, else label match). No booking/cancel/refund/guest lookup by design.
 - Auth: env `VOICE_MCP_TOKEN`; agent sends `Authorization: Bearer <token>`.
+
+## Checklist e-mails (v20261102a) — server-side, no client involvement
+- `checklist-notify.mjs` (every 10 min) reads the ROOT blob and e-mails each newly completed checklist once (sent keys in Blobs store `checklist-notify`/`sent`; first run only marks existing ones): Store Inventory + Supplies Checklist (`invSubs`, kind 'supply') and every Joy Ride → Jennifer; Opening / Closing / Daily Task (that weekday's `clean` items) / Bathrooms (`clean` day 7) / Slushie → Jennifer for HQ & Church St, Adam for Louisville (`isLouisville`). "Completed" = every item for that store/kind/date checked (today + yesterday in store time).
+- Slushie now has a "✅ Mark slushie machine cleaned" button (`slushToggle`, dutyChecks kind 'slush', itemId 'slush'); before it was only a video.
+- `checklist-weekly.mjs` (Sundays 14:00 UTC) — last Sun–Sat grid per store (✓ / n/N / ✗), slushie weekly, "by employee" (items checked, lists finished, lists left unfinished). To: CHECKLIST_RECAP_TO, else BACKUP_EMAIL_TO + Jennifer.
+- Recipients = app users named Jen/Jennifer and Adam (their e-mail on file); env overrides CHECKLIST_EMAIL_JH / CHECKLIST_EMAIL_LOU. Shared code: `lib/checklists.mjs`.
+- `/api/checklist-run` (back-office token): `?mode=weekly&dry=1&html=1` preview, `?mode=weekly` send now, `?mode=notify&dry=1` pending list.
