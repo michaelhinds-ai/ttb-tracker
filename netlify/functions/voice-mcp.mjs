@@ -87,6 +87,13 @@ function slotsFor(av, date, party) {
   return Object.keys(d).sort().filter((t) => +d[t] >= party).map((t) => ({ time: fmtTime(t), seats: +d[t] }));
 }
 
+// voice-friendly: walk-in style slots (huge capacity) or long lists collapse to a range
+function say(s) {
+  const seat = (x) => (x.seats >= 999 ? "" : ` (${x.seats} open)`);
+  if (s.length > 6) return `${s.length} start times from ${s[0].time} to ${s[s.length - 1].time}${s.every((x) => x.seats >= 999) ? ", walk-in style, no seat limit" : ""}`;
+  return s.map((x) => `${x.time}${seat(x)}`).join(", ");
+}
+
 // --- tools
 const TOOLS = [
   { name: "list_experiences",
@@ -123,8 +130,8 @@ async function callTool(name, a = {}) {
     const party = Math.max(1, Math.min(60, +a.party_size || 1));
     let l = pickLocation(list, a.location);
     if (a.experience) { const m = matchExperience(l, a.experience) || matchExperience(list, a.experience); if (m) l = [m]; }
-    const lines = await Promise.all(l.slice(0, 12).map(async (e) => {
-      try { const s = slotsFor(await availability(e, date, date), date, party); return s.length ? `• ${e.name} (${e.location}): ${s.map((x) => `${x.time} (${x.seats} open)`).join(", ")}` : null; }
+    const lines = await Promise.all(l.slice(0, 30).map(async (e) => {
+      try { const s = slotsFor(await availability(e, date, date), date, party); return s.length ? `• ${e.name.trim()} (${e.location}): ${say(s)}` : null; }
       catch { return `• ${e.name}: couldn't check right now`; }
     }));
     const hit = lines.filter(Boolean);
@@ -139,7 +146,7 @@ async function callTool(name, a = {}) {
     const party = Math.max(1, Math.min(60, +a.party_size || 1));
     const av = await availability(e, start, end);
     const out = [];
-    for (let i = 0; i < days; i++) { const d = addDays(start, i); const s = slotsFor(av, d, party); if (s.length) out.push(`• ${dayName(d)}: ${s.map((x) => x.time).join(", ")}`); }
+    for (let i = 0; i < days; i++) { const d = addDays(start, i); const s = slotsFor(av, d, party); if (s.length) out.push(`• ${dayName(d)}: ${say(s)}`); }
     return out.length ? `${e.name} (${e.location}) open dates${party > 1 ? ` for ${party}` : ""}:\n${out.join("\n")}` : `${e.name} has no open times from ${dayName(start)} to ${dayName(end)}.`;
   }
   throw Object.assign(new Error(`Unknown tool: ${name}`), { rpc: -32602 });
