@@ -165,3 +165,4 @@ oneofone1 calibrated from the 11/3 grid (live data): labels ≈ x 0.06–2.88 an
 - 1of1 (v20261103l): front prints on the RIGHT label (fully printable; left label loses ~0.3in at its left edge). Image fields support fit:"fill" (stretch to box) — ooFront uses it so the 1:2 proof fills the ~3.2x6.05 label with bleed. Back on left label.
 
 - 1of1 back (v20261103m): text field ooOrderNo (Order #, +W for wax) in the top-right margin above the back art frame; added to existing template on load; filled by clPrint1of1.
+- 1of1 calibration (11/3 flatbed scan of grid, paper 7x6.15, rot 90): left label ~x0.30-3.50, right ~3.76-6.96, both start ~y0.17 and run past the 6.15 page. Back on left {0.475,0.345} (2.85x5.7), front on right {3.66,0.12} (3.4x6.1 fill).
