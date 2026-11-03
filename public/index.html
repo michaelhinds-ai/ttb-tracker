@@ -2627,7 +2627,7 @@ function dataOnly(){ const c=Object.assign({},state); delete c.history; delete c
 // The build stamp below must match the #buildTag text. Every open tab checks the deployed page
 // for a newer stamp (every 2 min + whenever the tab comes back into view) and reloads itself when
 // it's safe (not mid-typing / editing). The server also refuses saves from outdated builds.
-var APP_BUILD='v20261103k', _updPending=null, _updSince=0;
+var APP_BUILD='v20261103l', _updPending=null, _updSince=0;
 function _buildNewer(a,b){ return String(a||'')>String(b||''); }
 // Reload from a brand-new URL so iPad Safari can't hand back a cached copy of the old page.
 function hardReload(tag){
@@ -12325,7 +12325,7 @@ async function clLoadOrders(){ if(_clBusy) return; _clBusy=true; _clErr=''; _clR
 const OO_TPL='oneofone1';
 function _ooEnsureTemplate(){ let t=lblGet(OO_TPL); if(t) return t;
   t={id:OO_TPL,name:'1of1 Bourbon — 3×6 front + back',brand:'1of1',twoPanel:true,
-     front:{wIn:3,hIn:6,bg:'',offXin:0,offYin:0,rotate180:false,fields:[{id:'ooFront',type:'image',label:'Front (approved proof)',value:'',xPct:0,yPct:0,wPct:100,hPct:100}]},
+     front:{wIn:3,hIn:6,bg:'',offXin:0,offYin:0,rotate180:false,fields:[{id:'ooFront',type:'image',label:'Front (approved proof)',value:'',fit:'fill',xPct:0,yPct:0,wPct:100,hPct:100}]},
      back:{wIn:3,hIn:6,bg:'',offXin:0,offYin:0,rotate180:false,fields:[{id:'ooBack',type:'image',label:'Back label',value:'',xPct:0,yPct:0,wPct:100,hPct:100}]},
      sheet:{on:true,wIn:6.3,hIn:6,rot:90,front:{xIn:0,yIn:0},back:{xIn:3.3,yIn:0}},_upd:Date.now()};
   lblTemplates().push(t); try{ save('Added the 1of1 label template'); }catch(e){} return t; }
@@ -12784,7 +12784,7 @@ async function lblBuildPdf(){ if(_clCur&&!_lblCollect&&_clCur.brand!=='1of1'){ t
         if(f.type==='arc'){ const txt=String(vals[key+'_'+f.id]||'').trim(); if(txt) _lblDrawArc(page,pickFont(f),f,txt,x,topY,fw,fh,pageH,hex(f.color),PDFLib); return; }
         if(f.type==='line'){ const lw=Math.max(0.2,+f.lw||0.6); if(fw>=fh) page.drawRectangle({x,y:pageH-topY-fh/2-lw/2,width:fw,height:lw,color:rgb(0,0,0)}); else page.drawRectangle({x:x+fw/2-lw/2,y:pageH-topY-fh,width:lw,height:fh,color:rgb(0,0,0)}); return; }
         if(f.type==='upc'){ const code=vals[key+'_'+f.id]; if(code) drawUpcA(page,F.helv,PDFLib,String(code),x,pageH-topY-fh,fw,fh); return; }
-        if(f.type==='image'){ const img=imgs[key+'_'+f.id]; if(!img)return; const sc=Math.min(fw/img.width,fh/img.height), w=img.width*sc, h=img.height*sc; page.drawImage(img,{x:x+(fw-w)/2,y:pageH-topY-fh+(fh-h)/2,width:w,height:h}); return; }
+        if(f.type==='image'){ const img=imgs[key+'_'+f.id]; if(!img)return; if(f.fit==='fill'){ page.drawImage(img,{x,y:pageH-topY-fh,width:fw,height:fh}); return; } const sc=Math.min(fw/img.width,fh/img.height), w=img.width*sc, h=img.height*sc; page.drawImage(img,{x:x+(fw-w)/2,y:pageH-topY-fh+(fh-h)/2,width:w,height:h}); return; }
         const raw=f.fixed?(f.value||''):String(vals[key+'_'+f.id]||''); if(!raw.trim())return;
         const font=pickFont(f), _fit=_lblTxtFit(f,raw), size=_fit.size, full=(t=>f.upper?t.toUpperCase():t)((f.prefix||'')+raw+(f.suffix||'')); if(!full.trim())return;
         const lines=full.split(/\n/).map(par=>par.replace(/[ \t]+/g,' ').trim()); /* never auto-wrap — matches the preview; long text overflows the box evenly */
