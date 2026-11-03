@@ -163,3 +163,5 @@ Barrels 'Empty 1' (emptyBarrel, v20261103j): splits one barrel off an aging lot 
 oneofone1 calibrated from the 11/3 grid (live data): labels ≈ x 0.06–2.88 and 3.12–6.15 on the 6.3×6 rot-90 sheet; panels shrunk to 2.85×5.7 so the 3×6 file fits inside, front {0.04,0.15}, back {3.14,0.15}.
 
 - 1of1 (v20261103l): front prints on the RIGHT label (fully printable; left label loses ~0.3in at its left edge). Image fields support fit:"fill" (stretch to box) — ooFront uses it so the 1:2 proof fills the ~3.2x6.05 label with bleed. Back on left label.
+
+- 1of1 back (v20261103m): text field ooOrderNo (Order #, +W for wax) in the top-right margin above the back art frame; added to existing template on load; filled by clPrint1of1.
