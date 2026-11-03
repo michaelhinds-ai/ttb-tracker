@@ -108,7 +108,14 @@ export default async (req) => {
       const conn = (data && data.orders) || {};
       for (const e of (conn.edges || [])) {
         const o = e.node; if (!o || o.cancelledAt) continue;
-        for (const li of ((o.lineItems && o.lineItems.nodes) || [])) {
+        // Wax: a wax add-on line in the order (1of1 "Wax seal", tied to its bottle by _bottle when present),
+        // a "Seal: …wax…" attribute, or wax in the bottle's own variant / attributes.
+        const lis = (o.lineItems && o.lineItems.nodes) || [];
+        const waxLines = lis.filter((x) => !isCustomLabel(x) && /\bwax/i.test(((x.variant && x.variant.title) || "") + " " + (x.title || "")));
+        const waxFor = (li, a) => /\bwax/i.test(String(a["Seal"] || "")) || /\bwax/i.test((li.variant && li.variant.title) || "")
+          || Object.entries(a).some(([k, v]) => !/^_|proof|photo|logo|placement/i.test(k) && /\bwax(ed)?\b/i.test(String(k) + " " + String(v)) && !/no wax|without wax/i.test(String(v)))
+          || waxLines.some((w) => { const wb = attrs(w)["_bottle"]; return !wb || !a["_bottle"] || wb === a["_bottle"]; });
+        for (const li of lis) {
           if (!isCustomLabel(li)) continue;
           const a = attrs(li);
           const one = isOneOfOne(li);
@@ -127,7 +134,7 @@ export default async (req) => {
             backUrl: one ? (a["Back label"] || "") : "",
             comment: one ? (a["Gift note"] || "") : (a["Comment"] || a["Notes"] || ""),
             template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement, orderNote: o.note || "",
-            brand: one ? "1of1" : "nbc",
+            brand: one ? "1of1" : "nbc", wax: waxFor(li, a),
             oneOfOne: one ? { style: a["Label style"] || "", proof: a["Proof"] || "", abv: a["ABV"] || "", age: a["Age"] || "", cls: a["Class"] || "",
               seal: a["Seal"] || "", occ1: a["Occasion headline"] || "", occ2: a["Occasion line"] || "", line2: a["Label line 2"] || "" } : null,
           });
