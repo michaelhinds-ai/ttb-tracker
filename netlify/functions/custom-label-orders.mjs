@@ -77,7 +77,9 @@ function isCustomLabel(li) {
   if (isOneOfOne(li)) return true;
   return (li.customAttributes || []).some((a) => a.key === "_Label Template");
 }
-function attrs(li) { const o = {}; (li.customAttributes || []).forEach((a) => { o[a.key] = a.value; }); return o; }
+// Image links are hidden from packing slips by sending them as "_Logo" / "_Label Proof" (Shopify hides "_" properties);
+// older orders used "Logo" / "Label Proof" — read either.
+function attrs(li) { const o = {}; (li.customAttributes || []).forEach((a) => { o[a.key] = a.value; }); for (const k of Object.keys(o)) if (k[0] === "_" && o[k.slice(1)] == null && /^_(Logo|Label Proof|Photo|Approved proof|Back label)$/.test(k)) o[k.slice(1)] = o[k]; return o; }
 
 function doneStore() { return getStore({ name: "custom-label", consistency: "strong" }); }
 async function readDone() { try { return (await doneStore().get("done", { type: "json" })) || {}; } catch { return {}; } }
@@ -115,6 +117,9 @@ export default async (req) => {
         const waxFor = (li, a) => /\bwax/i.test(String(a["Seal"] || "")) || /\bwax/i.test((li.variant && li.variant.title) || "")
           || Object.entries(a).some(([k, v]) => !/^_|proof|photo|logo|placement/i.test(k) && /\bwax(ed)?\b/i.test(String(k) + " " + String(v)) && !/no wax|without wax/i.test(String(v)))
           || waxLines.some((w) => { const wb = attrs(w)["_bottle"]; return !wb || !a["_bottle"] || wb === a["_bottle"]; });
+        const giftLines = lis.filter((x) => !isCustomLabel(x) && /gift\s*box/i.test(((x.variant && x.variant.title) || "") + " " + (x.title || "")));
+        const giftFor = (li, a) => Object.entries(a).some(([k, v]) => !/^_/.test(k) && /gift\s*box/i.test(String(k) + " " + String(v)))
+          || giftLines.some((w) => { const wb = attrs(w)["_bottle"]; return !wb || !a["_bottle"] || wb === a["_bottle"]; });
         for (const li of lis) {
           if (!isCustomLabel(li)) continue;
           const a = attrs(li);
@@ -134,7 +139,7 @@ export default async (req) => {
             backUrl: one ? (a["Back label"] || "") : "",
             comment: one ? (a["Gift note"] || "") : (a["Comment"] || a["Notes"] || ""),
             template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement, orderNote: o.note || "",
-            brand: one ? "1of1" : "nbc", wax: waxFor(li, a),
+            brand: one ? "1of1" : "nbc", wax: waxFor(li, a), giftBox: giftFor(li, a),
             oneOfOne: one ? { style: a["Label style"] || "", proof: a["Proof"] || "", abv: a["ABV"] || "", age: a["Age"] || "", cls: a["Class"] || "",
               seal: a["Seal"] || "", occ1: a["Occasion headline"] || "", occ2: a["Occasion line"] || "", line2: a["Label line 2"] || "" } : null,
           });
