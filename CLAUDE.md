@@ -156,3 +156,4 @@ Custom-order print screen banner (_clBanner) shows the customer's original logo 
 Custom-order print screen: '✅ Mark completed' (clCompleteCurrent) saves edits, marks the order done, returns to the queue (done orders hidden) — v20261103e. Batch print already offers to mark the batch done.
 Custom label orders (v20261103f): server reads '_Logo' / '_Label Proof' (theme '11-03-26 b' renames the inputs in assets/custom-label-geometry.js so image links stay off packing slips) as well as the old names; NBC wax = 'Wax' property + custom-label-black-wax line (_bottle); giftBox flag (gift box add-on line or property) → GIFT BOX badge.
 Custom orders Barrel # by tier (_clBarrelNo): 7yr C2026, 10yr I2026, 19yr D2026 — v20261103g (older saved edits with plain 2026 are upgraded on open).
+Collaborative template: one-time _clStatsNudge (flag _statsNudge1) raises Proof −0.5% and ALC/VOL −0.7% to sit on the printed PROOF / % ALC./VOL. baselines — v20261103h.
