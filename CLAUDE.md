@@ -166,3 +166,9 @@ oneofone1 calibrated from the 11/3 grid (live data): labels ≈ x 0.06–2.88 an
 
 - 1of1 back (v20261103m): text field ooOrderNo (Order #, +W for wax) in the top-right margin above the back art frame; added to existing template on load; filled by clPrint1of1.
 - 1of1 calibration (11/3 flatbed scan of grid, paper 7x6.15, rot 90): left label ~x0.30-3.50, right ~3.76-6.96, both start ~y0.17 and run past the 6.15 page. Back on left {0.475,0.345} (2.85x5.7), front on right {3.66,0.12} (3.4x6.1 fill).
+
+## nbc-customs label template (v20261104a)
+- Template id `nbccustoms1`, name "nbc-customs": the 1of1 Classic label redrawn with the Nashville Barrel Co logo (seal = TN crest, wordmark = NBC color logo; back says "Bottled by: Nashville Barrel Company, Nashville, TN DSP-TN21095" and NASHVILLEBARRELCO.COM). Created on first visit to Label Printing by `_ncEnsureTemplate()` (write cap), copying panel sizes, sheet and adj from `oneofone1` so it prints on the same stock with the same calibration.
+- Art: `public/labels/nbc_customs_front.jpg` / `nbc_customs_back.jpg` (900×1800, rendered from 1of1-site templates.js with the logos swapped). Printed as full-panel image fields with `noKnock:true`.
+- New field options: `noKnock` (image skips the panel knockout/printArea) and `fit:'cover'` (image fills its box and is cropped, preview + print). The customer photo (`ncPhoto`) is `fit:'cover'` in the window, clipped by printArea, with the seal knocked out.
+- Editable: Bottled for (hand), Proof (link proof → ABV), ALC./VOL., Age, Class (choices), back Class + Distilled in (choices), Order #.
