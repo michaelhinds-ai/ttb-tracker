@@ -12332,10 +12332,10 @@ function _ooEnsureTemplate(){ let t=lblGet(OO_TPL); if(t){ _ooEnsureOrderField(t
      back:{wIn:3,hIn:6,bg:'',offXin:0,offYin:0,rotate180:false,fields:[{id:'ooBack',type:'image',label:'Back label',value:'',xPct:0,yPct:0,wPct:100,hPct:100},Object.assign({},OO_ORDER_FIELD)]},
      sheet:{on:true,wIn:6.3,hIn:6,rot:90,front:{xIn:0,yIn:0},back:{xIn:3.3,yIn:0}},_upd:Date.now()};
   lblTemplates().push(t); try{ save('Added the 1of1 label template'); }catch(e){} return t; }
-/* nbc-customs: the 1of1 Classic label with the Nashville Barrel Co logo (seal = TN crest, wordmark = NBC logo).
+/* nbc-customs: the 1of1 Classic label with the Nashville Barrel Co logo (NBC logo sits on the rule where the 1of1 seal was).
    Same stock and sheet layout as the 1of1 template (copied from oneofone1 so calibration matches). Art prints as a
    full-panel image (noKnock); the customer photo sits in the window (fit:cover), clipped to the window (printArea)
-   with the seal knocked out so the crest prints over it. Name / proof / ABV / age / class are editable text. */
+   with the logo knocked out so it prints over the photo. Name / proof / ABV / age / class are editable text. */
 const NC_TPL='nbccustoms1';
 function _ncEnsureTemplate(){ try{ if(lblGet(NC_TPL)) return; if(typeof can==='function'&&!can('write')) return;
   const oo=lblGet('oneofone1')||{}; const ooN=lblNormalize(oo);
@@ -12344,14 +12344,14 @@ function _ncEnsureTemplate(){ try{ if(lblGet(NC_TPL)) return; if(typeof can==='f
   const hand=(id,label,value,x,y,w,px,extra)=>Object.assign({id,type:'text',label,value,font:'hand',color:'#16120e',xPct:x,yPct:y,wPct:w,hPct:4,fontPt:pt(px,FH),align:'left'},extra||{});
   const t={id:NC_TPL,name:'nbc-customs',brand:'Nashville Barrel Co',twoPanel:true,
     front:{wIn:F,hIn:FH,bg:'/labels/nbc_customs_front.jpg',offXin:0,offYin:0,rotate180:false,
-      knockout:[{t:'ellipse',cx:50,cy:57.5,rx:12.67,ry:6.33}], printArea:{x:0,y:0,w:100,h:57.33},
+      knockout:[{t:'poly',pts:[[33.61,57.33],[34.0,56.94],[46.67,51.76],[48.49,51.34],[50.55,51.26],[52.6,51.56],[53.68,51.91],[66.11,57.01],[66.37,57.3],[65.24,60.31],[63.55,61.45],[50.33,63.73],[38.84,61.86],[35.4,61.2],[34.82,60.52]]}], printArea:{x:0,y:0,w:100,h:57.33},
       fields:[
         {id:'ncArt',type:'image',label:'Label art',value:'/labels/nbc_customs_front.jpg',fit:'fill',noKnock:true,xPct:0,yPct:0,wPct:100,hPct:100},
         {id:'ncPhoto',type:'image',label:'Customer photo',value:'',fit:'cover',xPct:0,yPct:0,wPct:100,hPct:57.33},
-        hand('ncName','Bottled for','',6.67,78.82,86.67,46,{align:'center'}),
-        hand('ncProof','Proof','120.0',8.33,86.76,26,26,{link:'proof'}),
-        hand('ncAbv','ALC./VOL.','60%',37.22,86.76,26,26,{link:'abv'}),
-        hand('ncAge','Age','7 Years',66.11,86.76,26.2,26),
+        hand('ncName','Bottled for','',6.67,71.93,86.67,46,{align:'center'}),
+        hand('ncProof','Proof','120.0',8.33,83.32,26,26,{link:'proof'}),
+        hand('ncAbv','ALC./VOL.','60%',37.22,83.32,26,26,{link:'abv'}),
+        hand('ncAge','Age','7 Years',66.11,83.32,26.2,26),
         {id:'ncClass',type:'text',label:'Class',value:'Kentucky Straight Bourbon Whiskey',font:'playfair',bold:true,color:'#16120e',xPct:6.67,yPct:91.75,wPct:86.67,hPct:4,fontPt:pt(25,FH),align:'center',
          choices:[{label:'Kentucky Straight Bourbon',text:'Kentucky Straight Bourbon Whiskey'},{label:'Straight Bourbon',text:'Straight Bourbon Whiskey'},{label:'Tennessee Whiskey',text:'Tennessee Whiskey'}]}]},
     back:{wIn:B,hIn:BH,bg:'/labels/nbc_customs_back.jpg',offXin:0,offYin:0,rotate180:false,knockout:[],printArea:null,
