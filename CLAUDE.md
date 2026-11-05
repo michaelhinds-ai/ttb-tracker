@@ -176,3 +176,7 @@ oneofone1 calibrated from the 11/3 grid (live data): labels ≈ x 0.06–2.88 an
 ## Full Custom Label orders open in nbc-customs (v20261105a)
 
 Shopify "Full Custom Label" orders carry `_Label Template` = `nbc-customs` (the API returns it as `o.template`). `clOpenOrder` checks it: nbc-customs orders load template `nbccustoms1` (photo → `ncPhoto` with the website's placement, name → `ncName` sized like the website at 50px/600 wide, age → `ncAge` as "N Years", class and Distilled-in from the variant, order # on the back) and skip the "Bottled by Nashville Barrel Co" default. Every other custom label order still opens in NBC Collaborative Bottling.
+
+## nbc-customs badge layer (v20261105b)
+
+The polygon knockout around the NBC badge left white corners beside the round seal. The badge is now its own top layer: field `ncBadge` (`/labels/nbc_badge.png`, transparent, x 33.615 y 51.25 w 32.768 h 12.5 %, noKnock) right after `ncPhoto`, and the front `knockout` is empty (`printArea` still clips the photo to the window). `_ncBadgeMigrate` adds it to an existing template on the next Label Printing open by a user who can write. `_lblEmbedImg` loads built-in `/labels/*.png` as PNG so the alpha survives (before, URL images went through `labelFlattenLogo` onto white).
