@@ -180,3 +180,7 @@ Shopify "Full Custom Label" orders carry `_Label Template` = `nbc-customs` (the 
 ## nbc-customs badge layer (v20261105b)
 
 The polygon knockout around the NBC badge left white corners beside the round seal. The badge is now its own top layer: field `ncBadge` (`/labels/nbc_badge.png`, transparent, x 33.615 y 51.25 w 32.768 h 12.5 %, noKnock) right after `ncPhoto`, and the front `knockout` is empty (`printArea` still clips the photo to the window). `_ncBadgeMigrate` adds it to an existing template on the next Label Printing open by a user who can write. `_lblEmbedImg` loads built-in `/labels/*.png` as PNG so the alpha survives (before, URL images went through `labelFlattenLogo` onto white).
+
+## Custom label orders can't bleed into each other (v20261105c)
+
+Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no text. Opening an order is async (logo download, fonts, saved images); opening a second order before the first finished let the first order's logo and values land on the second order's screen, and Save stored them under the wrong order. `clOpenOrder` now takes a token and `_clOpenOrder` stops after each await if a newer open started; `clSaveEdits` refuses while an order is still loading. A record already saved wrong is fixed with **Discard saved changes** on that order.
