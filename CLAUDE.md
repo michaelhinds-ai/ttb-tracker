@@ -172,3 +172,7 @@ oneofone1 calibrated from the 11/3 grid (live data): labels ≈ x 0.06–2.88 an
 - Art: `public/labels/nbc_customs_front.jpg` / `nbc_customs_back.jpg` (900×1800, rendered from 1of1-site templates.js with the logos swapped). Printed as full-panel image fields with `noKnock:true`.
 - New field options: `noKnock` (image skips the panel knockout/printArea) and `fit:'cover'` (image fills its box and is cropped, preview + print). The customer photo (`ncPhoto`) is `fit:'cover'` in the window, clipped by printArea, with the seal knocked out.
 - Editable: Bottled for (hand), Proof (link proof → ABV), ALC./VOL., Age, Class (choices), back Class + Distilled in (choices), Order #.
+
+## Full Custom Label orders open in nbc-customs (v20261105a)
+
+Shopify "Full Custom Label" orders carry `_Label Template` = `nbc-customs` (the API returns it as `o.template`). `clOpenOrder` checks it: nbc-customs orders load template `nbccustoms1` (photo → `ncPhoto` with the website's placement, name → `ncName` sized like the website at 50px/600 wide, age → `ncAge` as "N Years", class and Distilled-in from the variant, order # on the back) and skip the "Bottled by Nashville Barrel Co" default. Every other custom label order still opens in NBC Collaborative Bottling.
