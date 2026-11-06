@@ -184,3 +184,4 @@ The polygon knockout around the NBC badge left white corners beside the round se
 ## Custom label orders can't bleed into each other (v20261105c)
 
 Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no text. Opening an order is async (logo download, fonts, saved images); opening a second order before the first finished let the first order's logo and values land on the second order's screen, and Save stored them under the wrong order. `clOpenOrder` now takes a token and `_clOpenOrder` stops after each await if a newer open started; `clSaveEdits` refuses while an order is still loading. A record already saved wrong is fixed with **Discard saved changes** on that order.
+- TIB-in lot codes (v20261106j): _lotCode(distillDate) = YY + month letter A-L + DD (2015-09-09 -> 15I09). Set on new TIB-in barrels (b.lot) and receipt lines; _tibLotBackfill in normalize fills existing TIB barrels/lines with no lot/barrelNo.
