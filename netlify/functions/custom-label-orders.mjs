@@ -134,6 +134,7 @@ export default async (req) => {
             qty: li.quantity, title: li.title,
             variant: one ? [a["Age"], a["Class"]].filter(Boolean).join(" ") : ((li.variant && li.variant.title) || ""),
             text: one ? (a["Label name"] || "") : (a["Label Text"] || ""),
+            textColor: one ? "" : (a["_Text Color"] || ""),
             logoUrl: one ? (a["Photo"] || "") : (a["Logo"] || ""),
             proofUrl: one ? (a["Approved proof"] || "") : (a["Label Proof"] || ""),
             backUrl: one ? (a["Back label"] || "") : "",
