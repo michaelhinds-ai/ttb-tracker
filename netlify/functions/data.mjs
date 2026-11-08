@@ -311,6 +311,24 @@ export default async (req) => {
       // device believes it's current — so a stale back-office tab can't drop a store's counts,
       // submissions or check-offs. (Runs after the merge above so it wins regardless of base state.)
       if (current) { for (const k of ALWAYS_MERGE_KEYS) toSave[k] = mergeById(current[k], body[k]); }
+      // Mass-drop guard (11/8 incident): a device holding a near-empty copy (e.g. the pre-login view) must not be
+      // able to wipe a collection or the backups. If a save would drop more than 3 records AND more than a fifth
+      // of what's stored, merge instead of replacing. Small, normal deletions still go through.
+      if (current) {
+        for (const k of ARR_KEYS.concat(["dailyBackups"])) {
+          const cur = Array.isArray(current[k]) ? current[k] : null, inc = Array.isArray(toSave[k]) ? toSave[k] : null;
+          if (!cur || !inc) continue;
+          const incIds = new Set(inc.map((r) => r && r.id).filter((x) => x != null));
+          const dropped = cur.filter((r) => r && r.id != null && !incIds.has(r.id)).length;
+          if (k === "dailyBackups") { if (inc.length < cur.length) { const have = new Set(inc.map((b) => b && b.date)); toSave[k] = inc.concat(cur.filter((b) => b && !have.has(b.date))).sort((a, b) => String(a.date).localeCompare(String(b.date))); } continue; }
+          if (dropped > 3 && dropped > cur.length * 0.2) { toSave[k] = mergeById(cur, inc); console.warn("mass-drop guard", k, dropped, "of", cur.length); }
+        }
+        // Never lose a login's PIN: copy pinHash/email from the stored record when the incoming one lacks them.
+        const cu = (current.auth && Array.isArray(current.auth.users)) ? current.auth.users : [];
+        if (toSave.auth && Array.isArray(toSave.auth.users)) {
+          toSave.auth = { ...toSave.auth, users: toSave.auth.users.map((u) => { const c = u && cu.find((x) => x && x.id === u.id); if (!c) return u; const o = { ...u }; if (!o.pinHash && c.pinHash) o.pinHash = c.pinHash; if (!o.email && c.email) o.email = c.email; return o; }) };
+        }
+      }
       const savedAt = new Date().toISOString();
       if (linked) { delete toSave.auth; delete toSave.trustedDevices; }
       const saved = purgeTombstones({ ...toSave, _savedAt: savedAt });
