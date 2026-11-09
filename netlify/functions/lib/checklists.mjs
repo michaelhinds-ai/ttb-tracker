@@ -39,7 +39,10 @@ export function recipients(d) {
   const jh = listEnv("CHECKLIST_EMAIL_JH"); if (!jh.length) { const e = userEmail(d, /\bjen(nifer)?\b/i); if (e) jh.push(e); }
   const lou = listEnv("CHECKLIST_EMAIL_LOU"); if (!lou.length) { const e = userEmail(d, /\badam\b/i); if (e) lou.push(e); }
   const recap = listEnv("CHECKLIST_RECAP_TO"); if (!recap.length) { listEnv("BACKUP_EMAIL_TO").forEach((e) => recap.push(e)); jh.forEach((e) => recap.includes(e) || recap.push(e)); }
-  return { jh, lou, recap, forLoc: (loc) => (isLouisville(loc) ? lou : jh) };
+  /* Store-specific weekly recaps: Nashville stores (HQ + Church St) → Kelly, Louisville → Adam (11/9, Jennifer's request). */
+  const kelly = listEnv("CHECKLIST_RECAP_NBC"); if (!kelly.length) { const e = userEmail(d, /\bkelly\b/i); if (e) kelly.push(e); }
+  const louRecap = listEnv("CHECKLIST_RECAP_LOU"); if (!louRecap.length) lou.forEach((e) => louRecap.push(e));
+  return { jh, lou, recap, recapNbc: kelly, recapLou: louRecap, forLoc: (loc) => (isLouisville(loc) ? lou : jh) };
 }
 
 // Checklist items for a store/kind/date (Daily Task = that weekday's items; Bathrooms = day 7).

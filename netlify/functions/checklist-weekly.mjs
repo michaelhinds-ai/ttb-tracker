@@ -1,11 +1,11 @@
 // Sunday morning: recap of last week's (Sun–Sat) store checklists — per store, which days each
 // checklist was finished, partly done or missed, plus who left lists unfinished.
 // Recipients: CHECKLIST_RECAP_TO, else BACKUP_EMAIL_TO + Jennifer (see lib/checklists.mjs).
-import { KINDS, DAYNAMES, esc, todayIn, addDays, fmtDay, loadRoot, recipients, status, dutyStores, hasSlush, sendMail, wrap } from "./lib/checklists.mjs";
+import { KINDS, DAYNAMES, esc, todayIn, addDays, fmtDay, loadRoot, recipients, status, dutyStores, hasSlush, sendMail, wrap, isLouisville } from "./lib/checklists.mjs";
 
-export function recapHTML(d, start) {
+export function recapHTML(d, start, only) {
   const days = [...Array(7)].map((_, i) => addDays(start, i));
-  const stores = dutyStores(d); const people = {}; const P = (n) => (people[n] = people[n] || { items: 0, done: [], partial: [] });
+  const stores = dutyStores(d).filter((l) => !only || (only === "lou" ? isLouisville(l) : !isLouisville(l))); const people = {}; const P = (n) => (people[n] = people[n] || { items: 0, done: [], partial: [] });
   let body = `<p style="margin:0 0 14px;font-size:15px">Week of <b>${esc(fmtDay(days[0]))} – ${esc(fmtDay(days[6]))}</b>. ✓ finished · <span style="color:#b26b00">n/N</span> partly done · <span style="color:#b3261e">✗</span> not started.</p>`;
   for (const loc of stores) {
     const missed = []; let rowsHtml = "";
@@ -49,10 +49,15 @@ export async function runWeekly({ dry = false, start = null } = {}) {
   const today = todayIn("America/Chicago");
   const dow = new Date(today + "T12:00:00Z").getUTCDay();
   const s = start || addDays(today, -dow - 7); // the Sunday that began last week
-  const r = recapHTML(d, s); const to = recipients(d).recap;
-  if (dry) return { ok: true, dry: true, to: to.length, start: r.start, end: r.end, html: r.html };
-  const res = await sendMail(to, `📋 Weekly checklist recap — ${fmtDay(r.start)} – ${fmtDay(r.end)}`, r.html);
-  return { ok: true, start: r.start, end: r.end, ...res };
+  const R = recipients(d); const r = recapHTML(d, s); const to = R.recap;
+  if (dry) return { ok: true, dry: true, to: to.length, nbc: R.recapNbc.length, lou: R.recapLou.length, start: r.start, end: r.end, html: r.html };
+  const subj = (tag) => `📋 Weekly checklist recap${tag} — ${fmtDay(r.start)} – ${fmtDay(r.end)}`;
+  const res = await sendMail(to, subj(""), r.html);
+  /* Store-only copies: Nashville (HQ + Church St) → Kelly, Louisville → Adam. Mike + Jennifer keep the all-stores email. */
+  const out = { all: res };
+  if (R.recapNbc.length) out.nbc = await sendMail(R.recapNbc, subj(" · Nashville"), recapHTML(d, s, "nbc").html);
+  if (R.recapLou.length) out.lou = await sendMail(R.recapLou, subj(" · Louisville"), recapHTML(d, s, "lou").html);
+  return { ok: true, start: r.start, end: r.end, ...out };
 }
 
 export default async () => { const r = await runWeekly(); console.log(JSON.stringify(r).slice(0, 1000)); return new Response("ok"); };
