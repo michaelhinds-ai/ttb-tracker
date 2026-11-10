@@ -201,24 +201,30 @@ export function reminderPlan(data, now = Date.now()) {
 }
 export async function sendReminders(data, { apiKey, from, now = Date.now(), dry = false, appUrl = "https://lrwc-ttb-tracker.netlify.app/" } = {}) {
   const plan = reminderPlan(data, now);
-  const out = [];
+  // One e-mail per person: someone who manages several behind stores gets a single list.
+  const byTo = new Map(); const out = [];
   for (const p of plan) {
     if (!p.to.length) { out.push({ loc: p.loc, skipped: "no_recipient" }); continue; }
-    const last = p.lastAt ? fmtDay(p.lastAt) : "never";
-    const subject = `Inventory not done — ${p.loc} — due today by 3 PM`;
+    for (const e of p.to) { const k = e.toLowerCase(); if (!byTo.has(k)) byTo.set(k, { to: e, stores: [] }); byTo.get(k).stores.push(p); }
+  }
+  for (const { to, stores } of byTo.values()) {
+    const names = stores.map((p) => p.loc);
+    const one = stores.length === 1;
+    const subject = `Inventory not done — ${names.join(", ")} — due today by 3 PM`;
+    const rows = stores.map((p) => `<tr><td style="padding:6px 0;font-size:14px;font-weight:700">⚠️ ${esc(p.loc)}</td><td style="padding:6px 0 6px 12px;font-size:13px;color:#6b5a45;text-align:right">last count: ${esc(p.lastAt ? fmtDay(p.lastAt) : "never")}</td></tr>`).join("");
     const html = `<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;color:#231a12">
       <div style="background:#fdecea;border-left:4px solid #b3261e;padding:12px 14px;border-radius:6px">
-        <div style="font-size:16px;font-weight:800">⚠️ ${esc(p.loc)} hasn’t submitted this week’s inventory</div>
-        <div style="font-size:14px;margin-top:6px">The all-stores rollup goes out <b>today at 3 PM Central</b>. Please get the count done and hit <b>Submit</b> in Store Inventory before then.</div>
-        <div style="font-size:13px;color:#6b5a45;margin-top:6px">Last submitted count: ${esc(last)}</div>
+        <div style="font-size:16px;font-weight:800">${one ? esc(names[0]) + " hasn’t" : stores.length + " stores haven’t"} submitted this week’s inventory</div>
+        <table style="width:100%;border-collapse:collapse;margin-top:6px">${rows}</table>
+        <div style="font-size:14px;margin-top:8px">The all-stores rollup goes out <b>today at 3 PM Central</b>. Please get ${one ? "the count" : "the counts"} done and hit <b>Submit</b> in Store Inventory before then.</div>
       </div>
       <p style="margin:14px 0"><a href="${esc(appUrl)}" style="background:#7a5a2b;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;display:inline-block">Open Mikey Systems</a></p>
       <p style="font-size:12px;color:#8a7a63">Automatic reminder from Mikey Systems — sent Wednesdays at 10 AM to store managers whose store hasn’t submitted since last Wednesday’s rollup.</p></div>`;
-    const text = `${p.loc} hasn't submitted this week's inventory. The rollup goes out today at 3 PM Central — please count and Submit in Store Inventory before then. Last submitted count: ${last}. ${appUrl}`;
-    if (dry) { out.push({ loc: p.loc, to: p.to, managers: p.names, lastAt: p.lastAt, dry: true }); continue; }
-    const resp = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify({ from, to: p.to, subject, html, text }) });
+    const text = `Inventory not submitted this week: ${stores.map((p) => p.loc + " (last count " + (p.lastAt ? fmtDay(p.lastAt) : "never") + ")").join("; ")}. The rollup goes out today at 3 PM Central — please count and Submit in Store Inventory before then. ${appUrl}`;
+    if (dry) { out.push({ to, stores: names, dry: true }); continue; }
+    const resp = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify({ from, to: [to], subject, html, text }) });
     const j = await resp.json().catch(() => ({}));
-    out.push(resp.ok ? { loc: p.loc, to: p.to, id: j.id || null } : { loc: p.loc, to: p.to, error: (j && (j.message || j.name)) || "HTTP " + resp.status });
+    out.push(resp.ok ? { to, stores: names, id: j.id || null } : { to, stores: names, error: (j && (j.message || j.name)) || "HTTP " + resp.status });
   }
   return { ok: true, due: plan.length, results: out };
 }

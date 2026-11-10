@@ -198,5 +198,5 @@ Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no
 - Custom label orders card: search box (`_clQ`, `_clMatch`, `clSearch`) matches order # (with/without #, W suffix), customer, label text; searches done orders too. Only #clOrdersList is re-rendered so the input keeps focus.
 
 ## Inventory-not-done alert (inventory-remind.mjs)
-- Wednesdays 10 AM Central (cron 15,16 UTC, sends on the 10 AM run). Stores with no submission since last Wed 3 PM rollup → e-mail to that store's Retail Manager users (role "retail", location match, e-mail on file); fallback settings.invEmailByLoc[store] / invEmailTo. Logic in lib/invrollup.mjs (`reminderPlan`, `sendReminders`).
+- Wednesdays 10 AM Central (cron 15,16 UTC, sends on the 10 AM run). Stores with no submission since last Wed 3 PM rollup → one e-mail per person (stores grouped) to Retail Manager users (role "retail", location match, e-mail on file); fallback settings.invEmailByLoc[store] / invEmailTo. Logic in lib/invrollup.mjs (`reminderPlan`, `sendReminders`).
 - Dry run: POST /api/inventory-rollup-send { ws, remind:true, dry:true }.
