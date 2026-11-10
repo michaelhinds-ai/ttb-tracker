@@ -140,7 +140,10 @@ export default async (req) => {
             backUrl: one ? (a["Back label"] || "") : "",
             comment: one ? (a["Gift note"] || "") : (a["Comment"] || a["Notes"] || ""),
             template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement, orderNote: o.note || "",
-            brand: one ? "1of1" : "nbc", wax: waxFor(li, a), giftBox: giftFor(li, a),
+            brand: one ? "1of1" : "nbc",
+            // Vodka 6 pack (theme 11-10-26): one line = 6 bottles with the same label; it never takes the bourbon's wax.
+            pack: (!one && /vodka/i.test(a["_Label Template"] || "")) ? 6 : 1,
+            wax: (!one && /vodka/i.test(a["_Label Template"] || "")) ? false : waxFor(li, a), giftBox: giftFor(li, a),
             oneOfOne: one ? { style: a["Label style"] || "", proof: a["Proof"] || "", abv: a["ABV"] || "", age: a["Age"] || "", cls: a["Class"] || "",
               seal: a["Seal"] || "", occ1: a["Occasion headline"] || "", occ2: a["Occasion line"] || "", line2: a["Label line 2"] || "" } : null,
           });

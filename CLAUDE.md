@@ -200,3 +200,8 @@ Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no
 ## Inventory-not-done alert (inventory-remind.mjs)
 - Wednesdays 10 AM Central (cron 15,16 UTC, sends on the 10 AM run). Stores with no submission since last Wed 3 PM rollup → one e-mail per person (stores grouped) to Retail Manager users (role "retail", location match, e-mail on file); fallback settings.invEmailByLoc[store] / invEmailTo. Logic in lib/invrollup.mjs (`reminderPlan`, `sendReminders`).
 - Dry run: POST /api/inventory-rollup-send { ws, remind:true, dry:true }.
+
+## NBC custom label VODKA 6 pack (v20261110b, Mike 2026-11-10)
+- Shopify product `custom-label-vodka-6-pack` ($299.99, one line = 6 bottles, same label). Sold on its own page (theme template product.custom-label, vodka mode) and offered in a pop-up after Add to Cart on a custom bourbon that has a photo. The vodka line carries its own `_Logo`, `Label Proof`, `Label Text`, `_Logo Placement` (Full Custom geometry) and `_Label Template` = `nbc-vodka`.
+- Server: `pack: 6` for vodka lines, and vodka never takes the bourbon's wax.
+- Client: `_nvEnsureTemplate()` builds `nbcvodka1` from `nbccustoms1` (same stock + calibration): art `/labels/nbc_vodka_front.jpg` / `nbc_vodka_back.jpg`, proof 80 / 40%, NET CONTENTS 750 ML, class Vodka, back Vodka / Distilled from Grain; no barrel #, mashbill, cooperage, bottle count or story choice. `clOpenOrder` opens vodka orders there (isNV) with qty = packs × 6.
