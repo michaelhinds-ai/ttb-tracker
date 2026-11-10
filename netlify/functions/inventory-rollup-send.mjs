@@ -3,7 +3,7 @@
 // Inventory-admin users only (when login enforcement is on).
 import { getStore } from "@netlify/blobs";
 import { authOn, verify, tokenFromReq, isRetailRole } from "./lib/authtoken.mjs";
-import { sendRollup } from "./lib/invrollup.mjs";
+import { sendRollup, sendReminders } from "./lib/invrollup.mjs";
 
 function json(o, s = 200) { return new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } }); }
 
@@ -23,6 +23,7 @@ export default async (req) => {
   const apiKey = (process.env.RESEND_API_KEY || "").trim();
   if (!apiKey) return json({ ok: false, error: "RESEND_API_KEY not set" });
   const from = (process.env.INV_FROM || process.env.SALES_FROM || "Mikey Systems <sales@nashvillebarrelco.com>").trim();
+  if (b.remind) { try { return json(await sendReminders(data, { apiKey, from, dry: !!b.dry })); } catch (e) { return json({ ok: false, error: String((e && e.message) || e) }); } }
   try {
     const r = await sendRollup(data, { apiKey, from });
     delete r.rollup;

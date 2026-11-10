@@ -179,3 +179,46 @@ export async function sendRollup(data, { apiKey, from, to, now } = {}) {
   if (!resp.ok) return { ok: false, error: (j && (j.message || j.name)) || ("HTTP " + resp.status) };
   return { ok: true, id: j.id || null, to: recips, missing: r.status.filter((s) => !s.submitted).map((s) => s.loc) };
 }
+
+// ── "Inventory not done" alert ────────────────────────────────────────────────────────────
+// Wednesday 10 AM Central (5 h before the 3 PM rollup): every store that hasn't submitted a count
+// since last Wednesday's 3 PM rollup gets an e-mail to its store manager(s) — app users with the
+// Retail Manager role ("retail") assigned to that store, with an e-mail on file. No manager e-mail →
+// falls back to that store's reorder recipient (settings.invEmailByLoc[store] / invEmailTo).
+const okEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || "").trim());
+export function storeManagers(data, loc) {
+  const users = ((data.auth && data.auth.users) || []).filter((u) => u && !u._del && u.role === "retail" && okEmail(u.email));
+  const at = (u) => (Array.isArray(u.locations) && u.locations.length ? u.locations : [u.location]).filter(Boolean);
+  const mgrs = users.filter((u) => at(u).some((l) => locMatch(l, loc)));
+  let to = [...new Set(mgrs.map((u) => String(u.email).trim()))];
+  const names = mgrs.map((u) => u.name || "");
+  if (!to.length) { const s = data.settings || {}; const fb = String(((s.invEmailByLoc || {})[loc]) || s.invEmailTo || "").split(/[,;]\s*/).map((x) => x.trim()).filter(okEmail); to = fb; }
+  return { to, names };
+}
+export function reminderPlan(data, now = Date.now()) {
+  const r = buildRollup(data, { now, windowDays: 7 - 5 / 24 }); // since last Wednesday 3 PM
+  return r.status.filter((s) => !s.submitted).map((s) => ({ loc: s.loc, lastAt: s.lastAt, ...storeManagers(data, s.loc) }));
+}
+export async function sendReminders(data, { apiKey, from, now = Date.now(), dry = false, appUrl = "https://lrwc-ttb-tracker.netlify.app/" } = {}) {
+  const plan = reminderPlan(data, now);
+  const out = [];
+  for (const p of plan) {
+    if (!p.to.length) { out.push({ loc: p.loc, skipped: "no_recipient" }); continue; }
+    const last = p.lastAt ? fmtDay(p.lastAt) : "never";
+    const subject = `Inventory not done — ${p.loc} — due today by 3 PM`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;color:#231a12">
+      <div style="background:#fdecea;border-left:4px solid #b3261e;padding:12px 14px;border-radius:6px">
+        <div style="font-size:16px;font-weight:800">⚠️ ${esc(p.loc)} hasn’t submitted this week’s inventory</div>
+        <div style="font-size:14px;margin-top:6px">The all-stores rollup goes out <b>today at 3 PM Central</b>. Please get the count done and hit <b>Submit</b> in Store Inventory before then.</div>
+        <div style="font-size:13px;color:#6b5a45;margin-top:6px">Last submitted count: ${esc(last)}</div>
+      </div>
+      <p style="margin:14px 0"><a href="${esc(appUrl)}" style="background:#7a5a2b;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;display:inline-block">Open Mikey Systems</a></p>
+      <p style="font-size:12px;color:#8a7a63">Automatic reminder from Mikey Systems — sent Wednesdays at 10 AM to store managers whose store hasn’t submitted since last Wednesday’s rollup.</p></div>`;
+    const text = `${p.loc} hasn't submitted this week's inventory. The rollup goes out today at 3 PM Central — please count and Submit in Store Inventory before then. Last submitted count: ${last}. ${appUrl}`;
+    if (dry) { out.push({ loc: p.loc, to: p.to, managers: p.names, lastAt: p.lastAt, dry: true }); continue; }
+    const resp = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify({ from, to: p.to, subject, html, text }) });
+    const j = await resp.json().catch(() => ({}));
+    out.push(resp.ok ? { loc: p.loc, to: p.to, id: j.id || null } : { loc: p.loc, to: p.to, error: (j && (j.message || j.name)) || "HTTP " + resp.status });
+  }
+  return { ok: true, due: plan.length, results: out };
+}
