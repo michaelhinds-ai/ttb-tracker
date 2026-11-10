@@ -192,3 +192,7 @@ Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no
 - Zebra ZT421 (v20261109e): per-device printer choice (localStorage lblPrinter epson|zebra) on the label print screen. Templates keep sheetZ/adjZ for the Zebra (falls back to the Epson sheet until calibrated); lblNormalize swaps them in, lblEditSave/lblAdjSave write the Zebra copies.
 - sheet.bake (v20261109g): rotate the label page by redrawing it rotated (embedPage) instead of the PDF /Rotate flag — Chrome+Zebra driver ignored /Rotate. Used by LRWC sheetZ.
 - Weekly checklist recap (11/9): Mike+Jen get all stores; Kelly (user email matching "kelly" or CHECKLIST_RECAP_NBC) gets Nashville-only (HQ+Church St); Adam (CHECKLIST_EMAIL_LOU/RECAP_LOU) gets Louisville-only. recapHTML(d,start,only "nbc"|"lou").
+
+## Label Printing per-user access + custom-order search (v20261110a)
+- `u.labelAccess` (Users form checkbox "Label Printing") → `canLabel()`; `viewBlocked` allows LABELER_VIEWS when true. Sanitized in data.mjs + lib/authtoken.mjs. Jennifer has it.
+- Custom label orders card: search box (`_clQ`, `_clMatch`, `clSearch`) matches order # (with/without #, W suffix), customer, label text; searches done orders too. Only #clOrdersList is re-rendered so the input keeps focus.
