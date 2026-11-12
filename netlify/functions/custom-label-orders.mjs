@@ -161,6 +161,50 @@ export default async (req) => {
     return json({ ok: false, error: "query_error", detail: detail.slice(0, 400) });
   }
 
+  // Re-orders (Mike, 2026-11-12): Shopify's "Buy again" copies the product but drops every line-item property,
+  // so the new line has no photo, proof or text. Fill it from the same customer's most recent earlier custom-label
+  // order of the same brand (in this window, else one lookup by e-mail) and mark it reorderOf.
+  const blank = (it) => !it.logoUrl && !it.proofUrl && !it.text && !it.photoText;
+  const same = (x, it) => x.brand === it.brand && x.createdAt < it.createdAt && !blank(x)
+    && ((it.email && x.email && x.email.toLowerCase() === it.email.toLowerCase()) || (!it.email && it.customer && x.customer === it.customer));
+  const pick = (pool, it) => pool.filter((x) => same(x, it)).sort((p1, p2) => (p1.title === it.title ? 0 : 1) - (p2.title === it.title ? 0 : 1) || (p2.createdAt > p1.createdAt ? 1 : -1))[0];
+  const COPY = ["text", "textColor", "photoText", "photoTextPos", "logoUrl", "proofUrl", "backUrl", "template", "placement", "pack", "oneOfOne"];
+  const lookups = {};
+  for (const it of items) {
+    if (!blank(it)) continue;
+    let src = pick(items, it);
+    if (!src && it.email) {
+      try {
+        if (!lookups[it.email]) {
+          const data = await gql(tok, QUERY, { cursor: null, q: `email:"${it.email.replace(/"/g, "")}"` });
+          const pool = [];
+          for (const e of ((data && data.orders && data.orders.edges) || [])) {
+            const o = e.node; if (!o) continue;
+            for (const li of ((o.lineItems && o.lineItems.nodes) || [])) {
+              if (!isCustomLabel(li)) continue; const a = attrs(li); const one = isOneOfOne(li);
+              let placement = null; try { placement = (!one && a["_Logo Placement"]) ? JSON.parse(a["_Logo Placement"]) : null; } catch { placement = null; }
+              let ptp = null; try { ptp = (!one && a["_Photo Text Pos"]) ? JSON.parse(a["_Photo Text Pos"]) : null; } catch { ptp = null; }
+              pool.push({ lineId: li.id, orderName: o.name, createdAt: o.createdAt, title: li.title, brand: one ? "1of1" : "nbc",
+                email: (o.customer && o.customer.email) || "", customer: (o.customer && o.customer.displayName) || "",
+                text: one ? (a["Label name"] || "") : (a["Label Text"] || ""), textColor: one ? "" : (a["_Text Color"] || ""),
+                photoText: one ? "" : (a["Photo Text"] || ""), photoTextPos: ptp,
+                logoUrl: one ? (a["Photo"] || "") : (a["Logo"] || ""), proofUrl: one ? (a["Approved proof"] || "") : (a["Label Proof"] || ""),
+                backUrl: one ? (a["Back label"] || "") : "", template: one ? (a["Label style"] || "") : (a["_Label Template"] || ""), placement,
+                pack: (!one && /vodka/i.test(a["_Label Template"] || "")) ? 6 : 1,
+                oneOfOne: one ? { style: a["Label style"] || "", proof: a["Proof"] || "", abv: a["ABV"] || "", age: a["Age"] || "", cls: a["Class"] || "",
+                  seal: a["Seal"] || "", occ1: a["Occasion headline"] || "", occ2: a["Occasion line"] || "", line2: a["Label line 2"] || "" } : null });
+            }
+          }
+          lookups[it.email] = pool;
+        }
+        src = pick(lookups[it.email], it);
+      } catch { /* leave it blank; the queue still shows the order */ }
+    }
+    if (!src) { it.reorderMissing = true; continue; }
+    COPY.forEach((k) => { if (src[k] != null && src[k] !== "") it[k] = src[k]; });
+    it.reorderOf = src.orderName; it.reorderLineId = src.lineId;
+  }
+
   const done = await readDone();
   items.forEach((it) => { const d = done[it.lineId]; it.done = !!(d && d.done); it.doneAt = d ? d.at : ""; it.doneNote = d ? d.note : ""; });
   const open = items.filter((i) => !i.done).length;
