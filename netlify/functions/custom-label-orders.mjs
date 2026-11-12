@@ -135,6 +135,9 @@ export default async (req) => {
             variant: one ? [a["Age"], a["Class"]].filter(Boolean).join(" ") : ((li.variant && li.variant.title) || ""),
             text: one ? (a["Label name"] || "") : (a["Label Text"] || ""),
             textColor: one ? "" : (a["_Text Color"] || ""),
+            // Text on the photo (theme 11-12-26 c): "Photo Text" + "_Photo Text Pos" {cx,cy,px,color} on the 600x1200 label canvas.
+            photoText: one ? "" : (a["Photo Text"] || ""),
+            photoTextPos: (() => { if (one || !a["_Photo Text Pos"]) return null; try { return JSON.parse(a["_Photo Text Pos"]); } catch { return null; } })(),
             logoUrl: one ? (a["Photo"] || "") : (a["Logo"] || ""),
             proofUrl: one ? (a["Approved proof"] || "") : (a["Label Proof"] || ""),
             backUrl: one ? (a["Back label"] || "") : "",
