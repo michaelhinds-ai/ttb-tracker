@@ -225,3 +225,4 @@ Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no
 - Oct NBC "other losses" 1,856.9 = angel's share on 48 opening-inventory barrels dumped/bottled in Oct (bottling recvPG − bottled), not a true-up.
 - v20261113d: Setup → the Kentucky Tax Rates / KY report identity block (#kySettingsBox) is hidden for a non-KY company (NBC).
 - v20261113e: Pay.gov Claude-in-Chrome prompt (paygovCopyPrompt) adds the exact proprietor/DBA/address/plant header per company (Casey #14): NBC 809 Heathcote Ave Nashville TN 37210 DSP-TN-21095; LRW Louisville Barrel Company dba Louisville Rickhouse Whiskey, 717 E. Market St, Louisville KY 40202, DSP-KY-20181. Casey's sheet (claude.ai artifact DhKEGewkbkwHTDb1dN3qyq, readable only via Mike's Chrome) — NBC Oct Proposed tab matched Mikey to the cent after v20261113c.
+- v20261113f: markFiled also locks the NBC imported 5110.11 (`storageImp` on the filing record; filedOverride('storageImp') reads it).
