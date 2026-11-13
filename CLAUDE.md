@@ -223,3 +223,4 @@ Order #31630 reopened with another order's logo (SIP), 10 Years / Indiana and no
 - `FILED_EXCISE` (by company) — filed quarters stand in for pre-Mikey removals: NBC Q3 2026 $7,139.29 = 2,644.18 PG @ $2.70; counts toward the YTD CBMA tier (`ytdTaxableBeforeQuarter`). Q1/Q2 not loaded.
 - Storage/processing balances and Pay.gov values now use 2 decimals (round2) so filed figures carry exactly (LRWC numbers unchanged, just "0.00" formatting).
 - Oct NBC "other losses" 1,856.9 = angel's share on 48 opening-inventory barrels dumped/bottled in Oct (bottling recvPG − bottled), not a true-up.
+- v20261113d: Setup → the Kentucky Tax Rates / KY report identity block (#kySettingsBox) is hidden for a non-KY company (NBC).
